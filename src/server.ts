@@ -1,8 +1,14 @@
 import fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import fastifyJwt from '@fastify/jwt';
+import { licensingPlugin, LicensingPluginOptions } from './licensing/plugin.js';
+import { authRoutes } from './users/auth.routes.js';
+import { eventRoutes } from './events/event.routes.js';
 
 export interface ServerOptions {
   logger?: boolean;
+  jwtSecret?: string;
+  licensing?: LicensingPluginOptions;
 }
 
 export async function createServer(opts: ServerOptions = {}): Promise<FastifyInstance> {
@@ -10,11 +16,22 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
     logger: opts.logger ?? (process.env.NODE_ENV !== 'test'),
   });
 
-  // Register permissive CORS
+  // Permissive CORS
   await app.register(cors, {
     origin: true,
     credentials: true,
   });
+
+  // JWT authentication plugin
+  await app.register(fastifyJwt, {
+    secret: opts.jwtSecret || process.env.JWT_SECRET || 'dev-secret-basic-vms-super-secure',
+    sign: {
+      expiresIn: '7d',
+    },
+  });
+
+  // Standalone Ed25519 Capability Registry plugin
+  await app.register(licensingPlugin, opts.licensing ?? {});
 
   // Healthcheck endpoint
   app.get('/health', async () => {
@@ -25,6 +42,10 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
       timestamp: new Date().toISOString(),
     };
   });
+
+  // Domain route registration
+  await app.register(authRoutes, { prefix: '/api/auth' });
+  await app.register(eventRoutes, { prefix: '/api' });
 
   return app;
 }
