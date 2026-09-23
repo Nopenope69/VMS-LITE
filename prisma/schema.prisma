@@ -1,0 +1,43 @@
+// Basic VMS - Clean-Room PostgreSQL Schema
+// Permissively licensed, minimal, zero-tenant architecture
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  role         Role     @default(VIEWER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Event {
+  id        String   @id @default(uuid())
+  cameraId  String?
+  timestamp DateTime
+  type      String
+  source    String
+  severity  String   @default("info")
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([type])
+  @@index([cameraId])
+  @@index([timestamp])
+  @@map("events")
+}
