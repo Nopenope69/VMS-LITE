@@ -39,20 +39,20 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Event Framework & Motion Alerting
 
-- [ ] **EVT-01**: System maintains a unified `events` schema (`id`, `camera_id`, `timestamp`, `type`, `source`, `severity`, `metadata`)
-- [ ] **EVT-02**: System logs Core lifecycle events (`camera.online/offline`, `recording.started/stopped`, `storage.warning/full`)
+- [x] **EVT-01**: System maintains a unified `events` schema (`id`, `camera_id`, `timestamp`, `type`, `source`, `severity`, `metadata`)
+- [x] **EVT-02**: System logs Core lifecycle events (`camera.online/offline`, `recording.started/stopped`, `storage.warning/full`)
 - [ ] **EVT-03**: System subscribes to native camera motion events via ONVIF Profile T PullPoint / WS-BaseNotification
 - [ ] **EVT-04**: System emits `motion.detected` events to the Core event bus upon receiving ONVIF motion alerts
 - [ ] **EVT-05**: User receives real-time motion alert notifications in the web client via WebSocket stream
 
 ### Authentication, RBAC & Licensing
 
-- [ ] **AUTH-01**: System enforces single-site 2-role RBAC: Admin (full configuration and monitoring) and Viewer (monitoring only)
-- [ ] **AUTH-02**: System issues JWT session tokens upon login and persists session across browser reloads
-- [ ] **LIC-01**: System verifies offline Ed25519-signed license documents at boot (signature, product, edition, camera limits, expiration)
-- [ ] **LIC-02**: System resolves valid license into a Capability Registry (`capabilities.has(...)`)
-- [ ] **LIC-03**: System isolates module route namespaces and frontend bundles based on capability status (Package 1 Core by default)
-- [ ] **LIC-04**: System isolates licensing logic into a clean-room standalone module with zero VigilOne domain or tenant references
+- [x] **AUTH-01**: System enforces single-site 2-role RBAC: Admin (full configuration and monitoring) and Viewer (monitoring only)
+- [x] **AUTH-02**: System issues JWT session tokens upon login and persists session across browser reloads
+- [x] **LIC-01**: System verifies offline Ed25519-signed license documents at boot (signature, product, edition, camera limits, expiration)
+- [x] **LIC-02**: System resolves valid license into a Capability Registry (`capabilities.has(...)`)
+- [x] **LIC-03**: System isolates module route namespaces and frontend bundles based on capability status (Package 1 Core by default)
+- [x] **LIC-04**: System isolates licensing logic into a clean-room standalone module with zero VigilOne domain or tenant references
 
 ### Deployment & Packaging
 
@@ -132,23 +132,36 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PLAY-02 | Phase 5 | Pending |
 | PLAY-03 | Phase 5 | Pending |
 | PLAY-04 | Phase 5 | Pending |
-| EVT-01 | Phase 1 | Pending |
-| EVT-02 | Phase 1 | Pending |
+| EVT-01 | Phase 1 | Complete |
+| EVT-02 | Phase 1 | Complete |
 | EVT-03 | Phase 6 | Pending |
 | EVT-04 | Phase 6 | Pending |
 | EVT-05 | Phase 6 | Pending |
-| AUTH-01 | Phase 1 | Pending |
-| AUTH-02 | Phase 1 | Pending |
-| LIC-01 | Phase 1 | Pending |
-| LIC-02 | Phase 1 | Pending |
-| LIC-03 | Phase 1 | Pending |
-| LIC-04 | Phase 1 | Pending |
+| AUTH-01 | Phase 1 | Complete |
+| AUTH-02 | Phase 1 | Complete |
+| LIC-01 | Phase 1 | Complete |
+| LIC-02 | Phase 1 | Complete |
+| LIC-03 | Phase 1 | Complete |
+| LIC-04 | Phase 1 | Complete |
 | DEP-01 | Phase 7 | Pending |
 | DEP-02 | Phase 7 | Pending |
 | DEP-03 | Phase 7 | Pending |
 | DEP-04 | Phase 7 | Pending |
+| EXT-01 | Deferred | v2 Extended |
+| EXT-02 | Deferred | v2 Extended |
+| EXT-03 | Deferred | v2 Extended |
+| EXT-04 | Deferred | v2 Extended |
+| EXT-05 | Deferred | v2 Extended |
+| EXT-06 | Deferred | v2 Extended |
+| EXT-07 | Deferred | v2 Extended |
+| EXT-08 | Deferred | v2 Extended |
+| AI-01 | Deferred | v3 AI |
+| AI-02 | Deferred | v3 AI |
+| AI-03 | Deferred | v3 AI |
+| AI-04 | Deferred | v3 AI |
 
 **Coverage:**
+
 - v1 requirements: 32 total
 - Mapped to phases: 32
 - Unmapped: 0 ✓
