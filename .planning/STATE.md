@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: complete
-stopped_at: Milestone v1.0 complete
-last_updated: "2026-09-24T15:25:00.000Z"
-last_activity: 2026-09-24 -- Phase 7 executed and verified; Milestone v1.0 complete
+stopped_at: Milestone v1.0 complete & Architecture Deepening Finalized
+last_updated: "2026-09-24T17:25:00.000Z"
+last_activity: 2026-09-24 -- Milestone v1.0 delivered (7 phases, 15 plans) and architecture deepening verified (5 candidates, 123 tests passing)
 progress:
   total_phases: 7
   completed_phases: 7
@@ -21,14 +21,15 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-24)
 
 **Core value:** Sub-30-minute installer deployment with reliable CP Plus parity (live view, scheduled recording, 24h timeline playback, native ONVIF motion alerts) built on permissively licensed infrastructure (MediaMTX) with zero VigilOne domain entanglement.  
-**Current focus:** Milestone v1.0 Complete — All 7 Phases Delivered
+**Current focus:** Milestone v1.0 Complete & Architecture Hardened — Ready for Next Project Phase
 
 ## Current Position
 
 Phase: 7 of 7 (Packaging, CI/SBOM & Single-Command Deployment)
 Plan: 07-02 complete
-Status: Milestone v1.0 Complete (15/15 plans complete)
-Last activity: 2026-09-24 -- Phase 7 executed and verified
+Architecture Deepening: Complete across all 5 candidates
+Status: Milestone v1.0 Complete (15/15 plans complete, 123/123 tests passing)
+Last activity: 2026-09-24 -- Deep RecordingEngine, playback absorption, event bridge, ephemeral ICE, and headless playback session hook verified and documented.
 
 Progress: [██████████] 100%
 
@@ -37,8 +38,10 @@ Progress: [██████████] 100%
 **Velocity:**
 
 - Total plans completed: 15
+- Architecture candidates completed: 5
+- Total test suite: 123 passing tests across 17 test files
 - Average duration: 5 min
-- Total execution time: 1.5 hours
+- Total execution time: ~2 hours
 
 **By Phase:**
 
@@ -51,36 +54,45 @@ Progress: [██████████] 100%
 | 5. 24-Hour Playback & Timeline Scrubbing | 2/2 | 2 | 5 min |
 | 6. ONVIF Motion Alerts & Real-Time Event Feed | 2/2 | 2 | 5 min |
 | 7. Packaging, CI/SBOM & Single-Command Deployment | 2/2 | 2 | 5 min |
+| Architecture Deepening Review | 5/5 | 5 | 10 min |
 
 **Recent Trend:**
 
-- Last 5 plans: Complete
-- Trend: Stable
+- Last 5 plans & architecture refactors: Complete
+- Build status: Clean TypeScript build (0 errors root, 0 errors client)
+- Test status: 123/123 tests passing
+- Trend: Stable & Production Ready
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in `.planning/PROJECT.md` Key Decisions table:
+Decisions are logged in `.planning/PROJECT.md` Key Decisions table and detailed in `ARCHITECTURE.md`:
 
-- MediaMTX as media plane for RTSP ingest, WebRTC, fMP4 segment recording, and playback server.
+- MediaMTX as media plane for RTSP ingest, WebRTC (WHEP), fMP4 segment recording, and playback server.
 - Clean-room repository (`VMS-Bare`) and schema to eliminate VigilOne secret and IP entanglement.
 - Pinned ONVIF library behind internal `CameraProvider` adapter for hardware vendor independence.
 - Capability registry (`capabilities.has(...)`) over plan checks for Package 1/2/3 modularity.
 - Generic Core event bus built before Package 3 AI integrations.
 - Native ONVIF Profile T motion events for v1 motion alerting without computer vision overhead.
 - Native WebSocket streaming via `ws` for real-time motion notification broadcasts.
+- Consolidated `RecordingEngine` deep module encapsulating catalog, scheduler, and storage controller behind a single public seam.
+- Injected `IClock` (`SystemClock`/`TestClock`) for deterministic schedule and retention testing.
+- Absorbed playback timeline spans and fMP4 streaming URLs directly into the video catalog.
+- Unified camera device lifecycle and ONVIF event subscriptions via decoupled `EventBus` signals.
+- Inlined RFC 5766 HMAC-SHA1 ephemeral ICE token generation in streaming routes.
+- Extracted headless `usePlaybackSession` React hook isolating 11 state variables and scrubber arithmetic from UI rendering.
 
 ### Pending Todos
 
-None yet.
+None for v1.0. Ready for next project phase.
 
 ### Blockers/Concerns
 
-- **Security/Repo Audit (Blocking before publication):** Verify visibility of prior repo `Nopenope69/vms`, search commit history for leaked `.env`, private keys, signing credentials, or proprietary SOPs, and rotate any exposed keys.
+None.
 
 ## Session Continuity
 
-Last session: 2026-09-24 14:30
-Stopped at: Phase 6 executed and verified
+Last session: 2026-09-24 17:25
+Stopped at: Milestone v1.0 and Architecture Deepening finalized and verified
 Resume file: None

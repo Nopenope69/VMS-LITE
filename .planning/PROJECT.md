@@ -63,7 +63,13 @@ Sub-30-minute installer deployment with reliable CP Plus parity (live view, sche
 | ONVIF Profile T + S via `CameraProvider` adapter | Broad compatibility across Hikvision, Dahua, CP Plus, Prama without vendor lock-in | ✓ Validated in Phase 2 |
 | Capability registry over plan checks | Prevents tier checks from polluting controllers and UI; enables clean Package 1/2/3 modularity | ✓ Validated in Phase 1 |
 | Generic event framework in Core | Allows future Package 3 AI detections to act as regular bus producers without schema rewrites | ✓ Validated in Phase 1 |
-| Native ONVIF motion events in v1 | Delivers motion detection without heavy computer vision runtimes or CPU overhead | — Pending (Phase 6) |
+| Native ONVIF motion events in v1 | Delivers motion detection without heavy computer vision runtimes or CPU overhead | ✓ Validated in Phase 6 |
+| Packaging & single-command deployment | Docker Compose bundle with Coturn and MediaMTX under 30-min setup constraint | ✓ Validated in Phase 7 |
+| Deep `RecordingEngine` module | Collapsed 3 shallow singletons into single public seam with injected `IClock` and deterministic FIFO | ✓ Validated in Arch Review |
+| Playback catalog absorption | Absorbed timeline spans and fMP4 URL generation directly into catalog, retiring `PlaybackService` | ✓ Validated in Arch Review |
+| Unified camera device & event lifecycle | Bridged `cameraService` and `OnvifEventListenerService` via `EventBus` (`camera.online`/`offline`/`deleted`) | ✓ Validated in Arch Review |
+| Inlined ephemeral ICE generation | Eliminated shallow wrapper `IceServerService` by inlining RFC 5766 HMAC in routes | ✓ Validated in Arch Review |
+| Headless frontend playback session | Encapsulated 11 state variables and scrubber arithmetic into `usePlaybackSession` hook | ✓ Validated in Arch Review |
 
 ## Evolution
 
@@ -83,4 +89,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-24 after Phase 2 completion*
+*Last updated: 2026-09-24 after Milestone v1.0 completion & Architecture Deepening*
