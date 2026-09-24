@@ -32,10 +32,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Playback & Timeline
 
-- [ ] **PLAY-01**: User can view a 24-hour visual activity and recording timeline for any selected camera
-- [ ] **PLAY-02**: User can scrub and seek to any point in the recorded timeline
-- [ ] **PLAY-03**: System streams recorded video segments via MediaMTX playback server (`/list` and `/get` endpoints)
-- [ ] **PLAY-04**: User can pause, resume, and step through recorded footage
+- [x] **PLAY-01**: User can view a 24-hour visual activity and recording timeline for any selected camera
+- [x] **PLAY-02**: User can scrub and seek to any point in the recorded timeline
+- [x] **PLAY-03**: System streams recorded video segments via MediaMTX playback server (`/list` and `/get` endpoints)
+- [x] **PLAY-04**: User can pause, resume, and step through recorded footage
 
 ### Event Framework & Motion Alerting
 
@@ -128,10 +128,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REC-03 | Phase 3 | Complete |
 | REC-04 | Phase 3 | Complete |
 | REC-05 | Phase 3 | Complete |
-| PLAY-01 | Phase 5 | Pending |
-| PLAY-02 | Phase 5 | Pending |
-| PLAY-03 | Phase 5 | Pending |
-| PLAY-04 | Phase 5 | Pending |
+| PLAY-01 | Phase 5 | Complete |
+| PLAY-02 | Phase 5 | Complete |
+| PLAY-03 | Phase 5 | Complete |
+| PLAY-04 | Phase 5 | Complete |
 | EVT-01 | Phase 1 | Complete |
 | EVT-02 | Phase 1 | Complete |
 | EVT-03 | Phase 6 | Pending |

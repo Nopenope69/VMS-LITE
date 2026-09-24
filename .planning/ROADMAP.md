@@ -131,8 +131,8 @@ Plans:
 
 Plans:
 
-- [ ] 05-01: Implement backend playback API bridging frontend requests to MediaMTX `/list` and `/get` endpoints with RBAC checks.
-- [ ] 05-02: Build React 24-hour visual timeline scrubber with seek, play, pause, and segment transition controls.
+- [x] 05-01: Implement backend playback API bridging frontend requests to MediaMTX `/list` and `/get` endpoints with RBAC checks.
+- [x] 05-02: Build React 24-hour visual timeline scrubber with seek, play, pause, and segment transition controls.
 
 ---
 
@@ -188,8 +188,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 |-------|----------------|--------|-----------|
 | 1. Foundation, Licensing & Event Bus | 3/3 | Complete    | 2026-09-23 |
 | 2. Media Plane & Camera Onboarding | 2/2 | Complete    | 2026-09-24 |
-| 3. Recording Engine & Storage Management | 0/2 | Not started | - |
-| 4. Live View Grid & Mobile Streaming | 0/2 | Not started | - |
-| 5. 24-Hour Playback & Timeline Scrubbing | 0/2 | Not started | - |
+| 3. Recording Engine & Storage Management | 2/2 | Complete    | 2026-09-24 |
+| 4. Live View Grid & Mobile Streaming | 2/2 | Complete    | 2026-09-24 |
+| 5. 24-Hour Playback & Timeline Scrubbing | 2/2 | Complete    | 2026-09-24 |
 | 6. ONVIF Motion Alerts & Real-Time Event Feed | 0/2 | Not started | - |
 | 7. Packaging, CI/SBOM & Single-Command Deployment | 0/2 | Not started | - |

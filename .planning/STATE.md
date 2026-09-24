@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 4 complete
-last_updated: "2026-09-24T12:30:00.000Z"
-last_activity: 2026-09-24 -- Phase 4 executed and verified
+stopped_at: Phase 5 complete
+last_updated: "2026-09-24T14:15:00.000Z"
+last_activity: 2026-09-24 -- Phase 5 executed and verified
 progress:
   total_phases: 7
-  completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
-  percent: 57
+  completed_phases: 5
+  total_plans: 11
+  completed_plans: 11
+  percent: 71
 ---
 
 # Project State
@@ -21,24 +21,24 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-24)
 
 **Core value:** Sub-30-minute installer deployment with reliable CP Plus parity (live view, scheduled recording, 24h timeline playback, native ONVIF motion alerts) built on permissively licensed infrastructure (MediaMTX) with zero VigilOne domain entanglement.  
-**Current focus:** Phase 5 — 24-Hour Playback & Timeline Scrubbing
+**Current focus:** Phase 6 — ONVIF Motion Alerts & Real-Time Event Feed
 
 ## Current Position
 
-Phase: 4 of 7 (live view grid & mobile streaming)
-Plan: 04-02 complete
-Status: Phase 4 complete, ready for Phase 5
-Last activity: 2026-09-24 -- Phase 4 executed and verified
+Phase: 5 of 7 (24-hour playback & timeline scrubbing)
+Plan: 05-02 complete
+Status: Phase 5 complete, ready for Phase 6
+Last activity: 2026-09-24 -- Phase 5 executed and verified
 
-Progress: [██████░░░░] 57%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 9
+- Total plans completed: 11
 - Average duration: 5 min
-- Total execution time: 0.9 hours
+- Total execution time: 1.1 hours
 
 **By Phase:**
 
@@ -48,7 +48,7 @@ Progress: [██████░░░░] 57%
 | 2. Media Plane & Camera Onboarding | 2/2 | 2 | 5 min |
 | 3. Recording Engine & Storage Management | 2/2 | 2 | 5 min |
 | 4. Live View Grid & Mobile Streaming | 2/2 | 2 | 5 min |
-| 5. 24-Hour Playback & Timeline Scrubbing | 0/2 | - | - |
+| 5. 24-Hour Playback & Timeline Scrubbing | 2/2 | 2 | 5 min |
 | 6. ONVIF Motion Alerts & Real-Time Event Feed | 0/2 | - | - |
 | 7. Packaging, CI/SBOM & Single-Command Deployment | 0/2 | - | - |
 
@@ -80,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-09-24 02:11
-Stopped at: Project initialization complete, roadmap generated
+Last session: 2026-09-24 14:15
+Stopped at: Phase 5 executed and verified
 Resume file: None
