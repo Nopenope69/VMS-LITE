@@ -85,9 +85,31 @@ model Camera {
   cameraPermissions CameraPermission[]
   bookmarks         Bookmark[]
   exportJobs        ExportJob[]
+  motionZones       MotionZone[]
 
   @@index([status])
   @@map("cameras")
+}
+
+enum ZoneType {
+  INCLUSION
+  EXCLUSION
+}
+
+model MotionZone {
+  id          String    @id @default(uuid())
+  cameraId    String    @map("camera_id")
+  camera      Camera    @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  name        String
+  zoneType    ZoneType  @default(INCLUSION) @map("zone_type")
+  enabled     Boolean   @default(true)
+  coordinates Json
+  color       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([cameraId])
+  @@map("motion_zones")
 }
 
 model Recording {

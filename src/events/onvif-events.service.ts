@@ -8,6 +8,7 @@ import {
   ONVIF_TOPIC_VIDEO_SOURCE_MOTION,
   ONVIF_TOPIC_TAMPER,
 } from './onvif-events.types.js';
+import { spatialMotionFilter } from '../zones/spatial-motion-filter.js';
 
 export interface CameraSubscriptionInput {
   id: string;
@@ -291,6 +292,80 @@ export class OnvifEventListenerService {
   }
 
   /**
+   * Extracts spatial coordinates, point, or grid cells from ONVIF event data.
+   */
+  private extractSpatialCoordinates(data: Record<string, any>): {
+    point?: { x: number; y: number };
+    cells?: Array<{ col: number; row: number }>;
+    totalCols?: number;
+    totalRows?: number;
+  } | null {
+    if (!data) return null;
+
+    // Direct point object
+    if (data.point && typeof data.point.x === 'number' && typeof data.point.y === 'number') {
+      return { point: data.point };
+    }
+
+    // Direct normalized coordinates (case-insensitive)
+    const rawX = data.x ?? data.X;
+    const rawY = data.y ?? data.Y;
+    if (rawX !== undefined && rawY !== undefined) {
+      const x = typeof rawX === 'number' ? rawX : parseFloat(rawX);
+      const y = typeof rawY === 'number' ? rawY : parseFloat(rawY);
+      if (!isNaN(x) && !isNaN(y)) {
+        return { point: { x, y } };
+      }
+    }
+
+    // Active cells array
+    const rawCells = data.cells ?? data.activeCells;
+    const totalCols = parseInt(String(data.Columns ?? data.columns ?? '32'), 10);
+    const totalRows = parseInt(String(data.Rows ?? data.rows ?? '24'), 10);
+
+    if (Array.isArray(rawCells) && rawCells.length > 0) {
+      return {
+        cells: rawCells,
+        totalCols: isNaN(totalCols) ? 32 : totalCols,
+        totalRows: isNaN(totalRows) ? 24 : totalRows,
+      };
+    }
+
+    // ONVIF bitmask Data string
+    if (data.Data && typeof data.Data === 'string' && data.Columns && data.Rows) {
+      try {
+        const cols = isNaN(totalCols) ? 32 : totalCols;
+        const rows = isNaN(totalRows) ? 24 : totalRows;
+        const buffer = Buffer.from(data.Data, 'base64');
+        const cells: Array<{ col: number; row: number }> = [];
+
+        for (let byteIdx = 0; byteIdx < buffer.length; byteIdx++) {
+          const byteVal = buffer[byteIdx];
+          if (byteVal === 0) continue;
+          for (let bit = 0; bit < 8; bit++) {
+            if ((byteVal & (1 << bit)) !== 0) {
+              const cellIdx = byteIdx * 8 + bit;
+              const col = cellIdx % cols;
+              const row = Math.floor(cellIdx / cols);
+              if (col < cols && row < rows) {
+                cells.push({ col, row });
+              }
+            }
+          }
+        }
+
+        if (cells.length > 0) {
+          return { cells, totalCols: cols, totalRows: rows };
+        }
+      } catch {
+        // Fallback if data is not base64
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Processes parsed ONVIF events and emits to Core event bus (EVT-04).
    */
   async processEvents(cameraId: string, events: ParsedOnvifEvent[]): Promise<void> {
@@ -299,6 +374,45 @@ export class OnvifEventListenerService {
 
     for (const event of events) {
       if (event.isMotion) {
+        // Phase 11 (EXT-02): Check spatial zones if configured
+        const zones = spatialMotionFilter.getCameraZones(sub.cameraId);
+        let spatialFiltered = false;
+        let spatialVerified: boolean | undefined = undefined;
+        let matchedInclusion: string[] | undefined = undefined;
+
+        if (zones && zones.length > 0) {
+          const spatial = this.extractSpatialCoordinates(event.data);
+          if (spatial) {
+            if (spatial.point) {
+              const evalRes = spatialMotionFilter.evaluateMotionPoint(spatial.point, zones);
+              if (!evalRes.allowed) {
+                // Suppressed by spatial filter!
+                continue;
+              }
+              spatialFiltered = true;
+              spatialVerified = true;
+              matchedInclusion = evalRes.matchedInclusion;
+            } else if (spatial.cells && spatial.cells.length > 0) {
+              const evalRes = spatialMotionFilter.evaluateCellGrid(
+                spatial.cells,
+                spatial.totalCols || 32,
+                spatial.totalRows || 24,
+                zones
+              );
+              if (!evalRes.allowed) {
+                // Suppressed by spatial filter!
+                continue;
+              }
+              spatialFiltered = true;
+              spatialVerified = true;
+              matchedInclusion = evalRes.matchedInclusion;
+            }
+          } else {
+            // Coarse binary alarm without spatial metadata: passes with warning flag (legacy camera parity)
+            spatialVerified = false;
+          }
+        }
+
         await this.eventBus.emitEvent({
           cameraId: sub.cameraId,
           timestamp: event.timestamp,
@@ -309,6 +423,8 @@ export class OnvifEventListenerService {
             cameraName: sub.cameraName,
             topic: event.topic,
             data: event.data,
+            ...(spatialFiltered ? { spatialFiltered: true, matchedInclusion } : {}),
+            ...(spatialVerified === false ? { spatialVerified: false } : {}),
           },
         });
       } else if (event.isTamper) {
@@ -331,7 +447,7 @@ export class OnvifEventListenerService {
   /**
    * Mock trigger to simulate camera motion detection in tests.
    */
-  async triggerMockMotion(cameraId: string): Promise<void> {
+  async triggerMockMotion(cameraId: string, extraData: Record<string, any> = {}): Promise<void> {
     const sub = this.subscriptions.get(cameraId);
     if (!sub) return;
 
@@ -341,7 +457,7 @@ export class OnvifEventListenerService {
         isMotion: true,
         isTamper: false,
         timestamp: new Date(),
-        data: { IsMotion: 'true' },
+        data: { IsMotion: 'true', ...extraData },
       },
     ]);
   }
