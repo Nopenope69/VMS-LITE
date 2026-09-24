@@ -9,10 +9,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Live Streaming & Media Plane
 
-- [ ] **LIVE-01**: User can view live video stream from any configured camera via low-latency WebRTC (WHEP)
-- [ ] **LIVE-02**: User can fallback to HLS live stream if WebRTC fails or client does not support WebRTC
-- [ ] **LIVE-03**: User can view multiple cameras simultaneously in a responsive grid layout (1x1, 2x2, 3x3)
-- [ ] **LIVE-04**: User can access live streams remotely from mobile browser via STUN/relay/coturn traversal
+- [x] **LIVE-01**: User can view live video stream from any configured camera via low-latency WebRTC (WHEP)
+- [x] **LIVE-02**: User can fallback to HLS live stream if WebRTC fails or client does not support WebRTC
+- [x] **LIVE-03**: User can view multiple cameras simultaneously in a responsive grid layout (1x1, 2x2, 3x3)
+- [x] **LIVE-04**: User can access live streams remotely from mobile browser via STUN/relay/coturn traversal
 
 ### Camera Discovery & Management
 
@@ -114,10 +114,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIVE-01 | Phase 4 | Pending |
-| LIVE-02 | Phase 4 | Pending |
-| LIVE-03 | Phase 4 | Pending |
-| LIVE-04 | Phase 4 | Pending |
+| LIVE-01 | Phase 4 | Complete |
+| LIVE-02 | Phase 4 | Complete |
+| LIVE-03 | Phase 4 | Complete |
+| LIVE-04 | Phase 4 | Complete |
 | CAM-01 | Phase 2 | Complete |
 | CAM-02 | Phase 2 | Complete |
 | CAM-03 | Phase 2 | Complete |

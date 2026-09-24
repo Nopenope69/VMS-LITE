@@ -9,7 +9,7 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 - [x] **Phase 1: Foundation, Licensing & Event Bus** - Clean-room control plane, schema, Ed25519 Capability Registry, 2-role RBAC, and unified event model (completed 2026-09-23)
 - [x] **Phase 2: Media Plane & Camera Onboarding** - MediaMTX integration, internal `CameraProvider` adapter, ONVIF Profile T/S auto-discovery, and RTSP stream provisioning (completed 2026-09-24)
 - [x] **Phase 3: Recording Engine & Storage Management** - Continuous and scheduled packet-preserving fMP4 recording, segment cataloging, and automated disk rollover (completed 2026-09-24)
-- [ ] **Phase 4: Live View Grid & Mobile Streaming** - React multi-camera live grid (1x1, 2x2, 3x3), WebRTC (WHEP) with HLS fallback, and Coturn NAT traversal
+- [x] **Phase 4: Live View Grid & Mobile Streaming** - React multi-camera live grid (1x1, 2x2, 3x3), WebRTC (WHEP) with HLS fallback, and Coturn NAT traversal (completed 2026-09-24)
 - [ ] **Phase 5: 24-Hour Playback & Timeline Scrubbing** - Visual 24-hour timeline scrubber, MediaMTX playback server queries, and frame-accurate seeking
 - [ ] **Phase 6: ONVIF Motion Alerts & Real-Time Event Feed** - Native camera motion event subscriptions via Profile T PullPoint, event bus dispatch, and WebSocket alerts
 - [ ] **Phase 7: Packaging, CI/SBOM & Single-Command Deployment** - Automated Docker installer (<30 min deployment), release SBOM generator, and license compliance verification
@@ -110,8 +110,8 @@ Plans:
 
 Plans:
 
-- [ ] 04-01: Build React web client multi-camera grid UI with WebRTC (WHEP) player and HLS fallback.
-- [ ] 04-02: Configure Coturn STUN/TURN traversal and verify mobile remote streaming connectivity.
+- [x] 04-01: Build React web client multi-camera grid UI with WebRTC (WHEP) player and HLS fallback.
+- [x] 04-02: Configure Coturn STUN/TURN traversal and verify mobile remote streaming connectivity.
 
 ---
 
