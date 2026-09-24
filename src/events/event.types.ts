@@ -6,6 +6,7 @@ export type EventSeverity = z.infer<typeof EventSeverityEnum>;
 export const CoreEventType = {
   CAMERA_ONLINE: 'camera.online',
   CAMERA_OFFLINE: 'camera.offline',
+  CAMERA_DELETED: 'camera.deleted',
   RECORDING_STARTED: 'recording.started',
   RECORDING_STOPPED: 'recording.stopped',
   STORAGE_WARNING: 'storage.warning',

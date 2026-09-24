@@ -192,4 +192,108 @@ describe('OnvifEventListenerService (EVT-03, EVT-04)', () => {
       expect(emittedEvent.metadata.cameraName).toBe('Front Gate');
     });
   });
+
+  describe('Camera Lifecycle Event Bus Integration (Candidate 3)', () => {
+    it('automatically subscribes ONVIF camera on camera.online event', async () => {
+      service.start();
+
+      await eventBus.emitEvent({
+        type: CoreEventType.CAMERA_ONLINE,
+        source: 'camera.service',
+        cameraId: 'cam-auto-1',
+        metadata: {
+          name: 'Front Porch',
+          ip: '192.168.1.150',
+          port: 80,
+          onvifXAddr: 'http://192.168.1.150:80/onvif/device_service',
+          username: 'admin',
+        },
+      });
+
+      const sub = service.getSubscription('cam-auto-1');
+      expect(sub).toBeDefined();
+      expect(sub?.active).toBe(true);
+      expect(sub?.cameraName).toBe('Front Porch');
+    });
+
+    it('ignores manual streams without ONVIF on camera.online event', async () => {
+      service.start();
+
+      await eventBus.emitEvent({
+        type: CoreEventType.CAMERA_ONLINE,
+        source: 'camera.service',
+        cameraId: 'cam-manual-1',
+        metadata: {
+          name: 'Manual RTSP Feed',
+          mediaMtxPath: 'manual_feed',
+          manual: true,
+        },
+      });
+
+      expect(service.getSubscription('cam-manual-1')).toBeUndefined();
+    });
+
+    it('automatically tears down subscription on camera.deleted event', async () => {
+      service.start();
+
+      await service.subscribeCamera({
+        id: 'cam-to-delete',
+        name: 'Temporary Cam',
+        ip: '192.168.1.160',
+      });
+
+      expect(service.getSubscription('cam-to-delete')).toBeDefined();
+
+      await eventBus.emitEvent({
+        type: CoreEventType.CAMERA_DELETED,
+        source: 'camera.service',
+        cameraId: 'cam-to-delete',
+        metadata: {},
+      });
+
+      expect(service.getSubscription('cam-to-delete')).toBeUndefined();
+    });
+
+    it('automatically tears down subscription on camera.offline event', async () => {
+      service.start();
+
+      await service.subscribeCamera({
+        id: 'cam-to-offline',
+        name: 'Offline Cam',
+        ip: '192.168.1.170',
+      });
+
+      expect(service.getSubscription('cam-to-offline')).toBeDefined();
+
+      await eventBus.emitEvent({
+        type: CoreEventType.CAMERA_OFFLINE,
+        source: 'camera.service',
+        cameraId: 'cam-to-offline',
+        metadata: {},
+      });
+
+      expect(service.getSubscription('cam-to-offline')).toBeUndefined();
+    });
+
+    it('cleans up all subscriptions and polling timeouts when stop() is called', async () => {
+      service.start();
+
+      await service.subscribeCamera({
+        id: 'cam-stop-1',
+        name: 'Cam 1',
+        ip: '192.168.1.181',
+      });
+      await service.subscribeCamera({
+        id: 'cam-stop-2',
+        name: 'Cam 2',
+        ip: '192.168.1.182',
+      });
+
+      expect(service.getSubscriptions()).toHaveLength(2);
+
+      service.stop();
+
+      expect(service.getSubscriptions()).toHaveLength(0);
+    });
+  });
 });

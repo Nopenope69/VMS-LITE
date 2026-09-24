@@ -9,6 +9,7 @@ import { recordingRoutes } from './recordings/recording.routes.js';
 import { streamingRoutes } from './streaming/streaming.routes.js';
 import { playbackRoutes } from './playback/playback.routes.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
+import { onvifEventListenerService as defaultOnvifEvents, OnvifEventListenerService } from './events/onvif-events.service.js';
 import { recordingEngine as defaultRecordingEngine, RecordingEngine } from './recordings/recording-engine.js';
 
 export interface ServerOptions {
@@ -17,6 +18,7 @@ export interface ServerOptions {
   licensing?: LicensingPluginOptions;
   wsFeedService?: WebSocketFeedService;
   recordingEngine?: RecordingEngine;
+  onvifEventsService?: OnvifEventListenerService;
 }
 
 export async function createServer(opts: ServerOptions = {}): Promise<FastifyInstance> {
@@ -26,6 +28,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
 
   const wsFeed = opts.wsFeedService || webSocketFeedService;
   const engine = opts.recordingEngine || defaultRecordingEngine;
+  const onvifEvents = opts.onvifEventsService || defaultOnvifEvents;
 
   // Permissive CORS
   await app.register(cors, {
@@ -65,6 +68,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   // Attach background services when server is ready
   app.addHook('onReady', async () => {
     await engine.start();
+    onvifEvents.start();
     wsFeed.attach(app.server, async (token: string) => {
       return app.jwt.verify(token);
     });
@@ -73,6 +77,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   // Clean up on server close
   app.addHook('onClose', async () => {
     await engine.stop();
+    onvifEvents.stop();
     wsFeed.close();
   });
 

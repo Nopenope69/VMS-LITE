@@ -118,6 +118,10 @@ export class CameraService {
       metadata: {
         name: cameraRecord.name,
         ip: cameraRecord.ip,
+        port: cameraRecord.port,
+        onvifXAddr: cameraRecord.onvifUrl,
+        username: cameraRecord.username,
+        password: input.password,
         mediaMtxPath: cameraRecord.mediaMtxPath,
         manufacturer: cameraRecord.manufacturer,
       },
@@ -216,6 +220,16 @@ export class CameraService {
     // Emit lifecycle event
     await this.eventBus.emitEvent({
       type: 'camera.offline',
+      source: 'camera.service',
+      cameraId: id,
+      metadata: {
+        name: existingCamera.name,
+        mediaMtxPath: existingCamera.mediaMtxPath,
+      },
+    });
+
+    await this.eventBus.emitEvent({
+      type: 'camera.deleted',
       source: 'camera.service',
       cameraId: id,
       metadata: {

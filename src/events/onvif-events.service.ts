@@ -24,12 +24,78 @@ export class OnvifEventListenerService {
   private pollTimeouts = new Map<string, NodeJS.Timeout>();
   private mockMode = false;
   private mockEventTrigger?: (cameraId: string) => void;
+  private isListening = false;
+  private eventUnsubscribers: (() => void)[] = [];
 
   constructor(
     private readonly eventBus: EventBus = defaultEventBus,
     mockMode = false
   ) {
     this.mockMode = mockMode || process.env.NODE_ENV === 'test';
+  }
+
+  /**
+   * Starts listening to EventBus lifecycle events to automatically manage subscriptions.
+   */
+  start(): void {
+    if (this.isListening) return;
+    this.isListening = true;
+
+    const unsubOnline = this.eventBus.subscribe('camera.online', async (event) => {
+      const meta = event.metadata as any;
+      if (!event.cameraId || !meta) return;
+      // Only auto-subscribe if camera has ONVIF endpoint/IP and is not explicitly manual-only
+      if ((meta.onvifXAddr || meta.ip) && !meta.manual) {
+        try {
+          await this.subscribeCamera({
+            id: event.cameraId,
+            name: meta.name || 'Camera',
+            ip: meta.ip,
+            port: meta.port,
+            onvifXAddr: meta.onvifXAddr,
+            username: meta.username,
+            password: meta.password,
+          });
+        } catch (err: any) {
+          console.warn(`[OnvifEventListenerService] Auto-subscribe failed for camera ${event.cameraId}:`, err.message);
+        }
+      }
+    });
+
+    const unsubOffline = this.eventBus.subscribe('camera.offline', (event) => {
+      if (event.cameraId) {
+        this.unsubscribeCamera(event.cameraId);
+      }
+    });
+
+    const unsubDeleted = this.eventBus.subscribe('camera.deleted', (event) => {
+      if (event.cameraId) {
+        this.unsubscribeCamera(event.cameraId);
+      }
+    });
+
+    this.eventUnsubscribers.push(unsubOnline, unsubOffline, unsubDeleted);
+  }
+
+  /**
+   * Stops listening to EventBus and cleans up all active camera subscriptions and polling timeouts.
+   */
+  stop(): void {
+    this.isListening = false;
+    for (const unsub of this.eventUnsubscribers) {
+      unsub();
+    }
+    this.eventUnsubscribers = [];
+
+    for (const timeout of this.pollTimeouts.values()) {
+      clearTimeout(timeout);
+    }
+    this.pollTimeouts.clear();
+
+    for (const sub of this.subscriptions.values()) {
+      sub.active = false;
+    }
+    this.subscriptions.clear();
   }
 
   /**
