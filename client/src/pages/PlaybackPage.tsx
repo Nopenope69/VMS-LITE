@@ -19,6 +19,8 @@ import {
   getTodayString,
   CameraOption,
 } from '../hooks/usePlaybackSession.js';
+import { useAuth } from '../context/AuthContext.js';
+import { OperatorBanner } from '../components/OperatorBanner.js';
 
 export type { CameraOption };
 
@@ -33,6 +35,9 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
   authToken = '',
   onNavigateLive,
 }) => {
+  const { token: authContextToken } = useAuth();
+  const effectiveToken = authToken || authContextToken || '';
+
   const {
     cameras,
     selectedCameraId,
@@ -56,7 +61,7 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
     fetchTimeline,
   } = usePlaybackSession({
     apiBaseUrl,
-    authToken,
+    authToken: effectiveToken,
   });
 
   const todayStr = getTodayString();
@@ -99,6 +104,9 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
 
   return (
     <div className="flex flex-col w-screen h-screen bg-[#090d16] text-slate-100 overflow-hidden font-sans">
+      {/* Operator Shift Mode Banner */}
+      <OperatorBanner />
+
       {/* Top Application Header */}
       <header className="flex items-center justify-between px-4 py-2.5 bg-[#111827] border-b border-[#1f2937] shrink-0">
         <div className="flex items-center gap-3">

@@ -11,4 +11,7 @@ export * from './components/EventNotificationDrawer.js';
 export * from './pages/LiveViewPage.js';
 export * from './pages/PlaybackPage.js';
 export * from './hooks/usePlaybackSession.js';
+export * from './context/AuthContext.js';
+export * from './components/OperatorBanner.js';
+export * from './components/UserManagementModal.js';
 

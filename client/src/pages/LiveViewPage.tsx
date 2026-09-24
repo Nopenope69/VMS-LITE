@@ -11,12 +11,16 @@ import {
   Film,
   Volume2,
   VolumeX,
+  Users,
 } from 'lucide-react';
 import { LiveGrid, GridLayoutMode } from '../components/LiveGrid.js';
 import { CameraStreamInfo } from '../components/LiveCameraTile.js';
 import { MotionAlertBadge } from '../components/MotionAlertBadge.js';
 import { EventNotificationDrawer } from '../components/EventNotificationDrawer.js';
 import { EventsWsClient, EventPayload } from '../utils/events-ws-client.js';
+import { useAuth } from '../context/AuthContext.js';
+import { OperatorBanner } from '../components/OperatorBanner.js';
+import { UserManagementModal } from '../components/UserManagementModal.js';
 
 export interface LiveViewPageProps {
   apiBaseUrl?: string;
@@ -35,6 +39,11 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
   const [iceServers, setIceServers] = useState<RTCIceServer[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Authentication & RBAC state
+  const { user, token: authContextToken, isAdmin, isOperator } = useAuth();
+  const effectiveToken = authToken || authContextToken || '';
+  const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
 
   // Motion alerts and drawer state
   const [events, setEvents] = useState<EventPayload[]>([]);
@@ -74,8 +83,8 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
 
     try {
       const headers: Record<string, string> = {};
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
+      if (effectiveToken) {
+        headers['Authorization'] = `Bearer ${effectiveToken}`;
       }
 
       const res = await fetch(`${apiBaseUrl}/api/streaming/config`, { headers });
@@ -117,7 +126,7 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
 
     const client = new EventsWsClient({
       wsUrl,
-      token: authToken,
+      token: effectiveToken,
     });
     wsClientRef.current = client;
 
@@ -146,7 +155,7 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
       unsubscribe();
       client.disconnect();
     };
-  }, [apiBaseUrl, authToken, playGuardChime]);
+  }, [apiBaseUrl, effectiveToken, playGuardChime]);
 
   const handleAssignSlot = (slotIndex: number, camera: CameraStreamInfo) => {
     setAssignedSlots((prev) => {
@@ -179,6 +188,9 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
 
   return (
     <div className="flex flex-col w-screen h-screen bg-[#090d16] text-slate-100 overflow-hidden font-sans">
+      {/* Operator Shift Mode Banner */}
+      <OperatorBanner />
+
       {/* Top Application Bar with Palette 1 Styling */}
       <header className="flex items-center justify-between px-4 py-2.5 bg-[#111827] border-b border-[#1f2937] shrink-0">
         {/* Brand & System Health */}
@@ -270,6 +282,19 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
             onClick={handleOpenDrawer}
           />
 
+          {/* Admin User & Permission Management */}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setIsUserModalOpen(true)}
+              title="Users & Camera Access Management"
+              className="flex items-center gap-1.5 px-3 py-1.5 min-h-[38px] bg-[#111827] hover:bg-[#1f2937] text-[#4fc3f7] border border-[#1f2937] hover:border-[#4fc3f7]/50 font-semibold text-xs rounded-md transition-all shadow-sm active:scale-95"
+            >
+              <Users className="w-4 h-4" />
+              <span className="hidden lg:inline">Users & Access</span>
+            </button>
+          )}
+
           {/* Direct Navigate to Playback / History */}
           {onNavigatePlayback && (
             <button
@@ -343,6 +368,17 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
             onNavigatePlayback();
           }
         }}
+      />
+
+      {/* Admin User Management Modal */}
+      <UserManagementModal
+        isOpen={isUserModalOpen}
+        onClose={() => setIsUserModalOpen(false)}
+        availableCameras={cameras.map((c) => ({
+          id: c.cameraId,
+          name: c.name,
+          status: 'online',
+        }))}
       />
     </div>
   );
