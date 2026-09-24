@@ -152,8 +152,8 @@ Plans:
 
 Plans:
 
-- [ ] 06-01: Implement ONVIF Profile T event listener service (PullPoint / BaseNotification) dispatching to Core event bus.
-- [ ] 06-02: Build WebSocket live alert broadcast service and React real-time notification drawer/badge.
+- [x] 06-01: Implement ONVIF Profile T event listener service (PullPoint / BaseNotification) dispatching to Core event bus.
+- [x] 06-02: Build WebSocket live alert broadcast service and React real-time notification drawer/badge.
 
 ---
 
@@ -191,5 +191,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. Recording Engine & Storage Management | 2/2 | Complete    | 2026-09-24 |
 | 4. Live View Grid & Mobile Streaming | 2/2 | Complete    | 2026-09-24 |
 | 5. 24-Hour Playback & Timeline Scrubbing | 2/2 | Complete    | 2026-09-24 |
-| 6. ONVIF Motion Alerts & Real-Time Event Feed | 0/2 | Not started | - |
+| 6. ONVIF Motion Alerts & Real-Time Event Feed | 2/2 | Complete    | 2026-09-24 |
 | 7. Packaging, CI/SBOM & Single-Command Deployment | 0/2 | Not started | - |

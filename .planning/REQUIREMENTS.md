@@ -41,9 +41,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **EVT-01**: System maintains a unified `events` schema (`id`, `camera_id`, `timestamp`, `type`, `source`, `severity`, `metadata`)
 - [x] **EVT-02**: System logs Core lifecycle events (`camera.online/offline`, `recording.started/stopped`, `storage.warning/full`)
-- [ ] **EVT-03**: System subscribes to native camera motion events via ONVIF Profile T PullPoint / WS-BaseNotification
-- [ ] **EVT-04**: System emits `motion.detected` events to the Core event bus upon receiving ONVIF motion alerts
-- [ ] **EVT-05**: User receives real-time motion alert notifications in the web client via WebSocket stream
+- [x] **EVT-03**: System subscribes to native camera motion events via ONVIF Profile T PullPoint / WS-BaseNotification
+- [x] **EVT-04**: System emits `motion.detected` events to the Core event bus upon receiving ONVIF motion alerts
+- [x] **EVT-05**: User receives real-time motion alert notifications in the web client via WebSocket stream
 
 ### Authentication, RBAC & Licensing
 
@@ -134,9 +134,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PLAY-04 | Phase 5 | Complete |
 | EVT-01 | Phase 1 | Complete |
 | EVT-02 | Phase 1 | Complete |
-| EVT-03 | Phase 6 | Pending |
-| EVT-04 | Phase 6 | Pending |
-| EVT-05 | Phase 6 | Pending |
+| EVT-03 | Phase 6 | Complete |
+| EVT-04 | Phase 6 | Complete |
+| EVT-05 | Phase 6 | Complete |
 | AUTH-01 | Phase 1 | Complete |
 | AUTH-02 | Phase 1 | Complete |
 | LIC-01 | Phase 1 | Complete |
