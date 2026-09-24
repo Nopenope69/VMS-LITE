@@ -41,3 +41,26 @@ model Event {
   @@index([timestamp])
   @@map("events")
 }
+
+model Camera {
+  id           String   @id @default(uuid())
+  name         String
+  ip           String?
+  port         Int?
+  username     String?
+  password     String?
+  rtspUrl      String   @map("rtsp_url")
+  subStreamUrl String?  @map("sub_stream_url")
+  onvifUrl     String?  @map("onvif_url")
+  profileToken String?  @map("profile_token")
+  manufacturer String?
+  model        String?
+  serialNumber String?  @map("serial_number")
+  status       String   @default("offline")
+  mediaMtxPath String   @unique @map("mediamtx_path")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("cameras")
+}
