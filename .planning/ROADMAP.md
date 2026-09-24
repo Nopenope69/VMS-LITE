@@ -84,7 +84,12 @@ Plans:
 
 Plans:
 
+**Wave 1**
+
 - [ ] 03-01: Configure MediaMTX fMP4 segment recording, implement webhook handler for `runOnRecordSegmentComplete`, and record metadata to database.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 03-02: Implement camera recording scheduler worker and storage disk monitor with automatic FIFO rollover.
 
 ---
