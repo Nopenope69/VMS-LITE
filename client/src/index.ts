@@ -2,4 +2,8 @@ export * from './utils/whep-client.js';
 export * from './components/WhepHlsPlayer.js';
 export * from './components/LiveCameraTile.js';
 export * from './components/LiveGrid.js';
+export * from './components/TimelineScrubber.js';
+export * from './components/PlaybackControls.js';
+export * from './components/PlaybackPlayer.js';
 export * from './pages/LiveViewPage.js';
+export * from './pages/PlaybackPage.js';
