@@ -109,8 +109,9 @@ export function requireCameraPermission(permission: CameraPermissionKey) {
 
     // Operator requires explicit per-camera permission
     if (role === Role.OPERATOR) {
-      const params = request.params as { id?: string; cameraId?: string };
-      const cameraId = params.id || params.cameraId;
+      const params = request.params as { id?: string; cameraId?: string } | undefined;
+      const body = request.body as { cameraId?: string } | undefined;
+      const cameraId = params?.id || params?.cameraId || body?.cameraId;
 
       if (!cameraId) {
         return;

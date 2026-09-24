@@ -16,6 +16,20 @@ enum Role {
   VIEWER
 }
 
+enum ExportStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum ExportMode {
+  STREAM_COPY
+  TRANSCODED_OSD
+}
+
 model User {
   id           String   @id @default(uuid())
   username     String   @unique
@@ -25,6 +39,8 @@ model User {
   updatedAt    DateTime @updatedAt
 
   cameraPermissions CameraPermission[]
+  bookmarks         Bookmark[]
+  exportJobs        ExportJob[]
 
   @@map("users")
 }
@@ -64,9 +80,11 @@ model Camera {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  recordings Recording[]
-  schedules  RecordingSchedule[]
+  recordings        Recording[]
+  schedules         RecordingSchedule[]
   cameraPermissions CameraPermission[]
+  bookmarks         Bookmark[]
+  exportJobs        ExportJob[]
 
   @@index([status])
   @@map("cameras")
@@ -122,4 +140,49 @@ model CameraPermission {
 
   @@unique([userId, cameraId])
   @@map("camera_permissions")
+}
+
+model Bookmark {
+  id          String   @id @default(uuid())
+  cameraId    String   @map("camera_id")
+  camera      Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  userId      String?  @map("user_id")
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  timestamp   DateTime
+  title       String
+  description String?
+  category    String   @default("incident") // incident, visitor, maintenance, activity
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([cameraId, timestamp])
+  @@index([cameraId, category, timestamp])
+  @@map("bookmarks")
+}
+
+model ExportJob {
+  id           String       @id @default(uuid())
+  cameraId     String       @map("camera_id")
+  camera       Camera       @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  userId       String?      @map("user_id")
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  startTime    DateTime     @map("start_time")
+  endTime      DateTime     @map("end_time")
+  exportMode   ExportMode   @default(STREAM_COPY) @map("export_mode")
+  status       ExportStatus @default(QUEUED)
+  filePath     String?      @map("file_path")
+  fileSize     BigInt?      @map("file_size")
+  sha256       String?
+  includeOsd   Boolean      @default(false) @map("include_osd")
+  errorCode    String?      @map("error_code")
+  errorMessage String?      @map("error_message")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  startedAt    DateTime?    @map("started_at")
+  completedAt  DateTime?    @map("completed_at")
+  expiresAt    DateTime     @map("expires_at")
+
+  @@index([cameraId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("export_jobs")
 }
