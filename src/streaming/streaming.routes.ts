@@ -1,11 +1,58 @@
+import crypto from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { authenticate } from '../users/rbac.guard.js';
 import { cameraService } from '../cameras/camera.service.js';
-import { iceServerService } from './ice-servers.service.js';
 import {
   CameraStreamInfo,
+  IceServerConfig,
   StreamingConfigDto,
 } from './streaming.types.js';
+
+export interface IceServerOptions {
+  stunUrls?: string[];
+  turnHost?: string;
+  turnPort?: number;
+  turnSecret?: string;
+  ttlSeconds?: number;
+}
+
+/**
+ * Generates active ICE servers including ephemeral TURN credentials (RFC 5766 REST API) (LIVE-04, T-04-02).
+ */
+export function generateIceServers(
+  userId: string = 'vms_client',
+  opts: IceServerOptions = {}
+): IceServerConfig[] {
+  const stunUrls = opts.stunUrls || [
+    process.env.STUN_SERVER_URL || 'stun:stun.l.google.com:19302',
+  ];
+  const turnHost = opts.turnHost || process.env.TURN_SERVER_HOST;
+  const turnPort = opts.turnPort || Number(process.env.TURN_SERVER_PORT) || 3478;
+  const turnSecret = opts.turnSecret || process.env.TURN_SECRET;
+  const ttlSeconds = opts.ttlSeconds || 3600;
+
+  const servers: IceServerConfig[] = [{ urls: stunUrls }];
+
+  if (turnHost && turnSecret) {
+    const expiry = Math.floor(Date.now() / 1000) + ttlSeconds;
+    const username = `${expiry}:${userId}`;
+    const credential = crypto
+      .createHmac('sha1', turnSecret)
+      .update(username)
+      .digest('base64');
+
+    servers.push({
+      urls: [
+        `turn:${turnHost}:${turnPort}?transport=udp`,
+        `turn:${turnHost}:${turnPort}?transport=tcp`,
+      ],
+      username,
+      credential,
+    });
+  }
+
+  return servers;
+}
 
 export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const getWhepBaseUrl = () =>
@@ -45,7 +92,7 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       try {
         const cameras = await cameraService.listCameras();
         const userId = request.user?.id || 'vms_client';
-        const iceServers = iceServerService.getIceServers(userId);
+        const iceServers = generateIceServers(userId);
 
         const response: StreamingConfigDto = {
           whepBaseUrl: getWhepBaseUrl(),
@@ -75,7 +122,7 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     async (request, reply) => {
       try {
         const userId = request.user?.id || 'vms_client';
-        const iceServers = iceServerService.getIceServers(userId);
+        const iceServers = generateIceServers(userId);
         return reply.send({
           success: true,
           iceServers,
