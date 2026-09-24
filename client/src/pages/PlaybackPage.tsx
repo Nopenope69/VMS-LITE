@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React from 'react';
 import {
   Shield,
   Video,
@@ -8,15 +8,15 @@ import {
   RefreshCw,
   Film,
 } from 'lucide-react';
-import { TimelineScrubber, TimelineSpan } from '../components/TimelineScrubber.js';
+import { TimelineScrubber } from '../components/TimelineScrubber.js';
 import { PlaybackControls } from '../components/PlaybackControls.js';
 import { PlaybackPlayer } from '../components/PlaybackPlayer.js';
+import {
+  usePlaybackSession,
+  CameraOption,
+} from '../hooks/usePlaybackSession.js';
 
-export interface CameraOption {
-  id: string;
-  name: string;
-  mediaMtxPath?: string;
-}
+export type { CameraOption };
 
 export interface PlaybackPageProps {
   apiBaseUrl?: string;
@@ -29,180 +29,31 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
   authToken = '',
   onNavigateLive,
 }) => {
-  // Today's date in YYYY-MM-DD
-  const getTodayString = (): string => {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const d = String(today.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  };
-
-  const [cameras, setCameras] = useState<CameraOption[]>([]);
-  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
-  const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
-  const [currentTime, setCurrentTime] = useState<Date>(new Date());
-  const [timelineSpans, setTimelineSpans] = useState<TimelineSpan[]>([]);
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
-  const [streamStartTime, setStreamStartTime] = useState<Date | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [playbackRate, setPlaybackRate] = useState<number>(1);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Common request headers with Auth
-  const authHeaders = useMemo(() => {
-    const headers: Record<string, string> = {};
-    if (authToken) {
-      headers['Authorization'] = `Bearer ${authToken}`;
-    }
-    return headers;
-  }, [authToken]);
-
-  // Fetch camera list on mount
-  const fetchCameras = useCallback(async () => {
-    try {
-      let res = await fetch(`${apiBaseUrl}/api/cameras`, { headers: authHeaders });
-      if (!res.ok) {
-        // Fallback to streaming config if /api/cameras is not directly available
-        res = await fetch(`${apiBaseUrl}/api/streaming/config`, { headers: authHeaders });
-      }
-      if (!res.ok) {
-        throw new Error(`Failed to load camera list: HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-      const list: CameraOption[] = Array.isArray(data)
-        ? data.map((c: any) => ({ id: c.id, name: c.name, mediaMtxPath: c.mediaMtxPath }))
-        : (data.cameras || []).map((c: any) => ({ id: c.id, name: c.name, mediaMtxPath: c.mediaMtxPath }));
-
-      setCameras(list);
-      if (list.length > 0 && !selectedCameraId) {
-        setSelectedCameraId(list[0].id);
-      }
-    } catch (err: any) {
-      console.warn('Error loading camera list:', err);
-    }
-  }, [apiBaseUrl, authHeaders, selectedCameraId]);
-
-  useEffect(() => {
-    fetchCameras();
-  }, [fetchCameras]);
-
-  // Fetch 24-hour recorded spans for the selected camera & date
-  const fetchTimeline = useCallback(async () => {
-    if (!selectedCameraId) return;
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const url = `${apiBaseUrl}/api/playback/timeline?cameraId=${encodeURIComponent(
-        selectedCameraId
-      )}&date=${encodeURIComponent(selectedDate)}`;
-
-      const res = await fetch(url, { headers: authHeaders });
-      if (!res.ok) {
-        throw new Error(`Failed to fetch timeline: HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-      const spans: TimelineSpan[] = (data.spans || []).map((s: any) => ({
-        startTime: s.startTime,
-        endTime: s.endTime,
-        durationSeconds: s.durationSeconds,
-        recordingId: s.recordingId,
-      }));
-
-      setTimelineSpans(spans);
-
-      // If current time is not within selectedDate, set playhead to first span or date 00:00:00
-      const dayStart = new Date(`${selectedDate}T00:00:00`);
-      if (spans.length > 0) {
-        const firstSpanStart = new Date(spans[0].startTime);
-        setCurrentTime(firstSpanStart);
-      } else {
-        setCurrentTime(dayStart);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Error loading timeline recordings');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiBaseUrl, authHeaders, selectedCameraId, selectedDate]);
-
-  useEffect(() => {
-    fetchTimeline();
-  }, [fetchTimeline]);
-
-  // Request fMP4 stream URL from MediaMTX playback server
-  const loadStreamForTimestamp = useCallback(
-    async (seekDate: Date) => {
-      if (!selectedCameraId) return;
-
-      try {
-        const isoTimestamp = seekDate.toISOString();
-        const duration = 300; // 5-minute chunk window for smooth playback
-        const res = await fetch(
-          `${apiBaseUrl}/api/playback/stream?cameraId=${encodeURIComponent(
-            selectedCameraId
-          )}&startTime=${encodeURIComponent(isoTimestamp)}&duration=${duration}`,
-          { headers: authHeaders }
-        );
-
-        if (!res.ok) {
-          throw new Error(`Failed to resolve playback stream: HTTP ${res.status}`);
-        }
-
-        const data = await res.json();
-        setStreamUrl(data.fmp4StreamUrl);
-        setStreamStartTime(seekDate);
-      } catch (err: any) {
-        console.error('Failed to resolve stream URL:', err);
-      }
-    },
-    [apiBaseUrl, authHeaders, selectedCameraId]
-  );
-
-  // Seek handler from timeline scrubber (PLAY-02)
-  const handleSeek = useCallback(
-    (seekTime: Date) => {
-      setCurrentTime(seekTime);
-      loadStreamForTimestamp(seekTime);
-      setIsPlaying(true);
-    },
-    [loadStreamForTimestamp]
-  );
-
-  // Stepping -5s / +5s handler (PLAY-04)
-  const handleStep = useCallback(
-    (seconds: number) => {
-      const newMs = currentTime.getTime() + seconds * 1000;
-      const newDate = new Date(newMs);
-      setCurrentTime(newDate);
-      loadStreamForTimestamp(newDate);
-    },
-    [currentTime, loadStreamForTimestamp]
-  );
-
-  // Toggle play/pause (PLAY-04)
-  const handleTogglePlay = () => {
-    if (!streamUrl && timelineSpans.length > 0) {
-      // Seek to current playhead if not yet streaming
-      handleSeek(currentTime);
-    } else {
-      setIsPlaying((prev) => !prev);
-    }
-  };
-
-  // Video playback time update
-  const handleVideoTimeUpdate = (currentTimeSeconds: number) => {
-    if (streamStartTime) {
-      const updatedMs = streamStartTime.getTime() + currentTimeSeconds * 1000;
-      setCurrentTime(new Date(updatedMs));
-    }
-  };
-
-  const selectedCamera = cameras.find((c) => c.id === selectedCameraId);
+  const {
+    cameras,
+    selectedCameraId,
+    setSelectedCameraId,
+    selectedDate,
+    setSelectedDate,
+    currentTime,
+    timelineSpans,
+    streamUrl,
+    isPlaying,
+    setIsPlaying,
+    playbackRate,
+    setPlaybackRate,
+    isLoading,
+    error,
+    selectedCamera,
+    handleSeek,
+    handleStep,
+    handleTogglePlay,
+    handleVideoTimeUpdate,
+    fetchTimeline,
+  } = usePlaybackSession({
+    apiBaseUrl,
+    authToken,
+  });
 
   return (
     <div className="flex flex-col w-screen h-screen bg-zinc-950 text-zinc-100 overflow-hidden font-sans">

@@ -10,3 +10,5 @@ export * from './components/MotionAlertBadge.js';
 export * from './components/EventNotificationDrawer.js';
 export * from './pages/LiveViewPage.js';
 export * from './pages/PlaybackPage.js';
+export * from './hooks/usePlaybackSession.js';
+
