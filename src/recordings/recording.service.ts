@@ -161,6 +161,24 @@ export class RecordingService {
   }
 
   /**
+   * Retrieves oldest recording segments from memory cache for FIFO rollover testing.
+   */
+  getOldestRecordings(take: number = 50): any[] {
+    const items = Array.from(this.memoryRecordings.values());
+    items.sort(
+      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+    return items.slice(0, take);
+  }
+
+  /**
+   * Deletes a recording from the memory fallback store.
+   */
+  deleteMemoryRecording(id: string): boolean {
+    return this.memoryRecordings.delete(id);
+  }
+
+  /**
    * Formats database record to DTO with safe BigInt conversion (T-03-03).
    */
   private toDto(record: any): RecordingDto {
