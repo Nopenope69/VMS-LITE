@@ -160,14 +160,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DEP-02 | Phase 7 | Complete |
 | DEP-03 | Phase 7 | Complete |
 | DEP-04 | Phase 7 | Complete |
-| EXT-01 | Deferred | v2 Extended |
-| EXT-02 | Deferred | v2 Extended |
-| EXT-03 | Deferred | v2 Extended |
-| EXT-04 | Deferred | v2 Extended |
-| EXT-05 | Deferred | v2 Extended |
-| EXT-06 | Deferred | v2 Extended |
-| EXT-07 | Deferred | v2 Extended |
-| EXT-08 | Deferred | v2 Extended |
+| EXT-01 | Phase 8 | Planned |
+| EXT-02 | Phase 11 | Planned |
+| EXT-03 | Phase 9 | Planned |
+| EXT-04 | Phase 10 | Planned |
+| EXT-05 | Phase 10 | Planned |
+| EXT-06 | Phase 12 | Planned |
+| EXT-07 | Phase 12 | Planned |
+| EXT-08 | Phase 12 | Planned |
 | AI-01 | Deferred | v3 AI |
 | AI-02 | Deferred | v3 AI |
 | AI-03 | Deferred | v3 AI |
@@ -175,8 +175,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 **Coverage:**
 
-- v1 requirements: 32 total
-- Mapped to phases: 32
+- v1 Core requirements: 32 total (32 complete)
+- v2 Extended requirements: 8 total (8 mapped to Phases 8-12)
+- Mapped to phases: 40
 - Unmapped: 0 ✓
 
 ---
