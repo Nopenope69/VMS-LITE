@@ -66,7 +66,10 @@ describe('Streaming Routes (/api/streaming)', () => {
       expect(body.hlsBaseUrl).toBeDefined();
       expect(Array.isArray(body.iceServers)).toBe(true);
       expect(body.iceServers.length).toBeGreaterThan(0);
-      expect(body.iceServers[0].urls).toContain('stun:');
+      const firstUrl = Array.isArray(body.iceServers[0].urls)
+        ? body.iceServers[0].urls[0]
+        : body.iceServers[0].urls;
+      expect(firstUrl).toContain('stun:');
 
       expect(Array.isArray(body.cameras)).toBe(true);
       const cam = body.cameras.find((c: any) => c.cameraId === testCameraId);
@@ -104,6 +107,29 @@ describe('Streaming Routes (/api/streaming)', () => {
       expect(stream.name).toBe('Main Gate Test');
       expect(stream.whepUrl).toContain('/whep');
       expect(stream.hlsUrl).toContain('/index.m3u8');
+    });
+  });
+
+  describe('GET /api/streaming/ice-servers (LIVE-04)', () => {
+    it('returns 401 Unauthorized without auth token', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/streaming/ice-servers',
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('returns ICE servers list for authenticated user', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/streaming/ice-servers',
+        headers: { authorization: `Bearer ${viewerToken}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.success).toBe(true);
+      expect(Array.isArray(body.iceServers)).toBe(true);
+      expect(body.iceServers.length).toBeGreaterThan(0);
     });
   });
 });

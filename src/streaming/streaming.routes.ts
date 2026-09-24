@@ -1,9 +1,9 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { authenticate } from '../users/rbac.guard.js';
 import { cameraService } from '../cameras/camera.service.js';
+import { iceServerService } from './ice-servers.service.js';
 import {
   CameraStreamInfo,
-  IceServerConfig,
   StreamingConfigDto,
 } from './streaming.types.js';
 
@@ -12,10 +12,6 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     process.env.MEDIAMTX_WHEP_BASE_URL || 'http://localhost:8889';
   const getHlsBaseUrl = () =>
     process.env.MEDIAMTX_HLS_BASE_URL || 'http://localhost:8888';
-  const getDefaultIceServers = (): IceServerConfig[] => {
-    const configuredStun = process.env.STUN_SERVER_URL || 'stun:stun.l.google.com:19302';
-    return [{ urls: configuredStun }];
-  };
 
   const mapCameraToStreamInfo = (cam: any): CameraStreamInfo => {
     const whepBase = getWhepBaseUrl().replace(/\/$/, '');
@@ -45,13 +41,16 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     {
       preHandler: [authenticate],
     },
-    async (_request, reply) => {
+    async (request, reply) => {
       try {
         const cameras = await cameraService.listCameras();
+        const userId = request.user?.id || 'vms_client';
+        const iceServers = iceServerService.getIceServers(userId);
+
         const response: StreamingConfigDto = {
           whepBaseUrl: getWhepBaseUrl(),
           hlsBaseUrl: getHlsBaseUrl(),
-          iceServers: getDefaultIceServers(),
+          iceServers,
           cameras: cameras.map(mapCameraToStreamInfo),
         };
         return reply.send(response);
@@ -59,6 +58,32 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         return reply.status(500).send({
           error: 'StreamingConfigError',
           message: err.message || 'Failed to retrieve streaming configuration',
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /api/streaming/ice-servers
+   * Returns active STUN and ephemeral TURN credentials for mobile client NAT traversal (LIVE-04).
+   */
+  app.get(
+    '/ice-servers',
+    {
+      preHandler: [authenticate],
+    },
+    async (request, reply) => {
+      try {
+        const userId = request.user?.id || 'vms_client';
+        const iceServers = iceServerService.getIceServers(userId);
+        return reply.send({
+          success: true,
+          iceServers,
+        });
+      } catch (err: any) {
+        return reply.status(500).send({
+          error: 'IceServerResolutionError',
+          message: err.message || 'Failed to resolve ICE servers',
         });
       }
     }
