@@ -7,6 +7,7 @@ import { eventRoutes } from './events/event.routes.js';
 import { cameraRoutes } from './cameras/camera.routes.js';
 import { recordingRoutes } from './recordings/recording.routes.js';
 import { streamingRoutes } from './streaming/streaming.routes.js';
+import { playbackRoutes } from './playback/playback.routes.js';
 
 export interface ServerOptions {
   logger?: boolean;
@@ -52,6 +53,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(cameraRoutes, { prefix: '/api/cameras' });
   await app.register(recordingRoutes, { prefix: '/api/recordings' });
   await app.register(streamingRoutes, { prefix: '/api/streaming' });
+  await app.register(playbackRoutes, { prefix: '/api/playback' });
 
   return app;
 }

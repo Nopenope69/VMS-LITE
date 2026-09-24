@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
+import { cameraService as defaultCameraService } from '../cameras/camera.service.js';
 import {
   RecordingDto,
   RecordingQueryParams,
@@ -39,6 +40,15 @@ export class RecordingService {
       });
     } catch {
       // DB offline fallback
+    }
+
+    if (!camera) {
+      try {
+        const cams = await defaultCameraService.listCameras();
+        camera = cams.find((c) => c.mediaMtxPath === payload.mediaMtxPath);
+      } catch {
+        // Fallback
+      }
     }
 
     const cameraId = camera ? camera.id : `mock-camera-${payload.mediaMtxPath}`;
