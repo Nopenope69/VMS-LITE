@@ -61,6 +61,44 @@ model Camera {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  recordings Recording[]
+  schedules  RecordingSchedule[]
+
   @@index([status])
   @@map("cameras")
+}
+
+model Recording {
+  id           String   @id @default(uuid())
+  cameraId     String   @map("camera_id")
+  camera       Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  mediaMtxPath String   @map("mediamtx_path")
+  filePath     String   @map("file_path")
+  fileName     String   @map("file_name")
+  startTime    DateTime @map("start_time")
+  endTime      DateTime @map("end_time")
+  duration     Float
+  sizeBytes    BigInt   @map("size_bytes")
+  format       String   @default("fmp4")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([cameraId, startTime])
+  @@index([startTime])
+  @@map("recordings")
+}
+
+model RecordingSchedule {
+  id        String   @id @default(uuid())
+  cameraId  String   @map("camera_id")
+  camera    Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  dayOfWeek Int      @map("day_of_week") // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  startHour Int      @map("start_hour") // 0-23
+  startMin  Int      @map("start_min") // 0-59
+  endHour   Int      @map("end_hour") // 0-23
+  endMin    Int      @map("end_min") // 0-59
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([cameraId, dayOfWeek])
+  @@map("recording_schedules")
 }
