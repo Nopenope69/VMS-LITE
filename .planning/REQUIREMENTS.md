@@ -68,7 +68,7 @@ Requirements for initial release. Each maps to roadmap phases.
 Active requirements for Milestone v2.0. Each maps directly to roadmap phases.
 
 ### Access Control & Operator Workflow
-- [ ] **EXT-01**: User can assign users the `OPERATOR` role with per-camera permission ACLs (live view, playback, PTZ, bookmarks), preventing unauthorized configuration changes while enabling shift monitoring.
+- [x] **EXT-01**: User can assign users the `OPERATOR` role with per-camera permission ACLs (live view, playback, PTZ, bookmarks), preventing unauthorized configuration changes while enabling shift monitoring. (Validated in Phase 8)
 
 ### Motion Masking & Spatial Filtering
 - [ ] **EXT-02**: User can draw inclusion and exclusion polygon zones on camera feeds to filter out environmental false positives (swaying branches, traffic) using normalized ray-casting coordinate containment.
@@ -160,7 +160,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DEP-02 | Phase 7 | Complete |
 | DEP-03 | Phase 7 | Complete |
 | DEP-04 | Phase 7 | Complete |
-| EXT-01 | Phase 8 | Planned |
+| EXT-01 | Phase 8 | Complete |
 | EXT-02 | Phase 11 | Planned |
 | EXT-03 | Phase 9 | Planned |
 | EXT-04 | Phase 10 | Planned |

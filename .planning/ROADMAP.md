@@ -16,7 +16,7 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 - [x] **Phase 7: Packaging, CI/SBOM & Single-Command Deployment** - Automated Docker installer (<30 min deployment), release SBOM generator, and license compliance verification (completed 2026-09-24)
 
 ### Milestone v2.0: Package 2 (Extended)
-- [ ] **Phase 8: Operator Role & Granular RBAC** - 3-tier user role hierarchy, camera permission ACLs, route authorization hooks, and operator workstation UI
+- [x] **Phase 8: Operator Role & Granular RBAC** - 3-tier user role hierarchy, camera permission ACLs, route authorization hooks, and operator workstation UI (completed 2026-09-24)
 - [ ] **Phase 9: ONVIF PTZ Controls & Camera Presets** - Profile S PTZ integration, virtual joystick overlay, preset tours, and 1.5s safety watchdog
 - [ ] **Phase 10: Server-Side Clip Export & Timeline Bookmarks** - FFmpeg packet-copy MP4 cutting, burned-in timestamp OSD/watermark, 48h TTL cleanup, and timeline incident bookmarks
 - [ ] **Phase 11: Motion Zones & Spatial Exclusion Masking** - Interactive SVG polygon drawing, normalized ray-casting coordinate containment, and alert suppression
@@ -203,8 +203,8 @@ Plans:
 
 Plans:
 
-- [ ] 08-01: Prisma schema migration for `Role.OPERATOR` and `CameraPermission` table, ACL middleware, and permission assignment API.
-- [ ] 08-02: React operator mode workstation view, permission-filtered camera list, and UI mutation gating.
+- [x] 08-01: Prisma schema migration for `Role.OPERATOR` and `CameraPermission` table, ACL middleware, and permission assignment API.
+- [x] 08-02: React operator mode workstation view, permission-filtered camera list, and UI mutation gating.
 
 ---
 
@@ -307,7 +307,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. 24-Hour Playback & Timeline Scrubbing | 2/2 | Complete    | 2026-09-24 |
 | 6. ONVIF Motion Alerts & Real-Time Event Feed | 2/2 | Complete    | 2026-09-24 |
 | 7. Packaging, CI/SBOM & Single-Command Deployment | 2/2 | Complete    | 2026-09-24 |
-| 8. Operator Role & Granular RBAC | 0/2 | Not started | - |
+| 8. Operator Role & Granular RBAC | 2/2 | Complete    | 2026-09-24 |
 | 9. ONVIF PTZ Controls & Camera Presets | 0/2 | Not started | - |
 | 10. Server-Side Clip Export & Timeline Bookmarks | 0/2 | Not started | - |
 | 11. Motion Zones & Spatial Exclusion Masking | 0/2 | Not started | - |

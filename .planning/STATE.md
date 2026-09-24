@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: "Package 2 (Extended)"
-status: ready_to_execute
-stopped_at: "Phase 8 planned (08-01, 08-02) — Ready to execute"
-last_updated: "2026-09-24T20:25:00.000Z"
-last_activity: "2026-09-24 -- Phase 8 planned (Operator Role & Granular RBAC)"
+status: ready_to_plan
+stopped_at: "Phase 8 complete — Ready for Phase 9 (ONVIF PTZ Controls & Camera Presets)"
+last_updated: "2026-09-24T20:42:00.000Z"
+last_activity: "2026-09-24 -- Phase 8 completed (Operator Role & Granular RBAC)"
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 10
-  completed_plans: 0
-  percent: 0
+  completed_plans: 2
+  percent: 20
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: `.planning/PROJECT.md` (updated 2026-09-24)
 
 ## Current Position
 
-Phase: Phase 8 (Operator Role & Granular RBAC)
-Plan: Ready to execute (Wave 1: 08-01, Wave 2: 08-02)
-Status: Ready to execute Phase 8
-Last activity: 2026-09-24 -- Phase 8 planned (08-01, 08-02)
+Phase: Phase 9 (ONVIF PTZ Controls & Camera Presets)
+Plan: Ready to plan (09-01, 09-02)
+Status: Ready for Phase 9 planning
+Last activity: 2026-09-24 -- Phase 8 delivered (2 plans, 10 tests passing)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
