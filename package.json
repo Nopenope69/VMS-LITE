@@ -10,7 +10,9 @@
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "audit:licenses": "node scripts/audit-licenses.js",
+    "generate:sbom": "node scripts/generate-sbom.js"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
