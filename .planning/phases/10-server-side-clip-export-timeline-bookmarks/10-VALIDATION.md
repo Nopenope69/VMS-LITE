@@ -34,15 +34,26 @@ created: 2026-09-24
 
 ---
 
+## Threat Model Reference & Verification Behaviors
+
+- **T-10-01 (CPU Starvation via Unthrottled Re-Encoding)**:
+  - *Secure Behavior*: Default export uses stream copy (`-c copy`) with zero media decoding/re-encoding. `ExportCompatibilityValidator` verifies segments share codec, resolution, and format; returns deterministic `INCOMPATIBLE_SEGMENTS` error on mismatch (no silent transcode fallback). OSD burn-in is strictly modeled as an explicit Transcoded Derivative.
+- **T-10-02 (Storage Saturation from Export Artifacts)**:
+  - *Secure Behavior*: Two-tier storage hierarchy: 85% normal threshold prunes expired (>48h TTL) exports; 90% emergency threshold prunes unexpired exports FIFO. Continuous recordings are protected and never purged merely because exports exist.
+- **T-10-03 (Unauthorized Evidence Export & Tampering)**:
+  - *Secure Behavior*: Endpoints strictly gated by `requireCapability('extended.clip_export')`, `requireCapability('extended.bookmarks')`, and `requireCameraPermission('canExportClips')`. Export outputs compute SHA-256 integrity checksums for file verification (never described as "chain of custody").
+
+---
+
 ## Per-Task Verification Map
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 10-01-01 | 01 | 1 | EXT-04, EXT-05 | — | Prisma schema push generates Bookmark and ExportJob tables | schema | `npx prisma validate` | ❌ W0 | ⬜ pending |
-| 10-01-02 | 01 | 1 | EXT-04 | T-10-01, T-10-02 | Stream copy export takes <3s with SHA-256; 48h TTL prunes old exports | unit | `npm test tests/export-bookmarks.test.ts` | ❌ W0 | ⬜ pending |
-| 10-01-03 | 01 | 1 | EXT-04, EXT-05 | T-10-03 | Endpoints gated by `extended.clip_export`, `extended.bookmarks`, and ACLs | integration | `npm test tests/export-bookmarks.test.ts` | ❌ W0 | ⬜ pending |
-| 10-02-01 | 02 | 2 | EXT-04 | T-10-03 | React clip export modal allows range selection and download | typecheck | `npx tsc --project client/tsconfig.json` | ❌ W0 | ⬜ pending |
-| 10-02-02 | 02 | 2 | EXT-05 | — | Scrubber displays color-coded pins and click-to-seek navigation | typecheck | `npx tsc --project client/tsconfig.json` | ❌ W0 | ⬜ pending |
+| 10-01-01 | 01 | 1 | EXT-04, EXT-05 | — | Prisma schema push generates Bookmark, ExportJob, ExportStatus, ExportMode | schema | `npx prisma validate` | ❌ W0 | ⬜ pending |
+| 10-01-02 | 01 | 1 | EXT-04 | T-10-01, T-10-02 | Stream copy export via spawn (no shell interpolation); ExportCompatibilityValidator rejects mismatches; SHA-256 integrity checksum; two-tier disk pruner (85%/90%) | unit | `npm test tests/export-bookmarks.test.ts` | ❌ W0 | ⬜ pending |
+| 10-01-03 | 01 | 1 | EXT-04, EXT-05 | T-10-03 | Endpoints gated by capabilities and ACLs; bookmark time-range queries (`?from=...&to=...&category=...`) | integration | `npm test tests/export-bookmarks.test.ts` | ❌ W0 | ⬜ pending |
+| 10-02-01 | 02 | 2 | EXT-04 | T-10-01, T-10-03 | React clip export modal distinguishes Original / Stream Copy vs Rendered Transcoded Derivative (OSD), shows SHA-256 integrity checksum | typecheck | `npx tsc --project client/tsconfig.json` | ❌ W0 | ⬜ pending |
+| 10-02-02 | 02 | 2 | EXT-05 | — | Scrubber displays recording spans, recording gaps, and bookmark pins; seeks on click | typecheck | `npx tsc --project client/tsconfig.json` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -50,7 +61,7 @@ created: 2026-09-24
 
 ## Wave 0 Requirements
 
-- [x] `tests/export-bookmarks.test.ts` — Stubs for packet-copy export, OSD flag, SHA-256 calculation, 48h TTL cleanup, and bookmark CRUD.
+- [x] `tests/export-bookmarks.test.ts` — Stubs for packet-copy export, compatibility validator, OSD derivative, SHA-256 integrity checksum, two-tier storage cleanup, and bookmark range queries.
 - [x] Existing infrastructure covers all phase requirements.
 
 ---
@@ -59,7 +70,7 @@ created: 2026-09-24
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Media Player Clip Playback | EXT-04 | Requires opening exported MP4 in VLC / QuickTime / browser player | Export a 1-minute clip, download it, play in VLC, verify smooth playback and burned-in OSD timestamp if selected |
+| Media Player Clip Playback | EXT-04 | Requires opening exported MP4 in VLC / QuickTime / browser player | Export a 1-minute clip, download it, play in VLC, verify smooth playback and burned-in OSD timestamp if selected as derivative |
 
 ---
 

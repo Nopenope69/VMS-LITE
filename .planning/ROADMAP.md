@@ -231,23 +231,23 @@ Plans:
 
 ### Phase 10: Server-Side Clip Export & Timeline Bookmarks
 
-**Goal**: Deliver fast zero-transcode packet-copy MP4 cutting, optional timestamp OSD burn-in/watermark, 48h TTL disk cleanup, and 24-hour timeline incident bookmarks with color-coded markers and search.
+**Goal**: Deliver zero-transcode stream-copy MP4 cutting, explicit OSD transcoded derivatives, two-tier disk cleanup hierarchy (85%/90%), and 24-hour timeline incident bookmarks with color-coded markers and range queries.
 **Mode**: mvp
 **Depends on**: Phase 3, Phase 5, Phase 8
 **Requirements**: [EXT-04, EXT-05]
 **Success Criteria**:
 
-1. User can select a timeline range and download an exported MP4 clip stitched via FFmpeg packet copy (`-c copy`) in under 3 seconds.
-2. User can optionally export with burned-in timestamp OSD and camera name watermark without crashing host CPU.
-3. Exported clips are verified via SHA-256 hash and automatically pruned after 48 hours.
-4. Operators can create, edit, and search timeline bookmarks with category tags and visual scrubber pins.
+1. User can select a timeline range and download an exported MP4 clip stitched via FFmpeg stream copy (`-c copy`) with zero media decoding/re-encoding.
+2. User can optionally export a rendered derivative with burned-in timestamp OSD and camera name watermark without crashing host CPU.
+3. Exported clips include an automated SHA-256 integrity checksum and are managed by a two-tier storage pruner (85% expired, 90% emergency FIFO) that strictly protects continuous recordings.
+4. Operators can create, edit, and search timeline bookmarks with category tags and visual scrubber pins aware of recording gaps.
 
 **Plans**: 2 plans
 
 Plans:
 
-- [ ] 10-01: FFmpeg server-side export engine (packet-copy concat + OSD burn-in filter), async job queue, SHA-256 verification, and 48h TTL cleanup.
-- [ ] 10-02: PostgreSQL bookmark catalog, timeline marker integration on React scrubber, and clip export download dialog.
+- [ ] 10-01: FFmpeg stream-copy export engine with segment compatibility validator, Transcoded Derivative OSD pipeline, SHA-256 integrity checksum, two-tier storage pruner, and range-queryable bookmarks API.
+- [ ] 10-02: React clip export modal (Original Stream Copy vs Transcoded Derivative), gap-aware timeline scrubber with bookmark pins, and playback integration.
 
 ---
 

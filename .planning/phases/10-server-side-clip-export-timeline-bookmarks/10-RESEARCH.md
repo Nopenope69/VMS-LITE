@@ -2,32 +2,77 @@
 
 **Phase:** 10-server-side-clip-export-timeline-bookmarks  
 **Requirements:** EXT-04 (`extended.clip_export`), EXT-05 (`extended.bookmarks`)  
-**Date:** 2026-09-24  
+**Date:** 2026-09-24 (Revised)  
 
 ---
 
-## 1. Domain Context & Requirements
+## 1. Domain Context & Architectural Principles (VMS-Lite)
 
-In commercial CCTV installations (gated societies, factories, retail outlets):
-1. **Evidence Export (`EXT-04`)**:
-   - When an incident occurs (theft, vehicle collision, perimeter breach), operators and facility managers must download an MP4 video clip to hand over to police, society committees, or insurance inspectors.
-   - **Zero-Transcode Stream Copy (Default)**: Default clip cutting must concatenate packet-preserving fMP4 segments using FFmpeg `-c copy`. This requires 0% CPU re-encoding, finishes in under 3 seconds, and eliminates live streaming frame drops.
-   - **Burn-In Timestamp OSD & Watermark (Optional)**: If toggled, burns in camera name, site label, and millisecond-accurate timestamps using FFmpeg's `drawtext` video filter so the video is indisputable when shared via WhatsApp or mobile apps.
-   - **SHA-256 Integrity Verification**: Each exported MP4 is hashed with SHA-256 upon completion for tamper-evident verification.
-   - **48-Hour TTL Disk Cleanup**: Exported files are cached in a dedicated export directory (`exports/`) and automatically pruned after 48 hours or when storage approaches full capacity to prevent storage exhaustion.
+Basic VMS aims to deliver commercial CCTV parity for Indian SMBs, residential societies, and factories without the heavyweight enterprise baggage of compliance-grade evidence systems (e.g. Section 63 BSA legal certificates, multi-party cryptographic witness vaults).
+
+Requirement **EXT-04** and **EXT-05** establish practical incident workflow capabilities:
+1. **Evidence Clip Export (`EXT-04`)**:
+   - **Stream-Copy Mode (`-c copy`) as Default**: Default export path concatenates recorded fMP4 segments using packet copy without decoding or re-encoding media. Eliminates CPU exhaustion on budget 4-core NVRs and prevents live WebRTC stream degradation.
+   - **No Hard Wall-Clock Guarantee**: The architectural guarantee is zero media decoding/re-encoding, not a hard "<1 second" claim, as wall-clock duration depends on segment count, disk I/O, container operations, and timestamp remuxing.
+   - **Segment Compatibility Gate (`ExportCompatibilityValidator`)**: Validates that all candidate recording segments share matching codec, resolution, and timebase before attempting `-c copy`. If segments are incompatible (e.g. resolution switch midway), returns a deterministic error rather than silently triggering high-CPU transcoding.
+   - **OSD Burn-In as Explicit Derivative**: Rendered exports with burned-in camera names and timestamps are categorized explicitly as **"Transcoded Derivatives"**, cleanly separated from master stream-copy exports.
+   - **SHA-256 Integrity Verification**: Generates an automated SHA-256 checksum of the exported file for tamper-evident file verification (not misrepresented as a legal chain of custody).
+   - **Two-Tier Disk Cleanup Hierarchy**:
+     - Normal Threshold (85%): Prunes expired exports (>48h TTL).
+     - Emergency Threshold (90%): Aggressively purges unexpired exports before recording retention rules are evaluated. Continuous recordings are never deleted merely because exports exist.
 2. **Timeline Incident Bookmarking (`EXT-05`)**:
-   - Operators monitoring shifts need to flag notable moments (e.g., "Visitor entry blocked", "Unregistered vehicle parked at 02:15") so next-shift guards have immediate context without scrubbing 24 hours of video.
-   - Bookmarks are displayed as color-coded pins directly on the 24-hour playback scrubber.
-   - Clicking a pin seeks playback directly to the flagged frame.
-   - Categorized by tag: `incident` (amber), `visitor` (emerald), `maintenance` (slate), `activity` (blue).
+   - Deliberately lightweight: Flags specific moments on the playback timeline (`incident`, `visitor`, `activity`, `maintenance`).
+   - Queryable by time window (`?from=...&to=...&category=...`) to support large historical archives efficiently.
+   - Scrubber track distinguishes between available recording spans, recording gaps, and bookmark pins.
 
 ---
 
 ## 2. Architecture & Data Model (Prisma)
 
-### 2.1 Prisma Schema Models
+### 2.1 Prisma Models & Indexes
 
 ```prisma
+enum ExportStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum ExportMode {
+  STREAM_COPY
+  TRANSCODED_OSD
+}
+
+model ExportJob {
+  id          String       @id @default(uuid())
+  cameraId    String       @map("camera_id")
+  camera      Camera       @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  userId      String?      @map("user_id")
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  startTime   DateTime     @map("start_time")
+  endTime     DateTime     @map("end_time")
+  exportMode  ExportMode   @default(STREAM_COPY) @map("export_mode")
+  status      ExportStatus @default(QUEUED)
+  filePath    String?      @map("file_path")
+  fileSize    BigInt?      @map("file_size")
+  sha256      String?      // Integrity verification checksum
+  includeOsd  Boolean      @default(false) @map("include_osd")
+  errorCode   String?      @map("error_code")
+  errorMessage String?     @map("error_message")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  startedAt   DateTime?    @map("started_at")
+  completedAt DateTime?    @map("completed_at")
+  expiresAt   DateTime     @map("expires_at") // 48h TTL
+
+  @@index([cameraId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("export_jobs")
+}
+
 model Bookmark {
   id          String   @id @default(uuid())
   cameraId    String   @map("camera_id")
@@ -37,36 +82,13 @@ model Bookmark {
   timestamp   DateTime
   title       String
   description String?
-  category    String   @default("incident") // incident, maintenance, visitor, activity, other
+  category    String   @default("incident") // incident, visitor, maintenance, activity
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@index([cameraId, timestamp])
-  @@index([category])
+  @@index([cameraId, category, timestamp])
   @@map("bookmarks")
-}
-
-model ExportJob {
-  id          String   @id @default(uuid())
-  cameraId    String   @map("camera_id")
-  camera      Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
-  userId      String?  @map("user_id")
-  startTime   DateTime @map("start_time")
-  endTime     DateTime @map("end_time")
-  status      String   @default("pending") // pending, processing, completed, failed
-  filePath    String?  @map("file_path")
-  fileSize    BigInt?  @map("file_size")
-  sha256      String?
-  includeOsd  Boolean  @default(false) @map("include_osd")
-  error       String?
-  expiresAt   DateTime @map("expires_at") // 48h TTL
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@index([cameraId])
-  @@index([status])
-  @@index([expiresAt])
-  @@map("export_jobs")
 }
 ```
 
@@ -74,83 +96,111 @@ model ExportJob {
 
 ## 3. Video Processing & FFmpeg Engine
 
-### 3.1 Fast Stream Copy Mode (`-c copy`)
-For standard exports:
-1. Identify all `Recording` records overlapping `[startTime, endTime]` in the database.
-2. Generate an FFmpeg concat demuxer file (`list.txt`):
-   ```
-   file '/storage/recordings/camera1/2026-09-24_10-00-00.mp4'
-   file '/storage/recordings/camera1/2026-09-24_10-05-00.mp4'
-   ```
-3. Spawn FFmpeg child process:
-   ```bash
-   ffmpeg -y -f concat -safe 0 -i list.txt -c copy /storage/exports/export_<id>.mp4
-   ```
-4. Execution takes sub-second latency with zero CPU transcoding load.
+### 3.1 Stream-Copy Compatibility Gate
+Before invoking FFmpeg concat, `ExportCompatibilityValidator` inspects the candidate recording segments:
+1. Verify all segments exist on local disk.
+2. Check metadata consistency:
+   - Identical video encoding/codec (e.g. `H264` vs `H265`).
+   - Matching video format and container layout.
+3. If incompatible (e.g., camera switched resolution from 1080p to 4K midway through the range):
+   - Reject job with `status: FAILED` and `errorCode: 'INCOMPATIBLE_SEGMENTS'`.
+   - Explain incompatibility in `errorMessage` without silently triggering high-CPU transcode.
 
-### 3.2 OSD Burn-In Mode (`includeOsd: true`)
-When timestamp burn-in is selected:
-```bash
-ffmpeg -y -f concat -safe 0 -i list.txt \
-  -vf "drawtext=text='%{pts\\:localtime\\:TIMESTAMP} | %{camera_name}':fontcolor=white:fontsize=22:box=1:boxcolor=black@0.6:boxborderw=4:x=20:y=20" \
-  -c:v libx264 -preset veryfast -crf 23 -c:a aac /storage/exports/export_<id>.mp4
+### 3.2 Secure FFmpeg Invocation
+FFmpeg is spawned using `child_process.spawn` with an **argument array** (never shell string interpolation):
+
+```typescript
+// Fast Stream-Copy Export
+const args = [
+  '-y',
+  '-f', 'concat',
+  '-safe', '0',
+  '-i', concatManifestPath,
+  '-c', 'copy',
+  '-movflags', '+faststart',
+  outputFilePath,
+];
+
+// Transcoded Derivative (OSD Burn-In)
+const osdArgs = [
+  '-y',
+  '-f', 'concat',
+  '-safe', '0',
+  '-i', concatManifestPath,
+  '-vf', `drawtext=text='${sanitizedLabel}':fontcolor=white:fontsize=22:box=1:boxcolor=black@0.6:boxborderw=4:x=20:y=20`,
+  '-c:v', 'libx264',
+  '-preset', 'veryfast',
+  '-crf', '23',
+  '-c:a', 'aac',
+  '-movflags', '+faststart',
+  outputFilePath,
+];
 ```
-To protect low-cost hardware:
-- Throttled concurrency: Only 1 transcode job runs at any time.
-- Low process priority (`nice -n 10` on POSIX hosts).
-- Execution watchdog: Process killed after 120 seconds if frozen.
 
-### 3.3 SHA-256 Integrity Hash & Storage Pruning
-- After export completes, `crypto.createHash('sha256')` computes the file checksum.
-- `ExportPruneService`: Periodic garbage collector runs hourly and deletes all files whose `expiresAt <= now()`.
-- Export directory storage is accounted for in `StorageController` disk checks.
+The concat manifest (`list.txt`) is generated server-side using validated segment file paths.
+
+### 3.3 Two-Tier Disk Protection Hierarchy
+To protect both continuous recordings and system database operations:
+
+```
+[ Disk Pressure Monitor ]
+          │
+          ├── > 85% capacity (EXPORT_PRUNE_THRESHOLD)
+          │     └── Delete EXPIRED exports (older than 48h)
+          │
+          ├── > 90% capacity (EMERGENCY_THRESHOLD)
+          │     └── Delete UNEXPIRED exports (FIFO oldest first)
+          │
+          └── > 90% sustained after exports purged
+                └── ONLY THEN evaluate Recording Retention FIFO
+```
+
+Continuous recordings are never deleted merely because exports exist.
 
 ---
 
-## 4. API Routes & Access Control
+## 4. API Specification & Range Queries
 
-### 4.1 Clip Export Endpoints (`/api/recordings/export`)
+### 4.1 Clip Export (`/api/recordings/export`)
 - `POST /api/recordings/export`:
-  - Body: `{ cameraId, startTime, endTime, includeOsd }`
+  - Body: `{ cameraId: string, startTime: string, endTime: string, exportMode?: 'STREAM_COPY' | 'TRANSCODED_OSD' }`
   - Pre-handlers: `[authenticate, requireCameraPermission('canExportClips'), requireCapability('extended.clip_export')]`
-  - Returns: `{ exportJobId, status, expiresAt }`
+  - Returns `202 Accepted` with `{ jobId, status: 'QUEUED', exportMode, expiresAt }`.
 - `GET /api/recordings/export/:id`:
-  - Returns job status, download URL, file size, SHA-256 hash.
+  - Returns `{ id, status, exportMode, fileSize, sha256, startedAt, completedAt, expiresAt, errorCode }`.
 - `GET /api/recordings/export/:id/download`:
-  - Serves MP4 file attachment with `X-Checksum-SHA256` header.
+  - Streams finished MP4 file with headers:
+    - `Content-Disposition: attachment; filename="export_camera_DATE.mp4"`
+    - `X-Checksum-SHA256: <hash>`
 
-### 4.2 Bookmark Endpoints (`/api/cameras/:id/bookmarks`)
+### 4.2 Timeline Bookmarks (`/api/cameras/:id/bookmarks`)
 - `GET /api/cameras/:id/bookmarks`:
-  - Query: `?category=incident&from=...&to=...`
+  - Query params: `from` (ISO string), `to` (ISO string), `category` (optional).
   - Pre-handlers: `[authenticate, requireCameraPermission('canViewPlayback'), requireCapability('extended.bookmarks')]`
-  - Returns: `Bookmark[]`
+  - Indexed range query on `(cameraId, timestamp)`.
 - `POST /api/cameras/:id/bookmarks`:
-  - Body: `{ timestamp, title, description, category }`
+  - Body: `{ timestamp: string, title: string, description?: string, category?: string }`
   - Pre-handlers: `[authenticate, requireCameraPermission('canViewPlayback'), requireCapability('extended.bookmarks')]`
-  - Returns: `201 Created` with new `Bookmark`.
+  - Returns `201 Created` with new bookmark.
 - `DELETE /api/cameras/:id/bookmarks/:bookmarkId`:
   - Pre-handlers: `[authenticate, requireRole([Role.ADMIN, Role.OPERATOR]), requireCapability('extended.bookmarks')]`
   - Deletes bookmark.
 
 ---
 
-## 5. Frontend UI/UX Integration (Palette 1)
+## 5. Frontend UI/UX (Palette 1)
 
-1. **Clip Export Dialog Modal (`ClipExportModal.tsx`)**:
-   - Opens from Playback page header or scrubber selection range.
-   - Time-range pickers with quick presets: "Last 5 min", "Last 15 min", "Custom Range".
-   - Checkbox: `[x] Burn-in Camera Name & Timestamp OSD` (warns: "Transcoding takes ~10-30s").
-   - Live export progress spinner with SHA-256 hash badge upon completion and instant Download button.
-2. **Timeline Bookmark Pins (`TimelineScrubber.tsx`)**:
-   - Scrubber track renders diamond/pin icons at bookmark timestamps.
-   - Color-coded:
-     - Solar Amber (`#fb923c`): Incident
-     - Ion Blue (`#4fc3f7`): Activity
-     - Emerald (`#10b981`): Visitor
-     - Slate (`#94a3b8`): Maintenance
-   - Hover displays tooltip with title, author, and timestamp.
-   - Click automatically jumps scrubber to that frame.
+1. **Clip Export Modal (`ClipExportModal.tsx`)**:
+   - Mode Toggle: **Original / Stream Copy (Fast)** vs **Rendered Export (Transcoded OSD)**.
+   - Clarifies that OSD output is a derived rendering.
+   - Shows progress state (`QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`).
+   - Displays SHA-256 integrity checksum with copy button and instant download trigger.
+2. **Timeline Scrubber Integration (`TimelineScrubber.tsx`)**:
+   - 3-layer visual representation:
+     1. Available recording blocks (Ion Blue / Cyan filled segments).
+     2. Recording gaps (dark empty space indicating no footage recorded).
+     3. Color-coded bookmark pins (Amber for incident, Emerald for visitor, Blue for activity, Slate for maintenance).
+   - Clicking a pin seeks playback directly to the exact frame.
 3. **Add Bookmark Modal (`BookmarkModal.tsx`)**:
-   - Quick shortcut key (`B`) or button on playback toolbar.
-   - Pre-fills current scrubber playback timestamp.
-   - Title input, category dropdown, optional notes.
+   - Shortcut `B` or button on playback controls.
+   - Pre-fills current playback position.
