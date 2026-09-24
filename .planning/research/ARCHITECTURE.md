@@ -1,99 +1,137 @@
-# Architecture Research
+# Architecture Research: Package 2 (Extended)
 
-**Domain:** Video Management System (VMS) — SMB/Residential CCTV Tier (CP Plus / Hikvision DVR equivalent)
+**Domain:** Commercial Video Management System (VMS) Extended Architecture
 **Researched:** 2026-09-24
 **Confidence:** HIGH
 
-## System Architecture
+## System Overview
+
+Milestone v2.0 builds upon the Package 1 foundation (MediaMTX media plane + Fastify control plane + React frontend + PostgreSQL), cleanly isolating all extended features behind capability guards and modular domain seams.
 
 ```
-                  ┌──────────────────────────────────────────────┐
-                  │                 IP Cameras                   │
-                  │   (CP Plus, Hikvision, Dahua, Generic ONVIF)  │
-                  └──────────────┬──────────────────┬────────────┘
-                                 │ RTSP Stream      │ ONVIF WS-Discovery / Events
-                                 ▼                  ▼
-┌──────────────────────────────────────────────┐  ┌─────────────────────────────────┐
-│               Media Plane                    │  │         Control Plane           │
-│               (MediaMTX)                     │  │        (Node/TypeScript)        │
-│                                              │  │                                 │
-│  - RTSP Ingest Engine                        │  │  - Camera Management & Onboard  │
-│  - WebRTC (WHEP) / HLS Streamer              │  │    (`CameraProvider` Adapter)   │
-│  - Segment Recording Engine                  │  │  - Event Bus & Motion Alerts    │
-│  - Playback API Server (/list, /get)         │  │  - Storage Rollover Manager     │
-│                                              │  │  - Capability Registry (Ed25519)│
-│  Hooks: runOnRecordSegmentComplete           │  │  - RBAC (Admin, Viewer)         │
-└───────────────────────┬──────────────────────┘  └───────────────┬─────────────────┘
-                        │ Notify segment complete                 │
-                        ▼                                         ▼
-            ┌────────────────────────────────────────────────────────┐
-            │               PostgreSQL Database                      │
-            │   - cameras: configuration, RTSP URLs, ONVIF params    │
-            │   - recordings: segment path, camera_id, start/end     │
-            │   - events: unified event log                          │
-            │   - users: credentials, role (Admin, Viewer)           │
-            └────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-            ┌────────────────────────────────────────────────────────┐
-            │                React Web Client                        │
-            │   - Multi-Camera Live Grid (WebRTC / HLS)              │
-            │   - 24h Playback Scrubber & Timeline Player            │
-            │   - Motion Alert Feed & Event Stream                   │
-            │   - Minimal Admin Console (Camera Add, Users, Storage) │
-            └────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       React Web UI (Workstation)                            │
+│  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌─────────────────┐ │
+│  │ Live Grid     │ │ PTZ Joystick  │ │ Timeline &    │ │ Motion Zone     │ │
+│  │ (WHEP Player) │ │ Overlay       │ │ Bookmarks     │ │ Polygon Editor  │ │
+│  └───────┬───────┘ └───────┬───────┘ └───────┬───────┘ └────────┬────────┘ │
+└──────────┼─────────────────┼─────────────────┼──────────────────┼───────────┘
+           │ WHEP/WebRTC     │ REST / WebSockets (Gated by capabilities.has)
+           ▼                 ▼                 ▼                  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     Fastify Control Plane (Node.js)                         │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │ Capability Gating Pre-Handler: requireCapability('extended.*')        │  │
+│  └───────────────────────────────────┬───────────────────────────────────┘  │
+│       ┌──────────────────┬───────────┴───────┬─────────────────┐            │
+│       ▼                  ▼                   ▼                 ▼            │
+│  ┌──────────┐      ┌──────────┐        ┌───────────┐     ┌───────────┐      │
+│  │ Ptz      │      │ Export   │        │ Zone      │     │ Health    │      │
+│  │ Service  │      │ Engine   │        │ Filter    │     │ Monitor   │      │
+│  └────┬─────┘      └────┬─────┘        └─────┬─────┘     └─────┬─────┘      │
+│       │ SOAP            │ FFmpeg Spawn       │                 │ HTTP Ping  │
+└───────┼─────────────────┼────────────────────┼─────────────────┼────────────┘
+        │                 ▼                    ▼                 │
+        │           ┌───────────┐        ┌───────────┐           │
+        │           │ Disk      │        │ Core      │◄──────────┘
+        │           │ Cache     │        │ Event Bus │
+        │           └───────────┘        └─────┬─────┘
+        │                                      │
+        ▼                                      ▼
+┌──────────────────┐                     ┌───────────────────────────┐
+│ MediaMTX /       │                     │ Outbound Dispatch Engine  │
+│ Physical Cameras │                     │ ┌───────────┐ ┌─────────┐ │
+│ (ONVIF PTZ)      │                     │ │ WhatsApp  │ │ Webhook │ │
+│                  │                     │ └───────────┘ └─────────┘ │
+└──────────────────┘                     └───────────────────────────┘
 ```
-
-## Component Boundaries
-
-### 1. MediaMTX (Media Plane)
-- Authoritative handler for all video frames and audio packets.
-- Ingests RTSP streams from discovered cameras.
-- Provides low-latency WebRTC streams to frontend clients (with HLS fallback).
-- Records fMP4/MP4 segments directly to designated disk storage without decoding.
-- Exposes playback endpoints (`/list` and `/get`) for temporal querying of recorded footage.
-- Triggers `runOnRecordSegmentComplete` webhook/script to notify the Node control plane when a new chunk is finalized.
-
-### 2. Node/TypeScript Control Plane
-- **`src/cameras/`**: Discovers cameras via ONVIF probe, validates RTSP streams, manages camera records in DB, provisions stream paths into MediaMTX configuration.
-- **`src/recording/`**: Receives segment-completion notifications from MediaMTX, indexes segment metadata into the database catalog, and tracks active recording policies (continuous vs scheduled).
-- **`src/playback/`**: Bridges frontend timeline requests with MediaMTX's `/list` and `/get` endpoints, verifying user permissions before serving media links.
-- **`src/events/`**: Receives native ONVIF motion events via camera subscriptions, logs them to the unified `events` table, and broadcasts live alerts over WebSockets.
-- **`src/storage/`**: Monitors disk usage on the recording mount point. When storage thresholds are crossed, automatically prunes oldest footage from the catalog and filesystem.
-- **`src/licensing/`**: Clean-room Ed25519 license verification. Resolves offline license tokens at boot into a capabilities set (`capabilities.has('ptz')`). Isolates route namespaces and bundle loading.
-- **`src/users/`**: Manages Admin and Viewer accounts with JWT session tokens.
-
-### 3. Capability Registry & Licensing Boundary
-- The license is decrypted/verified at startup.
-- Yields a capability registry: `capabilities.has("core")`, `capabilities.has("ptz")`, etc.
-- **No tier checks in controllers**: Code never asks `if (license.tier === 'PRO')`. It asks `if (capabilities.has(feature))`.
-- Package 1 routes and UI mount by default; Package 2 and Package 3 conditionally register their routes and chunks only if their respective capabilities are active.
-
-## Data Flow
-
-1. **Camera Discovery & Onboard:**
-   Installer initiates scan → `CameraProvider` sends WS-Discovery probe → Discovered IP returned → Installer enters credentials → ONVIF `GetStreamUri` retrieves RTSP URL → Stored in PostgreSQL → MediaMTX path config dynamically updated.
-2. **Live View:**
-   Web client requests camera stream → Checks user JWT → Client establishes WebRTC peer connection directly with MediaMTX via WHEP endpoint → Video renders with sub-500ms latency.
-3. **Recording & Cataloging:**
-   MediaMTX ingests RTSP continuously → Writes segment (e.g. 60s fMP4) → Fires `runOnRecordSegmentComplete` → Node hook inserts segment record `{camera_id, start_time, end_time, file_path, duration}` into PostgreSQL.
-4. **Timeline Playback:**
-   Client requests 24h timeline for Camera X → Node queries `recordings` table for segments in window → Client scrubs to timestamp → Client requests fMP4 from MediaMTX playback server.
-5. **Motion Alerting:**
-   Camera detects motion → Emits ONVIF WS-BaseNotification / PullPoint event → Node event listener catches event → Emits `motion.detected` on Core event bus → Saved to `events` table → Dispatched to Web Client via WebSocket.
-
-## Suggested Build Order
-
-1. **Foundation & MediaMTX Configuration**: Local docker-compose environment with PostgreSQL, MediaMTX, and directory mounts.
-2. **Control Plane Core & Database Schema**: Minimal schema (`cameras`, `recordings`, `events`, `users`), Fastify server, authentication.
-3. **Licensing Library & Capability Registry**: Offline Ed25519 verification and capability gating.
-4. **Camera Onboarding & ONVIF Adapter**: `CameraProvider` interface, discovery probe, RTSP stream ingestion in MediaMTX.
-5. **Continuous/Scheduled Recording Pipeline**: MediaMTX segment hooks, database cataloging, storage rollover worker.
-6. **Live View & WebRTC/HLS Integration**: Web client multi-camera grid with WHEP/WebRTC playback.
-7. **Playback Server & Timeline UI**: 24h scrubbing interface queryable against catalog and MediaMTX playback server.
-8. **Event Framework & ONVIF Motion Alerts**: Event bus, notification stream, live alert UI.
-9. **Installer & Deployment Automation**: Single-command script / Docker deployment targeting <30 min setup.
 
 ---
-*Architecture research for: Basic VMS*
-*Researched: 2026-09-24*
+
+## Component Responsibilities
+
+| Component | Responsibility | Implementation Details |
+|-----------|----------------|------------------------|
+| **`PtzService`** | Translates UI joystick vectors (X, Y, Zoom) into ONVIF Profile S SOAP requests with safety watchdog timeout. | Wraps `ContinuousMove`, `Stop`, `AbsoluteMove`, `GetPresets`, and `GotoPreset`. Uses a 1.5s auto-stop timer to avoid runaway panning. |
+| **`ExportEngine`** | Asynchronously stitches recorded fMP4 segments and applies optional OSD burn-in filters. | Uses `child_process.spawn('ffmpeg')`. Default mode uses `-c copy` (zero CPU, packet copy). OSD mode applies `drawtext` with camera name and timestamps. Stores exports in `/var/lib/basic-vms/exports/` with 48h TTL cleanup. |
+| **`ZoneFilter`** | Evaluates raw camera motion coordinates against configured polygon exclusion/inclusion masks. | In-memory evaluation using Ray-Casting (`point-in-polygon`). Drops motion events occurring outside active zones before publishing to the live alert bus. |
+| **`HealthMonitor`** | Continuously tracks camera reachability, frame drops, and latency. | Background worker querying MediaMTX `/v3/paths/list` API + TCP ping to camera IP. Publishes `camera.offline` or `camera.degraded` events. |
+| **`DispatchService`** | Dispatches real-time alerts to external channels (WhatsApp, Webhooks). | Reads verified motion/alarm events from Event Bus. Enforces token bucket rate limiting (max 1 alert per camera per 60s) to prevent spamming. Signs webhooks with HMAC-SHA256. |
+| **`AccessControlManager`** | Enforces 3-tier RBAC (`Admin`, `Operator`, `Viewer`) and per-camera permission ACLs. | Decorates Fastify requests with `user.role` and checks camera ACL before servicing live, playback, or PTZ endpoints. |
+
+---
+
+## Recommended Project Structure
+
+```
+src/
+├── extended/                     # Package 2 Extended Domain Modules
+│   ├── acl/                      # 3-Tier RBAC & Camera Permissions
+│   │   ├── permissions.ts        # ACL verification logic
+│   │   └── routes.ts             # User role & permission assignment routes
+│   ├── ptz/                      # ONVIF Profile S PTZ Module
+│   │   ├── ptz-service.ts        # Pan/Tilt/Zoom controller with watchdog
+│   │   ├── types.ts              # Direction vectors and preset schemas
+│   │   └── routes.ts             # /api/v1/cameras/:id/ptz routes
+│   ├── export/                   # Video Export & Watermark Engine
+│   │   ├── export-engine.ts      # FFmpeg runner, concat & OSD filters
+│   │   ├── export-queue.ts       # Async background job queue
+│   │   └── routes.ts             # /api/v1/recordings/export routes
+│   ├── zones/                    # Motion Zones & Masking
+│   │   ├── zone-filter.ts        # Ray-casting polygon containment
+│   │   └── routes.ts             # /api/v1/cameras/:id/zones routes
+│   ├── bookmarks/                # Timeline Bookmarks
+│   │   ├── bookmark-service.ts   # CRUD & search for timeline markers
+│   │   └── routes.ts             # /api/v1/cameras/:id/bookmarks routes
+│   ├── health/                   # Camera Health & Diagnostics
+│   │   ├── health-monitor.ts     # MediaMTX path telemetry & TCP pings
+│   │   └── routes.ts             # /api/v1/cameras/:id/health routes
+│   └── dispatch/                 # External Notifications & Webhooks
+│       ├── whatsapp-client.ts    # Meta Cloud API / Twilio dispatcher
+│       ├── webhook-client.ts     # HMAC-SHA256 signed outbound webhooks
+│       └── rate-limiter.ts       # Token-bucket alert cooldown manager
+├── licensing/                    # Capability Gating Foundation
+│   ├── capabilities.ts           # CapabilityRegistry
+│   └── plugin.ts                 # requireCapability('extended.*')
+```
+
+---
+
+## Architectural Patterns & Seams
+
+### 1. Capability Gating at Route Namespace
+Every extended route is registered under `/api/v1/...` and guarded by `requireCapability`:
+```typescript
+fastify.post(
+  '/api/v1/cameras/:id/ptz/move',
+  { preHandler: [fastify.authenticate, requireCapability('extended.ptz')] },
+  ptzController.move
+);
+```
+If a customer has a Core license, the request is rejected with `403 Forbidden` (`Missing required capability: 'extended.ptz'`) before touching any business logic.
+
+### 2. PTZ Safety Watchdog Pattern
+To prevent mechanical damage and runaway pan:
+```typescript
+// On ContinuousMove request:
+this.clearWatchdog(cameraId);
+await onvifPtz.continuousMove(x, y, zoom);
+this.watchdogTimer = setTimeout(async () => {
+  await onvifPtz.stop();
+}, 1500); // Auto-stops after 1.5s unless renewed
+```
+
+### 3. Decoupled Outbound Dispatch Pipeline
+The `DispatchService` does not poll or intercept camera routes. It simply subscribes to the existing Core `EventBus`:
+```typescript
+eventBus.on('motion.detected', async (event) => {
+  if (this.zoneFilter.isWithinActiveZone(event.cameraId, event.metadata?.coordinates)) {
+    if (this.rateLimiter.allow(event.cameraId)) {
+      await Promise.allSettled([
+        this.whatsappClient.sendAlert(event),
+        this.webhookClient.broadcast(event)
+      ]);
+    }
+  }
+});
+```

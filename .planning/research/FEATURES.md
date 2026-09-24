@@ -1,97 +1,97 @@
-# Feature Research
+# Feature Research: Package 2 (Extended)
 
-**Domain:** Video Management System (VMS) — SMB/Residential CCTV Tier (CP Plus / Hikvision DVR equivalent)
+**Domain:** Commercial Video Management System (VMS) Extended Capabilities
 **Researched:** 2026-09-24
 **Confidence:** HIGH
 
 ## Feature Landscape
 
-### Table Stakes (Users Expect These)
+### Table Stakes (Commercial SMB & Society Expectations)
 
-Features users assume exist in budget DVR/NVR hardware (CP Plus, Hikvision, Dahua). Missing these = installer rejection.
+Features customers and security installers assume exist when moving up from basic standalone DVRs to a managed VMS.
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Multi-Camera Live View | Monitor premises live in 1x1, 2x2, 3x3 grids | MEDIUM | Low-latency WebRTC primary, HLS fallback via MediaMTX. |
-| Continuous & Scheduled Recording | 24/7 or time-based footage retention | MEDIUM | MediaMTX segment recording with metadata catalog in Postgres. |
-| 24h Playback Timeline & Scrubbing | Review past events and footage instantly | MEDIUM | MediaMTX playback server (`/list`, `/get`), synced to visual timeline. |
-| Motion Alerts | Notification when movement occurs | LOW | ONVIF Profile T native motion events emitted through Core event bus. |
-| ONVIF Auto-Discovery & Onboarding | Plug-and-play detection of IP cameras | MEDIUM | Profile T with S fallback via `CameraProvider` adapter. |
-| 2-Role RBAC (Admin, Viewer) | Owner vs family/staff permissions | LOW | Admin full access; Viewer restricted to live/playback without settings. |
-| Local Disk Retention & Rollover | Never fail when hard drive fills up | MEDIUM | Automatic deletion of oldest recorded segments when threshold reached. |
-| Single-Command Deployment | Fast setup by integrators on customer hardware | MEDIUM | Complete install in under 30 minutes via automated script/container. |
-| Mobile Remote View | Access cameras outside local LAN | MEDIUM | WebRTC through STUN/relay/Coturn. |
+| Feature | Why Expected | Complexity | Implementation Notes |
+|---------|--------------|------------|----------------------|
+| **Operator / Guard Role (EXT-01)** | Gated societies and commercial facilities employ guards who monitor live screens 24/7. Admins cannot let guards alter IP settings, delete cameras, or modify recording retention. | MEDIUM | 3-tier RBAC (`Admin`, `Operator`, `Viewer`) + `CameraPermission` ACL. Operators can view live feeds, scrub playback, control PTZ, and create bookmarks, but have zero configuration mutation rights. |
+| **Motion Zones & Exclusion Masks (EXT-02)** | False positives from blowing tree branches, ceiling fans, or public highway traffic outside the boundary gate make alerts useless in Indian guard rooms. | MEDIUM | Interactive SVG/Canvas polygon editor in UI. Polygon vertices stored as normalized coordinates (0.0 to 1.0). Ingested motion coordinates filtered via Ray-Casting before raising alerts. |
+| **PTZ Controls & Presets (EXT-03)** | Dome PTZ cameras on boundary walls or main gates require pan/tilt/zoom directional control and quick jump buttons to preset angles (e.g., "Visitor Gate", "Back Alley"). | MEDIUM | ONVIF Profile S PTZ service via `CameraProvider`. Directional pad (8 directions), zoom in/out, home position, preset list, and automated patrol cycle. |
+| **Server-Side Clip Export (EXT-04)** | When an incident occurs (theft, vehicle damage), the facility manager must download an MP4 video clip to submit to police or society committees. | MEDIUM | Time-range scrubber selector, asynchronous background export job queue, and direct download endpoint with SHA-256 hash. |
+| **Timeline Bookmarks (EXT-05)** | Operators need to flag significant incidents during their shift (e.g., "Suspicious vehicle parked at 02:15") so night/day shifts can hand over context. | LOW | Timeline visual bookmark pins, category tagging (Incident, Maintenance, Visitor), operator notes, and fast search. |
 
-### Differentiators (Competitive Advantage)
+### Differentiators (Competitive Advantage over CP Plus / Hikvision DVRs)
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Entitlement-Gated Modular Core | Single codebase allows instant upsell (P1 → P2/P3) via offline license key without re-install | MEDIUM | Capability registry (`capabilities.has(...)`) gates modules cleanly. |
-| Generic Extensible Event Bus | Unified event schema handles system events in P1 and seamless AI detections in P3 | LOW | Event schema: id, camera_id, timestamp, type, source, severity, metadata. |
-| 100% Permissive Open Source Stack | Clean IP, no GPL contamination, no proprietary vendor cloud lock-in | LOW | MediaMTX (MIT), permissive ONVIF, strict SBOM in CI. |
+Features that give Basic VMS Extended a decisive edge over traditional hardware NVRs.
+
+| Feature | Value Proposition | Complexity | Implementation Notes |
+|---------|-------------------|------------|----------------------|
+| **Clip Burn-in Timestamp & Watermark (EXT-04b)** | Standard DVR exports often lack visible timestamps or camera names once shared on WhatsApp, causing dispute over authenticity. | MEDIUM | FFmpeg OSD filter burn-in: camera name, site identifier, and millisecond-accurate timestamp overlaid on exported MP4 without third-party proprietary video players. |
+| **WhatsApp / SMS Incident Dispatch (EXT-07)** | Indian society management and factory owners do not monitor desktop VMS dashboards at night. Instant WhatsApp messages with snapshot links bridge this gap. | MEDIUM | Webhook dispatcher to Meta WhatsApp Cloud API or Twilio. Rate-limited (token bucket) to prevent spamming during continuous motion events. |
+| **Camera Health & Ping Diagnostics (EXT-06)** | In large sites (16-32 cameras), camera power supply or PoE cable failures go unnoticed for days until an incident occurs and footage is missing. | LOW | Automated 30s heartbeat monitor combining TCP ping, RTSP OPTIONS checks, and MediaMTX path telemetry. Emits `camera.offline` / `camera.degraded` alerts immediately. |
+| **External REST API & Outbound Webhooks (EXT-08)** | Enables integration with RFID barrier gates, biometric access control turnstiles, and fire alarm systems. | LOW | Standard HMAC-SHA256 signed HTTP webhooks (`X-BasicVMS-Signature`) fired on motion, camera state, or operator bookmark events. |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Multi-tenant organization hierarchy | "What if an installer manages 50 clients?" | Multi-tenancy introduces massive schema complexity and auth friction unneeded for standalone NVRs. | Single-site deployment; scope federation separately if required. |
-| Computer Vision motion detection in base install | "Software motion detection from RTSP" | Consumes massive CPU decoding video streams; blows hardware specs for cheap NVRs. | Use camera-native ONVIF Profile T motion events in Package 1; defer AI to Package 3. |
-| Evidentiary Export / BSA Certification | "Legal proof of footage" | VigilOne compliance differentiator; requires complex hash chains and legal certificates. | Basic MP4 clip export in Package 2. |
-| Custom Media Transcoding Pipeline | "Re-encode to save bandwidth" | Burning CPU transcoding video drops frames on budget hosts. | MediaMTX zero-transcode packet-preserving storage. |
+| **Continuous Unbounded PTZ Movement Without Timeout** | Operators hold the directional arrow and expect the camera to move. | If browser network disconnects while holding the arrow, the camera keeps panning infinitely until mechanical limit or cable wrap. | Mandatory command watchdog timeout: Every `ContinuousMove` command auto-stops on the camera after 1500ms unless refreshed by keepalive. |
+| **Full Transcoding on All Clip Exports** | Clean uniform framerates and resolutions across diverse camera brands. | Overheats low-cost 4-core NVR boxes and causes CPU starvation for live WebRTC streams. | "Fast Export" (packet copy `-c copy`, 0% CPU, 1-second completion) as default; re-encoding used only when timestamp OSD burn-in is explicitly toggled. |
+| **Direct Browser-to-WhatsApp Pushes** | Avoid server-side queue implementation. | Exposes Meta/Twilio API keys to any browser client and bypasses security audit logs. | Centralized server-side rate-limited dispatch queue with audit trail in `events` catalog. |
+| **Unbounded Clip Retention on Disk** | Users want exported clips preserved indefinitely. | Rapidly fills local NVMe/SATA storage disks, crashing recording engines. | Dedicated export cache directory with automatic FIFO pruning after 48 hours or when storage reaches 95%. |
+
+---
 
 ## Feature Dependencies
 
 ```
-[MediaMTX Setup]
-    └──requires──> [Local Storage & Directory Layout]
-[Recording Catalog]
-    └──requires──> [MediaMTX Record Hooks]
-[Playback Timeline]
-    └──requires──> [Recording Catalog] & [MediaMTX Playback Server]
-[Motion Alerts]
-    └──requires──> [Core Event Bus] & [ONVIF Event Subscription]
-[Live View Grid]
-    └──requires──> [MediaMTX WebRTC Stream Engine]
-[Role RBAC]
-    └──requires──> [User Auth & Session Management]
-[Package Gating]
-    └──requires──> [Ed25519 Capability Registry]
+[extended.operator_role]
+    └──requires──> [core.rbac (Admin/Viewer)]
+    └──governs───> [extended.ptz, extended.clip_export, extended.bookmarks]
+
+[extended.ptz]
+    └──requires──> [core.onvif (Profile S)]
+    └──enhances──> [core.live]
+
+[extended.motion_zones]
+    └──requires──> [core.events (motion.detected)]
+    └──filters───> [extended.whatsapp_alerts, extended.api_webhooks]
+
+[extended.clip_export]
+    └──requires──> [core.record (fMP4 segments), core.playback]
+    └──enhances──> [extended.bookmarks]
+
+[extended.camera_health]
+    └──requires──> [core.events, MediaMTX /v3/paths/list]
+
+[extended.whatsapp_alerts]
+    └──requires──> [core.events, extended.motion_zones]
+
+[extended.api_webhooks]
+    └──requires──> [core.events]
 ```
 
-## MVP Definition (Package 1: Core)
+---
 
-### Launch With (Package 1)
+## MVP Definition (Milestone v2.0 Scope)
 
-- [ ] **CORE-LIVE**: Live multi-camera WebRTC view with HLS fallback
-- [ ] **CORE-REC**: Continuous & scheduled recording via MediaMTX segment hooks
-- [ ] **CORE-PLAY**: 24h playback timeline scrubbing
-- [ ] **CORE-ALERT**: Native ONVIF motion alerts via Core event bus
-- [ ] **CORE-ONVIF**: ONVIF discovery & onboarding (Profile T / S)
-- [ ] **CORE-RBAC**: 2-role RBAC (Admin, Viewer)
-- [ ] **CORE-STOR**: Local retention policy with automatic rollover
-- [ ] **CORE-INST**: Single-command installer (<30 min setup)
-- [ ] **CORE-REMOTE**: Mobile remote viewing with WebRTC relay
-- [ ] **CORE-EVT**: Unified Core event bus
-- [ ] **CORE-LIC**: Standalone Ed25519 capability registry
+### Launch With (v2.0 Extended)
 
-### Add in Package 2 (Extended - Fast Follow)
-
-- Operator role with per-camera permissions
-- Motion zones and exclusion masks
-- PTZ control and presets
-- Basic MP4 clip export
-- Bookmarks
-- Camera health monitoring
-- WhatsApp / SMS alerts
-- Basic REST API & webhooks
-
-### Future Consideration (Package 3 - AI)
-
-- Object/person detection (ONNX Runtime / OpenVINO)
-- Smart search by object type
-- ANPR (Automatic Number Plate Recognition)
-- Face / watchlist matching
+- [ ] **EXT-01: Operator Role & Granular RBAC** — 3 roles (`ADMIN`, `OPERATOR`, `VIEWER`), per-camera view/control ACLs.
+- [ ] **EXT-02: Motion Zones & Exclusion Masks** — Interactive SVG polygon drawing on camera tiles, coordinate filtering.
+- [ ] **EXT-03: PTZ Control & Presets** — Virtual joystick pad, optical zoom, preset buttons, auto-stop watchdog.
+- [ ] **EXT-04: Server-Side MP4 Clip Export** — Fast packet-copy export + optional timestamp/watermark OSD burn-in.
+- [ ] **EXT-05: Timeline Bookmarks** — Operator incident notes, color-coded timeline pins, search and filtering.
+- [ ] **EXT-06: Camera Health Diagnostics** — Automated ping and bitrate telemetry, offline/degraded alerts.
+- [ ] **EXT-07: WhatsApp / SMS Alerts** — Cloud API webhook alerts for motion events with cooldown rate limiting.
+- [ ] **EXT-08: REST API & Outbound Webhooks** — HMAC-SHA256 event notification webhooks for access control systems.
 
 ---
-*Feature research for: Basic VMS*
-*Researched: 2026-09-24*
+
+## Competitor Feature Analysis
+
+| Capability | CP Plus Cosmic / Orange NVR | Hikvision iVMS-4200 | Basic VMS (Package 2 Extended) |
+|---|---|---|---|
+| **User Roles** | Basic Admin / User | Complex 100+ permission tree | Pragmatic 3-tier: Admin (all), Operator (monitor, PTZ, bookmarks, export), Viewer (monitor only). |
+| **PTZ Controls** | Sluggish hardware jog-dial | Desktop client software PTZ | Low-latency WebRTC live stream with synchronized overlay joystick and 1.5s safety watchdog. |
+| **Motion Masking** | 16x16 grid on camera NVR UI | Client-side grid mask | Smooth interactive vector polygon drawing (inclusion & exclusion zones). |
+| **Clip Export** | Proprietary `.dav` / `.h264` player required | MP4 with proprietary watermark utility | Universal MP4 playable in any browser or phone with burned-in OSD timestamp. |
+| **Incident Dispatch** | Email / Buzzer only | Push notifications to Hik-Connect app | Direct WhatsApp messages to security/society groups with zero app download needed. |

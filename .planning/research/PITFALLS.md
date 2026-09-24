@@ -1,47 +1,131 @@
-# Pitfalls Research
+# Pitfalls Research: Package 2 (Extended)
 
-**Domain:** Video Management System (VMS) — SMB/Residential CCTV Tier (CP Plus / Hikvision DVR equivalent)
+**Domain:** Commercial Video Management System (VMS) Extended Capabilities
 **Researched:** 2026-09-24
 **Confidence:** HIGH
 
 ## Critical Pitfalls
 
-### 1. VigilOne Repo Git History & Secret Contamination
-- **Warning Signs:** Reusing or branching from the existing `Nopenope69/vms` repository.
-- **Why It Happens:** Convenience of copying existing code or retaining branch history.
-- **Risk:** The previous repository may contain unrotated private keys, Ed25519 signing keys, camera credentials, internal hostnames, or proprietary contracts embedded in early git commits.
-- **Prevention:** Work in a completely fresh repository (`basic-vms` / `VMS-Bare`) with a fresh git commit history. The licensing library must be extracted as a standalone package (`vms-licensing`) with zero VigilOne domain references.
+### Pitfall 1: Unbounded PTZ Movement & Camera Runaway
 
-### 2. Tier & License Checks Polluting the Domain Model
-- **Warning Signs:** `if (user.plan === 'PRO')` or `if (tier === 'PACKAGE_1')` found in controllers, services, or UI components.
-- **Why It Happens:** Quick hacks to restrict features.
-- **Risk:** Tightly couples business pricing logic with core functionality, making refactoring or repackaging impossible.
-- **Prevention:** Strict separation: License → Entitlements → Capability Registry → Module Mounting. The domain and UI only query `capabilities.has("ptz")`.
+**What goes wrong:**
+An operator clicks and holds the PTZ joystick in the web browser. If the browser tab is closed, WiFi disconnects, or the user releases the mouse while the cursor is outside the browser window, the camera receives the `ContinuousMove` command but never receives the `Stop` command. The camera spins continuously until it hits physical stops, strains the motor, or wraps internal wiring.
 
-### 3. Re-implementing Video Ingest, Transcoding, or Playback in Node
-- **Warning Signs:** Writing custom FFmpeg child-processes or building an RTSP-to-WebRTC converter inside Node.
-- **Why It Happens:** Engineers attempting to manage media packets directly in JavaScript.
-- **Risk:** High CPU utilization, event loop starvation, memory leaks, out-of-sync audio/video, and crashing the control plane.
-- **Prevention:** MediaMTX is the authoritative media plane. Node only orchestrates configuration, hooks, and metadata. Video packets never pass through Node.js memory.
+**Why it happens:**
+Relying on client-side `mouseup` / `touchend` events to send the `Stop` command without server-side watchdog enforcement.
 
-### 4. Overcomplicating Storage Management & Custom Chunking
-- **Warning Signs:** Writing custom file chunkers or trying to split video streams by raw byte counting.
-- **Why It Happens:** Not leveraging MediaMTX's native recording hooks.
-- **Risk:** Broken MP4 container headers (moov atom corruption), unplayable video clips upon power outage.
-- **Prevention:** Rely on MediaMTX's fMP4 segment recording and `runOnRecordSegmentComplete` hook. Fragmented MP4 (fMP4) is resilient against sudden power cuts because each segment is self-contained.
+**How to avoid:**
+1. Implement a server-side **PTZ Watchdog Timer**: Whenever a `ContinuousMove` is initiated, schedule an automatic `Stop` command after 1500ms.
+2. Require the client UI to send a periodic keepalive (e.g., every 500ms) while the operator holds down the joystick. If no keepalive arrives, the server watchdog halts movement immediately.
 
-### 5. Vendor Coupling in ONVIF Integration
-- **Warning Signs:** Direct calls to specific camera XML endpoints or hardcoding CP Plus/Hikvision quirks into controller actions.
-- **Why It Happens:** Dealing with camera firmware bugs as one-off workarounds.
-- **Risk:** Breaking compatibility when onboarding Dahua or generic ONVIF cameras.
-- **Prevention:** Wrap all ONVIF operations behind an internal `CameraProvider` interface. The core application interacts only with `CameraProvider.discover()`, `CameraProvider.getStreamUri()`, and `CameraProvider.subscribeEvents()`.
+**Warning signs:**
+- Camera pans 360 degrees uninterrupted after user switches tabs.
+- Motor noise or gear strain on physical PTZ units during testing.
 
-### 6. Copyleft / GPL License Infiltration
-- **Warning Signs:** Importing ZoneMinder, Shinobi, or other GPL/custom-licensed VMS source code or libraries directly.
-- **Why It Happens:** Copying code snippets found online during development.
-- **Risk:** Tainting the commercial IP of the product and legal breach.
-- **Prevention:** Permissively licensed dependencies only (MIT / Apache-2.0). Automated license audit (Syft/license-checker) in CI fails the build on non-permissive licenses.
+**Phase to address:**
+Phase addressing PTZ Control (`extended.ptz`).
 
 ---
-*Pitfalls research for: Basic VMS*
-*Researched: 2026-09-24*
+
+### Pitfall 2: CPU Starvation from FFmpeg Video Re-Encoding
+
+**What goes wrong:**
+When an operator requests an MP4 clip export, the server starts re-encoding multiple minutes of H.264/H.265 video. On a budget 4-core NVR host (common in Indian SMB deployments), CPU spikes to 100%. Live WebRTC playback stutters, MediaMTX drops incoming RTSP frames, and database queries time out.
+
+**Why it happens:**
+Treating clip export as a monolithic re-encoding pipeline (`ffmpeg -i ... -c:v libx264`) rather than utilizing packet-preserving stream copy.
+
+**How to avoid:**
+1. Default to **Fast Export**: Use FFmpeg concat demuxer with stream copy (`-c copy`). Concatenating fMP4 segments with packet copy takes under 1 second and consumes ~0% CPU.
+2. Only run transcode filters (`drawtext` OSD burn-in) when explicitly requested by the user, and cap concurrent re-encoding jobs to `1` with low process priority (`nice -n 10`).
+
+**Warning signs:**
+- Live grid WebRTC latency climbs from 300ms to >5000ms during an export job.
+- CPU load average exceeds number of available cores.
+
+**Phase to address:**
+Phase addressing Server-Side Clip Export (`extended.clip_export`).
+
+---
+
+### Pitfall 3: WhatsApp Alert Flooding & Account Suspension
+
+**What goes wrong:**
+During a sudden event (heavy rain, stray animals, swaying foliage), a camera triggers 60 motion events in 2 minutes. The VMS fires 60 consecutive WhatsApp messages to the society security group. Meta's anti-spam algorithms flag the WhatsApp Business account, suspending outbound API access, or Twilio incurs massive usage bills.
+
+**Why it happens:**
+Directly linking the raw `motion.detected` event bus output to external messaging webhooks without an aggregation or cooldown layer.
+
+**How to avoid:**
+1. Implement a **Token Bucket Rate Limiter**: Maximum 1 WhatsApp alert per camera per 60 seconds (configurable up to 5 minutes).
+2. During active cooldown, aggregate subsequent triggers into a single count (e.g., *"14 motion triggers detected in the last 5 minutes"*).
+3. Provide an active hours schedule (e.g., only send WhatsApp alerts between 11:00 PM and 06:00 AM).
+
+**Warning signs:**
+- Rapid bursts of 429 Too Many Requests from Meta Cloud API.
+- Customer complaints of spam notifications on their personal WhatsApp.
+
+**Phase to address:**
+Phase addressing External Alert Dispatch (`extended.whatsapp_alerts`).
+
+---
+
+### Pitfall 4: Storage Saturation from Unmanaged Export Artifacts
+
+**What goes wrong:**
+Operators export 30-minute incident clips for police or society meetings. The generated MP4 files (500MB - 2GB each) sit in a local directory indefinitely. Within weeks, the system disk reaches 100% capacity, PostgreSQL halts write operations, and video recording aborts.
+
+**Why it happens:**
+Assuming users will manually delete downloaded clips, and omitting export storage from the FIFO disk quota monitor.
+
+**How to avoid:**
+1. Store exports in a designated directory (`/var/lib/basic-vms/exports/`).
+2. Enforce a strict 48-hour Time-To-Live (TTL) on all exported files via an automated hourly garbage collector.
+3. Integrate export directory sizing into the `StorageController` FIFO rollover rules.
+
+**Warning signs:**
+- Disk usage on `/var/lib/basic-vms` steadily increases regardless of recording quota.
+
+**Phase to address:**
+Phase addressing Server-Side Clip Export (`extended.clip_export`).
+
+---
+
+### Pitfall 5: Coordinate Drift in Motion Zones Across Aspect Ratios
+
+**What goes wrong:**
+An operator draws a motion polygon over a live video stream in a 16:9 1080p preview. When viewed on a mobile device or if the sub-stream switches to 640x360 or 4:3, the polygon mask shifts off-target, masking the wrong area or allowing false positives through.
+
+**Why it happens:**
+Storing polygon vertices as absolute pixel coordinates (e.g., `x: 450, y: 320`) instead of normalized unit vectors (`0.000` to `1.000`).
+
+**How to avoid:**
+1. Store all polygon points strictly as normalized floats: `[ { x: 0.25, y: 0.40 }, ... ]`.
+2. Scale coordinates to the rendering container dynamically in the React SVG canvas.
+3. Normalize incoming ONVIF motion coordinate bounding boxes before passing to the Ray-Casting algorithm.
+
+**Warning signs:**
+- Polygon borders shift when resizing browser window or switching between desktop and mobile.
+
+**Phase to address:**
+Phase addressing Motion Zones & Masking (`extended.motion_zones`).
+
+---
+
+### Pitfall 6: Unresponsive External Webhooks Blocking Event Bus
+
+**What goes wrong:**
+A customer configures an outbound webhook to an on-premise boom barrier controller. If the barrier controller goes offline, HTTP POST requests hang for 30 seconds before timing out, exhausting Node's socket pool and degrading control plane responsiveness.
+
+**Why it happens:**
+Awaiting HTTP network calls directly inside event bus listener callbacks without timeouts or background queueing.
+
+**How to avoid:**
+1. Use an asynchronous in-memory dispatch queue with a strict 3000ms timeout per HTTP request.
+2. Apply exponential backoff with a maximum of 3 retries, followed by marking the webhook endpoint as unhealthy.
+
+**Warning signs:**
+- Event bus dispatch latency spikes when external endpoints are unreachable.
+
+**Phase to address:**
+Phase addressing External REST API & Webhooks (`extended.api_webhooks`).

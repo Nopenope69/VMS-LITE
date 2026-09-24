@@ -1,42 +1,69 @@
-# Research Summary: Basic VMS
+# Milestone v2.0 Research Summary: Package 2 (Extended)
 
-**Domain:** Video Management System (VMS) — SMB/Residential CCTV Tier (CP Plus / Hikvision DVR equivalent)
-**Synthesized:** 2026-09-24
+**Project:** Basic VMS
+**Domain:** Commercial Video Management System (VMS) Extended Capabilities
+**Researched:** 2026-09-24
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Basic VMS is a standalone, lightweight, commercial-grade VMS engineered to replace CP Plus / Hikvision hardware DVRs in the Indian SMB and residential market. To meet the aggressive sub-30-minute deployment requirement on budget hardware, the architecture splits strictly into a permissive, high-performance media plane (MediaMTX) and a lightweight Node/TypeScript control plane backed by PostgreSQL and React. 
+Milestone v2.0 (Package 2: Extended) expands the validated Basic VMS core into a full-featured commercial solution for Indian gated societies, warehouses, factories, and commercial SMBs. While Package 1 delivered reliable live view, scheduled recording, 24h timeline scrubbing, native motion alerts, and Docker installation, Package 2 introduces supervisor and operational workflows: 3-tier guard access control, dome PTZ control, false-positive motion zone masking, watermarked MP4 clip export, shift handover bookmarks, camera health diagnostics, WhatsApp incident dispatch, and external integration webhooks.
 
-The product is clean-room engineered in a fresh repository (`VMS-Bare`) to eliminate any IP or secret contamination from VigilOne. Modular packaging (Package 1 Core, Package 2 Extended, Package 3 AI) is enforced via an offline Ed25519 Capability Registry rather than hardcoded tier checks.
+All extended features are entitlement-gated using the existing standalone Ed25519 offline license verification engine (`capabilities.has('extended.*')`). There is zero codebase fragmentation: a single clean-room binary runs both Package 1 and Package 2 installations depending on the cryptographically signed token installed on site.
 
-## Key Recommendations
-
-### Stack
-- **Control Plane:** Node.js 20 LTS, TypeScript 5, Fastify, Prisma/PostgreSQL, React 18, Vite.
-- **Media Plane:** MediaMTX v1.11+ (MIT) handling RTSP ingest, WebRTC (WHEP) live streaming, HLS fallback, fMP4 segment recording, and playback server.
-- **Protocols & Licensing:** Pinned ONVIF library behind internal `CameraProvider` adapter; `@noble/ed25519` for offline license signature verification.
-
-### Table Stakes Features (Package 1 Core)
-- Live multi-camera WebRTC grid with HLS fallback.
-- Continuous and scheduled recording via MediaMTX segment hooks into PostgreSQL catalog.
-- 24-hour timeline playback with rapid scrubbing via MediaMTX playback server.
-- Native ONVIF Profile T motion/tampering events dispatched through Core event bus.
-- Auto-discovery and onboarding of CP Plus, Hikvision, Dahua, and generic ONVIF cameras.
-- 2-role RBAC (Admin, Viewer) for single-site management.
-- Disk retention policy with automated rollover.
-- Single-command installer enabling complete site deployment in < 30 minutes.
-
-### Architecture Guidelines
-- **Media Separation:** Node never handles video streams or packet decoding; all video flows through MediaMTX directly.
-- **Licensing Clean Boundary:** License → Entitlements → Capability Registry (`capabilities.has(...)`). Modules and route namespaces mount conditionally.
-- **Event Bus:** Core event bus (`events` table) standardizes `camera.offline/online`, `recording.started/stopped`, `storage.warning/full`, and `motion.detected`. AI detections in Package 3 will publish directly into this bus as standard events.
-
-### Critical Pitfalls to Avoid
-- Never branch from or copy `Nopenope69/vms` history; keep the repo and schema clean-room.
-- Never write plan/tier checks in business logic or controllers.
-- Never re-encode or transcode video streams in v1; utilize packet-preserving fMP4 recording to preserve CPU on budget NVR hosts.
-- Never pull in GPL/copyleft libraries. Enforce automated license audits in CI.
+The research establishes clear operational safeguards to maintain system reliability on budget 4-core hardware: PTZ runaway is prevented via server-side watchdog auto-stops; clip export defaults to 0% CPU packet copy with selective OSD burn-in; WhatsApp alerts are regulated by token-bucket rate limiters; and all external webhooks run asynchronously with circuit breakers to prevent blocking the Core event loop.
 
 ---
-*Synthesized from: STACK.md, FEATURES.md, ARCHITECTURE.md, PITFALLS.md*
+
+## Key Findings
+
+### Recommended Stack Additions
+
+The existing core stack (Node.js 20, Fastify, MediaMTX, PostgreSQL/Prisma, React 18) remains the authoritative foundation. Minimal, surgically chosen additions support Package 2:
+
+- **FFmpeg (CLI via `child_process.spawn`)**: Invoked for fast fMP4 segment concatenation (`-c copy`) and optional OSD burn-in (`drawtext`). Packaged cleanly in the Docker container with strict permissive licensing verification.
+- **`point-in-polygon` (1.1.x, MIT)**: Pure JS Ray-Casting algorithm for evaluating motion coordinate hits against polygon masks. Zero native C++ compilation dependencies.
+- **Native `fetch` & `crypto` (Built-in Node 20)**: Handles Meta WhatsApp Cloud API / Twilio REST requests and HMAC-SHA256 signature calculations (`X-BasicVMS-Signature`) for outgoing webhooks without heavyweight third-party SDKs.
+
+### Feature Scope & Priorities
+
+**Table Stakes (Operator & Commercial Baselines):**
+- **EXT-01: Operator Role & Granular RBAC**: 3 roles (`ADMIN`, `OPERATOR`, `VIEWER`) with camera-level view/control ACLs.
+- **EXT-02: Motion Zones & Exclusion Masks**: Interactive SVG polygon editor with coordinate normalization to suppress false alarms.
+- **EXT-03: PTZ Control & Presets**: ONVIF Profile S Pan/Tilt/Zoom joystick, optical zoom, preset buttons, and 1.5s watchdog auto-stop.
+- **EXT-04: Server-Side Clip Export**: Fast packet-copy MP4 cutting + optional burned-in timestamp OSD and watermark.
+- **EXT-05: Timeline Bookmarks**: Incident tagging, operator shift notes, color-coded timeline markers, and search.
+
+**Differentiators (Indian SMB / Society Advantage):**
+- **EXT-06: Camera Health Diagnostics**: Automated 30s ping, RTSP health, and MediaMTX path telemetry with proactive offline alerts.
+- **EXT-07: WhatsApp / SMS Incident Dispatch**: Direct WhatsApp alert dispatch to security committees with rate-limiting cooldowns.
+- **EXT-08: REST API & Outbound Webhooks**: Standardized event webhooks for barrier gates, RFID turnstiles, and BMS.
+
+### Architecture Approach
+
+- **Pre-Handler Capability Guards**: Every extended endpoint is protected by `requireCapability('extended.*')`. Sites without an Extended license receive `403 Forbidden` and the frontend UI disables or hides those controls gracefully.
+- **PTZ Safety Watchdog**: Server enforces a 1500ms auto-stop timer on all continuous motion vectors, preventing physical motor strain or runaway spinning if client connectivity drops.
+- **Decoupled Outbound Dispatch Pipeline**: The `DispatchService` subscribes to the Core `EventBus` without polluting camera streaming routes, isolating WhatsApp and Webhook latency from the main control plane.
+- **48-Hour Export TTL**: All exported MP4 clips are stored in a dedicated cache directory with automated FIFO garbage collection to prevent disk exhaustion.
+
+---
+
+## Critical Pitfalls & Mitigations
+
+1. **PTZ Runaway on Network Drop**: Mitigated with a mandatory 1.5s server-side watchdog auto-stop on `ContinuousMove`.
+2. **CPU Exhaustion During Clip Export**: Mitigated by defaulting to zero-transcode packet copy (`-c copy`), capping concurrent transcode jobs to 1, and running at low CPU priority (`nice -n 10`).
+3. **WhatsApp Anti-Spam Bans**: Mitigated by a token-bucket rate limiter (max 1 alert per camera per 60s) with trigger aggregation during active cooldowns.
+4. **Export Disk Space Bloat**: Mitigated by a strict 48h TTL auto-pruning cycle linked into storage rollover monitoring.
+5. **Slow External Webhooks Blocking Event Bus**: Mitigated by an asynchronous in-memory dispatch queue with 3000ms timeouts and circuit breaker retries.
+
+---
+
+## Roadmap Implications & Suggested Phase Sequence
+
+Package 2 naturally sequences into 5 focused execution phases (continuing from Phase 7):
+
+1. **Phase 8: Operator RBAC & PTZ Camera Controls** (`EXT-01`, `EXT-03`) — 3-tier role model, camera ACLs, and ONVIF Profile S PTZ with watchdog.
+2. **Phase 9: Server-Side Clip Export & Timeline Bookmarks** (`EXT-04`, `EXT-05`) — FFmpeg packet-copy export, timestamp OSD burn-in, and timeline incident bookmarks.
+3. **Phase 10: Motion Zones & Spatial Masking** (`EXT-02`) — SVG polygon editor in live view, normalized ray-casting filter over native motion coordinates.
+4. **Phase 11: Camera Health Diagnostics & Telemetry** (`EXT-06`) — MediaMTX stream metrics, TCP ping heartbeat, and camera degraded/offline events.
+5. **Phase 12: External Notifications & Outbound Webhooks** (`EXT-07`, `EXT-08`) — WhatsApp dispatch with rate limiting, and HMAC-SHA256 signed integration webhooks.
