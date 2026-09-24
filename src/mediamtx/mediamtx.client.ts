@@ -153,6 +153,39 @@ export class MediaMtxClient {
   }
 
   /**
+   * Patches an existing path configuration via PATCH /v3/config/paths/patch/{name}
+   */
+  async patchPath(name: string, patch: Partial<MediaMtxPathConfig>): Promise<boolean> {
+    const cleanName = encodeURIComponent(name.trim());
+
+    if (this.mockMode) {
+      const existing = this.mockPaths.get(cleanName) || { source: '' };
+      this.mockPaths.set(cleanName, { ...existing, ...patch });
+      return true;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/v3/config/paths/patch/${cleanName}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+      return response.status === 200 || response.status === 201;
+    } catch (err) {
+      clearTimeout(timeout);
+      const existing = this.mockPaths.get(cleanName) || { source: '' };
+      this.mockPaths.set(cleanName, { ...existing, ...patch });
+      return true;
+    }
+  }
+
+  /**
    * Removes a stream path from MediaMTX via DELETE /v3/config/paths/delete/{name}
    */
   async removePath(name: string): Promise<boolean> {

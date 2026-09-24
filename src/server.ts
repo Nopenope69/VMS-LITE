@@ -5,6 +5,7 @@ import { licensingPlugin, LicensingPluginOptions } from './licensing/plugin.js';
 import { authRoutes } from './users/auth.routes.js';
 import { eventRoutes } from './events/event.routes.js';
 import { cameraRoutes } from './cameras/camera.routes.js';
+import { recordingRoutes } from './recordings/recording.routes.js';
 
 export interface ServerOptions {
   logger?: boolean;
@@ -48,6 +49,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(eventRoutes, { prefix: '/api' });
   await app.register(cameraRoutes, { prefix: '/api/cameras' });
+  await app.register(recordingRoutes, { prefix: '/api/recordings' });
 
   return app;
 }
