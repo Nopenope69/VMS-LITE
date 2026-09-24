@@ -6,13 +6,21 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 
 ## Phases
 
+### Milestone v1.0: Core
 - [x] **Phase 1: Foundation, Licensing & Event Bus** - Clean-room control plane, schema, Ed25519 Capability Registry, 2-role RBAC, and unified event model (completed 2026-09-23)
 - [x] **Phase 2: Media Plane & Camera Onboarding** - MediaMTX integration, internal `CameraProvider` adapter, ONVIF Profile T/S auto-discovery, and RTSP stream provisioning (completed 2026-09-24)
 - [x] **Phase 3: Recording Engine & Storage Management** - Continuous and scheduled packet-preserving fMP4 recording, segment cataloging, and automated disk rollover (completed 2026-09-24)
 - [x] **Phase 4: Live View Grid & Mobile Streaming** - React multi-camera live grid (1x1, 2x2, 3x3), WebRTC (WHEP) with HLS fallback, and Coturn NAT traversal (completed 2026-09-24)
-- [ ] **Phase 5: 24-Hour Playback & Timeline Scrubbing** - Visual 24-hour timeline scrubber, MediaMTX playback server queries, and frame-accurate seeking
-- [ ] **Phase 6: ONVIF Motion Alerts & Real-Time Event Feed** - Native camera motion event subscriptions via Profile T PullPoint, event bus dispatch, and WebSocket alerts
-- [ ] **Phase 7: Packaging, CI/SBOM & Single-Command Deployment** - Automated Docker installer (<30 min deployment), release SBOM generator, and license compliance verification
+- [x] **Phase 5: 24-Hour Playback & Timeline Scrubbing** - Visual 24-hour timeline scrubber, MediaMTX playback server queries, and frame-accurate seeking (completed 2026-09-24)
+- [x] **Phase 6: ONVIF Motion Alerts & Real-Time Event Feed** - Native camera motion event subscriptions via Profile T PullPoint, event bus dispatch, and WebSocket alerts (completed 2026-09-24)
+- [x] **Phase 7: Packaging, CI/SBOM & Single-Command Deployment** - Automated Docker installer (<30 min deployment), release SBOM generator, and license compliance verification (completed 2026-09-24)
+
+### Milestone v2.0: Package 2 (Extended)
+- [ ] **Phase 8: Operator Role & Granular RBAC** - 3-tier user role hierarchy, camera permission ACLs, route authorization hooks, and operator workstation UI
+- [ ] **Phase 9: ONVIF PTZ Controls & Camera Presets** - Profile S PTZ integration, virtual joystick overlay, preset tours, and 1.5s safety watchdog
+- [ ] **Phase 10: Server-Side Clip Export & Timeline Bookmarks** - FFmpeg packet-copy MP4 cutting, burned-in timestamp OSD/watermark, 48h TTL cleanup, and timeline incident bookmarks
+- [ ] **Phase 11: Motion Zones & Spatial Exclusion Masking** - Interactive SVG polygon drawing, normalized ray-casting coordinate containment, and alert suppression
+- [ ] **Phase 12: Camera Health Telemetry, WhatsApp Alerts & Webhooks** - 30s ping/stream health monitoring, rate-limited WhatsApp incident alerting, and signed integration webhooks
 
 ---
 
@@ -179,10 +187,116 @@ Plans:
 
 ---
 
+### Phase 8: Operator Role & Granular RBAC
+
+**Goal**: Establish 3-tier user role hierarchy (`ADMIN`, `OPERATOR`, `VIEWER`), implement per-camera permission ACLs, enforce route-level authorization hooks, and provide an operator workstation UI.
+**Mode**: mvp
+**Depends on**: Phase 1, Phase 7
+**Requirements**: [EXT-01]
+**Success Criteria**:
+
+1. Admin can assign `OPERATOR` role to user accounts with specific per-camera permissions (`canViewLive`, `canViewPlayback`, `canControlPtz`, `canCreateBookmarks`).
+2. Operators can stream permitted live/playback video but receive HTTP 403 on camera creation, deletion, recording schedule configuration, or storage modification endpoints.
+3. React UI dynamically hides configuration tabs and mutation controls when logged in as an Operator.
+
+**Plans**: 2 plans
+
+Plans:
+
+- [ ] 08-01: Prisma schema migration for `Role.OPERATOR` and `CameraPermission` table, ACL middleware, and permission assignment API.
+- [ ] 08-02: React operator mode workstation view, permission-filtered camera list, and UI mutation gating.
+
+---
+
+### Phase 9: ONVIF PTZ Controls & Camera Presets
+
+**Goal**: Implement ONVIF Profile S PTZ service in `CameraProvider`, REST endpoints gated by `extended.ptz`, virtual joystick UI overlay on live camera tiles, preset management, and a 1.5s server-side watchdog auto-stop.
+**Mode**: mvp
+**Depends on**: Phase 2, Phase 8
+**Requirements**: [EXT-03]
+**Success Criteria**:
+
+1. Operator can pan, tilt, and optically zoom PTZ-capable cameras via UI joystick and directional controls with sub-200ms command latency.
+2. Server automatically stops camera movement 1500ms after last command to prevent runaway pan if client disconnects.
+3. User can save, recall, and tour camera preset positions.
+
+**Plans**: 2 plans
+
+Plans:
+
+- [ ] 09-01: Backend ONVIF Profile S PTZ service (`ContinuousMove`, `Stop`, `AbsoluteMove`, presets) with 1.5s watchdog auto-stop and REST API.
+- [ ] 09-02: React virtual joystick overlay, optical zoom slider, preset quick-select buttons, and live stream keyboard shortcuts.
+
+---
+
+### Phase 10: Server-Side Clip Export & Timeline Bookmarks
+
+**Goal**: Deliver fast zero-transcode packet-copy MP4 cutting, optional timestamp OSD burn-in/watermark, 48h TTL disk cleanup, and 24-hour timeline incident bookmarks with color-coded markers and search.
+**Mode**: mvp
+**Depends on**: Phase 3, Phase 5, Phase 8
+**Requirements**: [EXT-04, EXT-05]
+**Success Criteria**:
+
+1. User can select a timeline range and download an exported MP4 clip stitched via FFmpeg packet copy (`-c copy`) in under 3 seconds.
+2. User can optionally export with burned-in timestamp OSD and camera name watermark without crashing host CPU.
+3. Exported clips are verified via SHA-256 hash and automatically pruned after 48 hours.
+4. Operators can create, edit, and search timeline bookmarks with category tags and visual scrubber pins.
+
+**Plans**: 2 plans
+
+Plans:
+
+- [ ] 10-01: FFmpeg server-side export engine (packet-copy concat + OSD burn-in filter), async job queue, SHA-256 verification, and 48h TTL cleanup.
+- [ ] 10-02: PostgreSQL bookmark catalog, timeline marker integration on React scrubber, and clip export download dialog.
+
+---
+
+### Phase 11: Motion Zones & Spatial Exclusion Masking
+
+**Goal**: Provide an interactive SVG polygon editor on camera tiles, normalize vertices (0.0 to 1.0), and filter native ONVIF motion events via ray-casting containment before dispatching alerts.
+**Mode**: mvp
+**Depends on**: Phase 6, Phase 8
+**Requirements**: [EXT-02]
+**Success Criteria**:
+
+1. User can draw custom inclusion and exclusion polygon zones directly over the camera feed in the web UI.
+2. System normalizes polygon coordinates and accurately drops motion events outside active zones using Ray-Casting.
+3. Real-time alert notifications and guard chimes only trigger when motion occurs inside active zones.
+
+**Plans**: 2 plans
+
+Plans:
+
+- [ ] 11-01: Motion zone schema, API routes, and Ray-Casting (`point-in-polygon`) event filter intercepting ONVIF motion triggers.
+- [ ] 11-02: React interactive SVG polygon canvas editor for camera tiles with inclusion/exclusion zone color coding.
+
+---
+
+### Phase 12: Camera Health Telemetry, WhatsApp Alerts & Webhooks
+
+**Goal**: Implement background camera health polling (ping + MediaMTX stream telemetry), token-bucket rate-limited WhatsApp incident alerting, and HMAC-SHA256 signed outbound webhooks.
+**Mode**: mvp
+**Depends on**: Phase 6, Phase 11
+**Requirements**: [EXT-06, EXT-07, EXT-08]
+**Success Criteria**:
+
+1. System detects camera disconnection within 30 seconds and raises `camera.offline` event with visual dashboard badge.
+2. System sends formatted WhatsApp incident alerts with snapshot links, enforcing a 60-second anti-spam cooldown.
+3. Outbound HTTP POST webhooks deliver HMAC-SHA256 signed payloads to external access control and barrier systems asynchronously.
+
+**Plans**: 2 plans
+
+Plans:
+
+- [ ] 12-01: Background health monitor worker (TCP ping + MediaMTX path metrics) with `camera.degraded`/`offline` alert events and UI indicators.
+- [ ] 12-02: Token-bucket WhatsApp Cloud API / Twilio dispatcher, HMAC-SHA256 outbound webhook engine, and admin notification settings UI.
+
+---
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -193,3 +307,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 5. 24-Hour Playback & Timeline Scrubbing | 2/2 | Complete    | 2026-09-24 |
 | 6. ONVIF Motion Alerts & Real-Time Event Feed | 2/2 | Complete    | 2026-09-24 |
 | 7. Packaging, CI/SBOM & Single-Command Deployment | 2/2 | Complete    | 2026-09-24 |
+| 8. Operator Role & Granular RBAC | 0/2 | Not started | - |
+| 9. ONVIF PTZ Controls & Camera Presets | 0/2 | Not started | - |
+| 10. Server-Side Clip Export & Timeline Bookmarks | 0/2 | Not started | - |
+| 11. Motion Zones & Spatial Exclusion Masking | 0/2 | Not started | - |
+| 12. Camera Health Telemetry, WhatsApp Alerts & Webhooks | 0/2 | Not started | - |
