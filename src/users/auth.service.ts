@@ -59,4 +59,72 @@ export class AuthService {
     const admin = await this.createUser(defaultUsername, defaultPassword, Role.ADMIN);
     return admin;
   }
+
+  async listUsers(): Promise<Array<Omit<User, 'passwordHash'>>> {
+    return this.prisma.user.findMany({
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async getUserPermissions(userId: string) {
+    return this.prisma.cameraPermission.findMany({
+      where: { userId },
+      include: {
+        camera: {
+          select: { id: true, name: true, status: true },
+        },
+      },
+    });
+  }
+
+  async setUserPermissions(
+    userId: string,
+    permissions: Array<{
+      cameraId: string;
+      canViewLive?: boolean;
+      canViewPlayback?: boolean;
+      canControlPtz?: boolean;
+      canExportClips?: boolean;
+    }>
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new Error(`User with id '${userId}' not found`);
+    }
+
+    const results = [];
+    for (const p of permissions) {
+      const upserted = await this.prisma.cameraPermission.upsert({
+        where: {
+          userId_cameraId: {
+            userId,
+            cameraId: p.cameraId,
+          },
+        },
+        create: {
+          userId,
+          cameraId: p.cameraId,
+          canViewLive: p.canViewLive ?? true,
+          canViewPlayback: p.canViewPlayback ?? true,
+          canControlPtz: p.canControlPtz ?? false,
+          canExportClips: p.canExportClips ?? false,
+        },
+        update: {
+          canViewLive: p.canViewLive,
+          canViewPlayback: p.canViewPlayback,
+          canControlPtz: p.canControlPtz,
+          canExportClips: p.canExportClips,
+        },
+      });
+      results.push(upserted);
+    }
+    return results;
+  }
 }

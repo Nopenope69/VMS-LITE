@@ -1,8 +1,9 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { Role } from '@prisma/client';
-import { authenticate, requireRole } from '../users/rbac.guard.js';
+import { authenticate, requireRole, requireCameraPermission } from '../users/rbac.guard.js';
 import { cameraService, LicenseLimitExceededError } from './camera.service.js';
 import { ManualCameraSchema, OnboardCameraSchema } from './camera.types.js';
+import { prisma } from '../db/prisma.js';
 
 export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
@@ -74,15 +75,32 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
   /**
    * GET /api/cameras
-   * Lists all onboarded cameras (Admin or Viewer)
+   * Lists all onboarded cameras (Admin, Operator, or Viewer)
    */
   app.get(
     '/',
     {
       preHandler: [authenticate],
     },
-    async (_request, reply) => {
+    async (request, reply) => {
       const cameras = await cameraService.listCameras();
+
+      if (request.user?.role === Role.OPERATOR) {
+        const permissions = await prisma.cameraPermission.findMany({
+          where: {
+            userId: request.user.id,
+            OR: [{ canViewLive: true }, { canViewPlayback: true }],
+          },
+          select: { cameraId: true },
+        });
+        const allowedIds = new Set(permissions.map((p) => p.cameraId));
+        const filtered = cameras.filter((c) => allowedIds.has(c.id));
+        return reply.send({
+          count: filtered.length,
+          cameras: filtered,
+        });
+      }
+
       return reply.send({
         count: cameras.length,
         cameras,
@@ -92,12 +110,12 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
   /**
    * GET /api/cameras/:id
-   * Retrieves single camera details (Admin or Viewer)
+   * Retrieves single camera details (Admin, Operator, or Viewer)
    */
   app.get<{ Params: { id: string } }>(
     '/:id',
     {
-      preHandler: [authenticate],
+      preHandler: [authenticate, requireCameraPermission('canViewLive')],
     },
     async (request, reply) => {
       const { id } = request.params;

@@ -12,6 +12,7 @@ datasource db {
 
 enum Role {
   ADMIN
+  OPERATOR
   VIEWER
 }
 
@@ -22,6 +23,8 @@ model User {
   role         Role     @default(VIEWER)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  cameraPermissions CameraPermission[]
 
   @@map("users")
 }
@@ -63,6 +66,7 @@ model Camera {
 
   recordings Recording[]
   schedules  RecordingSchedule[]
+  cameraPermissions CameraPermission[]
 
   @@index([status])
   @@map("cameras")
@@ -101,4 +105,21 @@ model RecordingSchedule {
 
   @@index([cameraId, dayOfWeek])
   @@map("recording_schedules")
+}
+
+model CameraPermission {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cameraId        String   @map("camera_id")
+  camera          Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  canViewLive     Boolean  @default(true)  @map("can_view_live")
+  canViewPlayback Boolean  @default(true)  @map("can_view_playback")
+  canControlPtz   Boolean  @default(false) @map("can_control_ptz")
+  canExportClips  Boolean  @default(false) @map("can_export_clips")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, cameraId])
+  @@map("camera_permissions")
 }
