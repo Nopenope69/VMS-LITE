@@ -10,6 +10,7 @@ export interface LiveGridProps {
   onAssignSlot: (slotIndex: number, camera: CameraStreamInfo) => void;
   onClearSlot: (slotIndex: number) => void;
   activeMotionCameraIds?: Set<string>;
+  canControlPtz?: boolean | ((cameraId: string) => boolean);
   iceServers?: RTCIceServer[];
 }
 
@@ -20,6 +21,7 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
   onAssignSlot,
   onClearSlot,
   activeMotionCameraIds,
+  canControlPtz = true,
   iceServers,
 }) => {
   const [maximizedSlotIndex, setMaximizedSlotIndex] = useState<number | null>(null);
@@ -64,6 +66,10 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
   // If a slot is maximized, display only that slot in 1x1 mode
   if (maximizedSlotIndex !== null) {
     const camera = assignedSlots[maximizedSlotIndex] || null;
+    const isPtzAllowed = typeof canControlPtz === 'function'
+      ? (camera ? canControlPtz(camera.cameraId) : false)
+      : canControlPtz;
+
     return (
       <div className="w-full h-full p-2.5 bg-[#090d16] flex items-center justify-center">
         <LiveCameraTile
@@ -76,6 +82,7 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
           isMaximized={true}
           forceSubStream={false} // Fullscreen solo uses high-res main stream
           hasMotionAlert={Boolean(camera && activeMotionCameraIds?.has(camera.cameraId))}
+          canControlPtz={isPtzAllowed}
           iceServers={iceServers}
         />
       </div>
@@ -91,22 +98,29 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
       className={`grid w-full h-full gap-2.5 p-2.5 bg-[#090d16] overflow-auto ${getGridClasses(layout)}`}
       style={{ minHeight: '400px' }}
     >
-      {slotsToRender.map((cam, idx) => (
-        <div key={`grid-slot-${idx}`} className="w-full h-full min-h-[220px]">
-          <LiveCameraTile
-            slotIndex={idx}
-            camera={cam}
-            availableCameras={cameras}
-            onAssignCamera={onAssignSlot}
-            onClearSlot={onClearSlot}
-            onMaximizeSlot={(slot) => setMaximizedSlotIndex(slot)}
-            isMaximized={false}
-            forceSubStream={forceSubStream}
-            hasMotionAlert={Boolean(cam && activeMotionCameraIds?.has(cam.cameraId))}
-            iceServers={iceServers}
-          />
-        </div>
-      ))}
+      {slotsToRender.map((cam, idx) => {
+        const isPtzAllowed = typeof canControlPtz === 'function'
+          ? (cam ? canControlPtz(cam.cameraId) : false)
+          : canControlPtz;
+
+        return (
+          <div key={`grid-slot-${idx}`} className="w-full h-full min-h-[220px]">
+            <LiveCameraTile
+              slotIndex={idx}
+              camera={cam}
+              availableCameras={cameras}
+              onAssignCamera={onAssignSlot}
+              onClearSlot={onClearSlot}
+              onMaximizeSlot={(slot) => setMaximizedSlotIndex(slot)}
+              isMaximized={false}
+              forceSubStream={forceSubStream}
+              hasMotionAlert={Boolean(cam && activeMotionCameraIds?.has(cam.cameraId))}
+              canControlPtz={isPtzAllowed}
+              iceServers={iceServers}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 };

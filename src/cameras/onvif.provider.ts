@@ -2,9 +2,11 @@ import onvif from 'node-onvif';
 import {
   CameraConnectionParams,
   CameraDeviceDetails,
+  CameraPreset,
   CameraStreamProfile,
   DiscoveredCamera,
   ICameraProvider,
+  PtzMoveParams,
 } from './camera-provider.interface.js';
 
 export interface OnvifProviderOptions {
@@ -12,6 +14,7 @@ export interface OnvifProviderOptions {
   mockCameras?: DiscoveredCamera[];
   mockProfiles?: CameraStreamProfile[];
   mockDetails?: CameraDeviceDetails;
+  mockPresets?: CameraPreset[];
 }
 
 export class OnvifCameraProvider implements ICameraProvider {
@@ -19,6 +22,9 @@ export class OnvifCameraProvider implements ICameraProvider {
   private readonly mockCameras: DiscoveredCamera[];
   private readonly mockProfiles: CameraStreamProfile[];
   private readonly mockDetails: CameraDeviceDetails;
+  private readonly mockPresets: CameraPreset[];
+  private mockPresetState: Map<string, CameraPreset[]> = new Map();
+  public lastPtzCommand?: { type: 'move' | 'stop' | 'goto' | 'set' | 'remove'; speed?: any; presetToken?: string; presetName?: string };
 
   constructor(opts: OnvifProviderOptions = {}) {
     this.mockMode = opts.mockMode ?? (process.env.NODE_ENV === 'test');
@@ -29,6 +35,10 @@ export class OnvifCameraProvider implements ICameraProvider {
       model: 'IPC',
       firmwareVersion: '1.0.0',
     };
+    this.mockPresets = opts.mockPresets || [
+      { token: 'preset-1', name: 'Main Gate' },
+      { token: 'preset-2', name: 'Loading Bay' },
+    ];
   }
 
   /**
@@ -237,6 +247,188 @@ export class OnvifCameraProvider implements ICameraProvider {
     } catch {
       return url;
     }
+  }
+
+  /**
+   * Helper to instantiate an OnvifDevice
+   */
+  private createDevice(params: CameraConnectionParams): any {
+    return new onvif.OnvifDevice({
+      xaddr: params.xaddr || `http://${params.ip}:${params.port || 80}/onvif/device_service`,
+      user: params.username || '',
+      pass: params.password || '',
+    });
+  }
+
+  /**
+   * Commands camera to continuously move Pan, Tilt, or Zoom.
+   */
+  async ptzMove(params: CameraConnectionParams, move: PtzMoveParams, profileToken?: string): Promise<void> {
+    this.lastPtzCommand = { type: 'move', speed: move.speed };
+    if (this.mockMode) {
+      return;
+    }
+
+    const device = this.createDevice(params);
+    await device.init();
+    if (profileToken) {
+      device.changeProfile(profileToken);
+    }
+
+    const timeout = typeof move.timeout === 'number' ? move.timeout : 1;
+    await device.ptzMove({
+      speed: {
+        x: move.speed.x || 0,
+        y: move.speed.y || 0,
+        z: move.speed.z || 0,
+      },
+      timeout,
+    });
+  }
+
+  /**
+   * Immediately halts active PTZ movement.
+   */
+  async ptzStop(params: CameraConnectionParams, profileToken?: string): Promise<void> {
+    this.lastPtzCommand = { type: 'stop' };
+    if (this.mockMode) {
+      return;
+    }
+
+    const device = this.createDevice(params);
+    await device.init();
+    if (profileToken) {
+      device.changeProfile(profileToken);
+    }
+
+    await device.ptzStop();
+  }
+
+  /**
+   * Retrieves saved presets from the camera.
+   */
+  async getPresets(params: CameraConnectionParams, profileToken?: string): Promise<CameraPreset[]> {
+    const key = params.ip || params.xaddr || 'default';
+    if (this.mockMode) {
+      if (!this.mockPresetState.has(key)) {
+        this.mockPresetState.set(key, [...this.mockPresets]);
+      }
+      return this.mockPresetState.get(key) || [];
+    }
+
+    const device = this.createDevice(params);
+    await device.init();
+    if (profileToken) {
+      device.changeProfile(profileToken);
+    }
+
+    if (!device.services?.ptz) {
+      throw new Error('Camera does not support PTZ service');
+    }
+
+    const targetProfile = device.current_profile?.token || profileToken;
+    const res = await device.services.ptz.getPresets({ ProfileToken: targetProfile });
+    const rawPresets = res?.data?.GetPresetsResponse?.Preset || res?.Body?.GetPresetsResponse?.Preset;
+    const list = Array.isArray(rawPresets) ? rawPresets : rawPresets ? [rawPresets] : [];
+
+    return list.map((p: any) => ({
+      token: p.$?.token || p.token || '',
+      name: p.Name || p.name || (p.$?.token ? `Preset ${p.$?.token}` : 'Preset'),
+    }));
+  }
+
+  /**
+   * Moves camera to target preset position.
+   */
+  async gotoPreset(params: CameraConnectionParams, presetToken: string, profileToken?: string): Promise<void> {
+    this.lastPtzCommand = { type: 'goto', presetToken };
+    if (this.mockMode) {
+      return;
+    }
+
+    const device = this.createDevice(params);
+    await device.init();
+    if (profileToken) {
+      device.changeProfile(profileToken);
+    }
+
+    if (!device.services?.ptz) {
+      throw new Error('Camera does not support PTZ service');
+    }
+
+    const targetProfile = device.current_profile?.token || profileToken;
+    await device.services.ptz.gotoPreset({
+      ProfileToken: targetProfile,
+      PresetToken: presetToken,
+    });
+  }
+
+  /**
+   * Saves current position as a named preset and returns preset token.
+   */
+  async setPreset(params: CameraConnectionParams, presetName: string, profileToken?: string): Promise<string> {
+    this.lastPtzCommand = { type: 'set', presetName };
+    const key = params.ip || params.xaddr || 'default';
+    if (this.mockMode) {
+      if (!this.mockPresetState.has(key)) {
+        this.mockPresetState.set(key, [...this.mockPresets]);
+      }
+      const presets = this.mockPresetState.get(key)!;
+      const token = `preset-${Date.now()}`;
+      presets.push({ token, name: presetName });
+      return token;
+    }
+
+    const device = this.createDevice(params);
+    await device.init();
+    if (profileToken) {
+      device.changeProfile(profileToken);
+    }
+
+    if (!device.services?.ptz) {
+      throw new Error('Camera does not support PTZ service');
+    }
+
+    const targetProfile = device.current_profile?.token || profileToken;
+    const res = await device.services.ptz.setPreset({
+      ProfileToken: targetProfile,
+      PresetName: presetName,
+    });
+
+    const token = res?.data?.SetPresetResponse?.PresetToken || res?.Body?.SetPresetResponse?.PresetToken || `preset-${Date.now()}`;
+    return token;
+  }
+
+  /**
+   * Deletes a saved preset from the camera.
+   */
+  async removePreset(params: CameraConnectionParams, presetToken: string, profileToken?: string): Promise<void> {
+    this.lastPtzCommand = { type: 'remove', presetToken };
+    const key = params.ip || params.xaddr || 'default';
+    if (this.mockMode) {
+      if (!this.mockPresetState.has(key)) {
+        this.mockPresetState.set(key, [...this.mockPresets]);
+      }
+      const presets = this.mockPresetState.get(key)!;
+      this.mockPresetState.set(key, presets.filter((p) => p.token !== presetToken));
+      return;
+    }
+
+    const device = this.createDevice(params);
+    await device.init();
+    if (profileToken) {
+      device.changeProfile(profileToken);
+    }
+
+    if (!device.services?.ptz) {
+      throw new Error('Camera does not support PTZ service');
+    }
+
+    const targetProfile = device.current_profile?.token || profileToken;
+    await device.services.ptz.removePreset({
+      ProfileToken: targetProfile,
+      PresetToken: presetToken,
+    });
   }
 }
 

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: "Package 2 (Extended)"
-status: planned
-stopped_at: "Phase 9 planned (09-01, 09-02) — Ready for execution"
-last_updated: "2026-09-24T22:25:00.000Z"
-last_activity: "2026-09-24 -- Phase 9 planned (ONVIF PTZ Controls & Camera Presets)"
+status: ready_to_plan
+stopped_at: "Phase 9 complete — Ready for Phase 10 (Server-Side Clip Export & Timeline Bookmarks)"
+last_updated: "2026-09-24T22:37:00.000Z"
+last_activity: "2026-09-24 -- Phase 9 completed (ONVIF PTZ Controls & Camera Presets)"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 10
-  completed_plans: 2
-  percent: 20
+  completed_plans: 4
+  percent: 40
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: `.planning/PROJECT.md` (updated 2026-09-24)
 
 ## Current Position
 
-Phase: Phase 9 (ONVIF PTZ Controls & Camera Presets)
-Plan: Ready to execute (09-01, 09-02)
-Status: Planned and validated (09-01, 09-02 ready)
-Last activity: 2026-09-24 -- Phase 9 planned (2 plans, research, validation strategy)
+Phase: Phase 10 (Server-Side Clip Export & Timeline Bookmarks)
+Plan: Ready to plan (10-01, 10-02)
+Status: Phase 9 delivered and verified; Ready for Phase 10 planning
+Last activity: 2026-09-24 -- Phase 9 completed (2 plans, 13 PTZ tests passing)
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 

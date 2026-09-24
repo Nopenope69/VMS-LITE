@@ -14,4 +14,5 @@ export * from './hooks/usePlaybackSession.js';
 export * from './context/AuthContext.js';
 export * from './components/OperatorBanner.js';
 export * from './components/UserManagementModal.js';
+export * from './components/PtzControlsOverlay.js';
 

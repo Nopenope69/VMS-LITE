@@ -44,6 +44,39 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
   const { user, token: authContextToken, isAdmin, isOperator } = useAuth();
   const effectiveToken = authToken || authContextToken || '';
   const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
+  const [ptzAllowedMap, setPtzAllowedMap] = useState<Map<string, boolean>>(new Map());
+
+  // Fetch operator permissions for PTZ control check
+  useEffect(() => {
+    if (isAdmin) return;
+    if (isOperator && user && effectiveToken) {
+      fetch(`/api/auth/users/${user.id}/permissions`, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.permissions) {
+            const map = new Map<string, boolean>();
+            for (const p of data.permissions) {
+              map.set(p.cameraId, Boolean(p.canControlPtz));
+            }
+            setPtzAllowedMap(map);
+          }
+        })
+        .catch(() => {});
+    } else {
+      setPtzAllowedMap(new Map());
+    }
+  }, [user, isAdmin, isOperator, effectiveToken]);
+
+  const isPtzAllowedForCamera = useCallback(
+    (cameraId: string) => {
+      if (isAdmin) return true;
+      if (isOperator) return ptzAllowedMap.get(cameraId) ?? false;
+      return false;
+    },
+    [isAdmin, isOperator, ptzAllowedMap]
+  );
 
   // Motion alerts and drawer state
   const [events, setEvents] = useState<EventPayload[]>([]);
@@ -352,6 +385,7 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
             onAssignSlot={handleAssignSlot}
             onClearSlot={handleClearSlot}
             activeMotionCameraIds={activeMotionCameraIds}
+            canControlPtz={isPtzAllowedForCamera}
             iceServers={iceServers}
           />
         )}

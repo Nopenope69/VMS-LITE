@@ -8,6 +8,8 @@ import { cameraRoutes } from './cameras/camera.routes.js';
 import { recordingRoutes } from './recordings/recording.routes.js';
 import { streamingRoutes } from './streaming/streaming.routes.js';
 import { playbackRoutes } from './playback/playback.routes.js';
+import { ptzRoutes } from './ptz/ptz.routes.js';
+import { ptzService } from './ptz/ptz.service.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
 import { onvifEventListenerService as defaultOnvifEvents, OnvifEventListenerService } from './events/onvif-events.service.js';
 import { recordingEngine as defaultRecordingEngine, RecordingEngine } from './recordings/recording-engine.js';
@@ -61,6 +63,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(eventRoutes, { prefix: '/api' });
   await app.register(cameraRoutes, { prefix: '/api/cameras' });
+  await app.register(ptzRoutes, { prefix: '/api/cameras' });
   await app.register(recordingRoutes, { prefix: '/api/recordings' });
   await app.register(streamingRoutes, { prefix: '/api/streaming' });
   await app.register(playbackRoutes, { prefix: '/api/playback' });
@@ -76,6 +79,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
 
   // Clean up on server close
   app.addHook('onClose', async () => {
+    ptzService.destroy();
     await engine.stop();
     onvifEvents.stop();
     wsFeed.close();

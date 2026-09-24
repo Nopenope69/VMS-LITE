@@ -74,7 +74,7 @@ Active requirements for Milestone v2.0. Each maps directly to roadmap phases.
 - [ ] **EXT-02**: User can draw inclusion and exclusion polygon zones on camera feeds to filter out environmental false positives (swaying branches, traffic) using normalized ray-casting coordinate containment.
 
 ### Camera PTZ Controls
-- [ ] **EXT-03**: User can control ONVIF Profile S Pan-Tilt-Zoom cameras using an on-screen joystick pad, optical zoom controls, preset positions, and a 1.5-second server-side safety watchdog auto-stop.
+- [x] **EXT-03**: User can control ONVIF Profile S Pan-Tilt-Zoom cameras using an on-screen joystick pad, optical zoom controls, preset positions, and a 1.5-second server-side safety watchdog auto-stop. (Validated in Phase 9)
 
 ### Video Export & Watermarking
 - [ ] **EXT-04**: User can export recorded time ranges into standalone MP4 video files with optional burned-in timestamp OSD and camera watermark, served with SHA-256 integrity verification and automated 48-hour disk pruning.
@@ -162,7 +162,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DEP-04 | Phase 7 | Complete |
 | EXT-01 | Phase 8 | Complete |
 | EXT-02 | Phase 11 | Planned |
-| EXT-03 | Phase 9 | Planned |
+| EXT-03 | Phase 9 | Complete |
 | EXT-04 | Phase 10 | Planned |
 | EXT-05 | Phase 10 | Planned |
 | EXT-06 | Phase 12 | Planned |

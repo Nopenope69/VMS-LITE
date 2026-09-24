@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Maximize2, Minimize2, Video, X, Layers } from 'lucide-react';
+import { Maximize2, Minimize2, Video, X, Layers, Compass } from 'lucide-react';
 import { WhepHlsPlayer } from './WhepHlsPlayer.js';
+import { PtzControlsOverlay } from './PtzControlsOverlay.js';
 
 export interface CameraStreamInfo {
   cameraId: string;
@@ -23,6 +24,7 @@ export interface LiveCameraTileProps {
   isMaximized?: boolean;
   forceSubStream?: boolean;
   hasMotionAlert?: boolean;
+  canControlPtz?: boolean;
   iceServers?: RTCIceServer[];
 }
 
@@ -36,9 +38,11 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
   isMaximized = false,
   forceSubStream = false,
   hasMotionAlert = false,
+  canControlPtz = true,
   iceServers,
 }) => {
   const [streamQuality, setStreamQuality] = useState<'main' | 'sub'>('main');
+  const [showPtzOverlay, setShowPtzOverlay] = useState(false);
 
   // If grid forces sub-stream (2x2, 3x3) and sub-stream is available, use it (T-04-03)
   const activeQuality =
@@ -97,6 +101,25 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
               >
                 <Layers className="w-3 h-3" />
                 <span>{activeQuality.toUpperCase()}</span>
+              </button>
+            )}
+
+            {/* PTZ Controls Toggle Button */}
+            {canControlPtz && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowPtzOverlay(!showPtzOverlay);
+                }}
+                title={showPtzOverlay ? 'Hide PTZ Controls' : 'Open PTZ Controls'}
+                className={`p-1.5 rounded transition-colors ${
+                  showPtzOverlay
+                    ? 'bg-[#4fc3f7]/20 text-[#4fc3f7] border border-[#4fc3f7]/50'
+                    : 'text-slate-400 hover:text-white rounded hover:bg-[#1f2937]'
+                }`}
+              >
+                <Compass className="w-4 h-4" />
               </button>
             )}
 
@@ -159,6 +182,16 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
                 <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping" />
                 <span>MOTION ALERT</span>
               </div>
+            )}
+
+            {/* Floating PTZ Controls HUD */}
+            {showPtzOverlay && canControlPtz && (
+              <PtzControlsOverlay
+                cameraId={camera.cameraId}
+                cameraName={camera.name}
+                onClose={() => setShowPtzOverlay(false)}
+                isMaximized={isMaximized}
+              />
             )}
 
             {/* Double-Click Hint on Maximized */}

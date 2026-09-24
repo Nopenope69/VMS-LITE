@@ -17,7 +17,7 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 
 ### Milestone v2.0: Package 2 (Extended)
 - [x] **Phase 8: Operator Role & Granular RBAC** - 3-tier user role hierarchy, camera permission ACLs, route authorization hooks, and operator workstation UI (completed 2026-09-24)
-- [ ] **Phase 9: ONVIF PTZ Controls & Camera Presets** - Profile S PTZ integration, virtual joystick overlay, preset tours, and 1.5s safety watchdog
+- [x] **Phase 9: ONVIF PTZ Controls & Camera Presets** - Profile S PTZ integration, virtual joystick overlay, preset tours, and 1.5s safety watchdog (completed 2026-09-24)
 - [ ] **Phase 10: Server-Side Clip Export & Timeline Bookmarks** - FFmpeg packet-copy MP4 cutting, burned-in timestamp OSD/watermark, 48h TTL cleanup, and timeline incident bookmarks
 - [ ] **Phase 11: Motion Zones & Spatial Exclusion Masking** - Interactive SVG polygon drawing, normalized ray-casting coordinate containment, and alert suppression
 - [ ] **Phase 12: Camera Health Telemetry, WhatsApp Alerts & Webhooks** - 30s ping/stream health monitoring, rate-limited WhatsApp incident alerting, and signed integration webhooks
@@ -224,8 +224,8 @@ Plans:
 
 Plans:
 
-- [ ] 09-01: Backend ONVIF Profile S PTZ service (`ContinuousMove`, `Stop`, `AbsoluteMove`, presets) with 1.5s watchdog auto-stop and REST API.
-- [ ] 09-02: React virtual joystick overlay, optical zoom slider, preset quick-select buttons, and live stream keyboard shortcuts.
+- [x] 09-01: Backend ONVIF Profile S PTZ service (`ContinuousMove`, `Stop`, `AbsoluteMove`, presets) with 1.5s watchdog auto-stop and REST API.
+- [x] 09-02: React virtual joystick overlay, optical zoom slider, preset quick-select buttons, and live stream keyboard shortcuts.
 
 ---
 
@@ -308,7 +308,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. ONVIF Motion Alerts & Real-Time Event Feed | 2/2 | Complete    | 2026-09-24 |
 | 7. Packaging, CI/SBOM & Single-Command Deployment | 2/2 | Complete    | 2026-09-24 |
 | 8. Operator Role & Granular RBAC | 2/2 | Complete    | 2026-09-24 |
-| 9. ONVIF PTZ Controls & Camera Presets | 0/2 | Not started | - |
+| 9. ONVIF PTZ Controls & Camera Presets | 2/2 | Complete    | 2026-09-24 |
 | 10. Server-Side Clip Export & Timeline Bookmarks | 0/2 | Not started | - |
 | 11. Motion Zones & Spatial Exclusion Masking | 0/2 | Not started | - |
 | 12. Camera Health Telemetry, WhatsApp Alerts & Webhooks | 0/2 | Not started | - |
