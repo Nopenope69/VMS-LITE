@@ -1,9 +1,13 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { authenticate } from '../users/rbac.guard.js';
+import { Role } from '@prisma/client';
+import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { recordingService } from './recording.service.js';
+import { recordingScheduler } from './recording-scheduler.service.js';
+import { storageManager } from './storage-manager.service.js';
 import {
   RecordingQuerySchema,
   SegmentCompleteWebhookSchema,
+  SetCameraScheduleSchema,
 } from './recording.types.js';
 
 export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -33,6 +37,112 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       });
     }
   });
+
+  /**
+   * GET /api/recordings/storage
+   * Returns current storage utilization metrics and thresholds (REC-04)
+   */
+  app.get(
+    '/storage',
+    {
+      preHandler: [authenticate],
+    },
+    async (_request, reply) => {
+      try {
+        const metrics = await storageManager.getStorageMetrics();
+        return reply.send({
+          success: true,
+          metrics,
+        });
+      } catch (err: any) {
+        return reply.status(500).send({
+          error: 'StorageMetricsFailed',
+          message: err.message || 'Failed to retrieve storage metrics',
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /api/recordings/storage/cleanup
+   * Triggers manual disk check and FIFO rollover if threshold exceeded (Admin only, REC-05, T-03-05)
+   */
+  app.post(
+    '/storage/cleanup',
+    {
+      preHandler: [authenticate, requireRole(Role.ADMIN)],
+    },
+    async (_request, reply) => {
+      try {
+        const result = await storageManager.checkStorage();
+        return reply.send({
+          success: true,
+          ...result,
+        });
+      } catch (err: any) {
+        return reply.status(500).send({
+          error: 'CleanupFailed',
+          message: err.message || 'Failed to run storage cleanup',
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /api/recordings/schedules/:cameraId
+   * Retrieves recording schedule configuration for a camera (Admin & Viewer, REC-02)
+   */
+  app.get<{ Params: { cameraId: string } }>(
+    '/schedules/:cameraId',
+    {
+      preHandler: [authenticate],
+    },
+    async (request, reply) => {
+      const { cameraId } = request.params;
+      const schedule = await recordingScheduler.getCameraSchedule(cameraId);
+      return reply.send({
+        success: true,
+        cameraId,
+        schedule,
+      });
+    }
+  );
+
+  /**
+   * POST /api/recordings/schedules/:cameraId
+   * Sets recording schedule mode and windows for a camera (Admin only, REC-02, T-03-05)
+   */
+  app.post<{ Params: { cameraId: string } }>(
+    '/schedules/:cameraId',
+    {
+      preHandler: [authenticate, requireRole(Role.ADMIN)],
+    },
+    async (request, reply) => {
+      const { cameraId } = request.params;
+      try {
+        const body = SetCameraScheduleSchema.parse(request.body);
+        await recordingScheduler.setCameraSchedule(cameraId, body.mode, body.windows);
+        const schedule = await recordingScheduler.getCameraSchedule(cameraId);
+        return reply.send({
+          success: true,
+          cameraId,
+          schedule,
+        });
+      } catch (err: any) {
+        if (err.name === 'ZodError') {
+          return reply.status(400).send({
+            error: 'ValidationError',
+            message: 'Invalid schedule payload',
+            details: err.errors,
+          });
+        }
+        return reply.status(500).send({
+          error: 'ScheduleUpdateFailed',
+          message: err.message || 'Failed to update camera schedule',
+        });
+      }
+    }
+  );
 
   /**
    * GET /api/recordings

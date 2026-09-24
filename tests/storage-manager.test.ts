@@ -111,7 +111,7 @@ describe('StorageManager & FIFO Rollover (REC-04, REC-05)', () => {
       expect(result.metrics.usedPercent).toBe(85);
       expect(warningEvent).not.toBeNull();
       expect(warningEvent.type).toBe('storage.warning');
-      expect(warningEvent.severity).toBe('warn');
+      expect(warningEvent.severity).toBe('warning');
     });
 
     it('emits storage.full and triggers rollover when usage exceeds critical threshold (90%)', async () => {

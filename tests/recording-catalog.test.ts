@@ -141,4 +141,91 @@ describe('Recording Catalog & Webhook Routes (/api/recordings)', () => {
       expect(res.statusCode).toBe(404);
     });
   });
+
+  describe('Recording Schedules (/api/recordings/schedules/:cameraId)', () => {
+    it('returns default schedule for camera', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/recordings/schedules/cam_test_1',
+        headers: { authorization: `Bearer ${viewerToken}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.success).toBe(true);
+      expect(body.schedule.mode).toBe('CONTINUOUS');
+    });
+
+    it('rejects schedule updates from VIEWER role (403 Forbidden)', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/recordings/schedules/cam_test_1',
+        headers: { authorization: `Bearer ${viewerToken}` },
+        payload: {
+          mode: 'SCHEDULED',
+          windows: [{ dayOfWeek: 1, startHour: 8, startMin: 0, endHour: 17, endMin: 0 }],
+        },
+      });
+
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('allows ADMIN to update recording schedule', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/recordings/schedules/cam_test_1',
+        headers: { authorization: `Bearer ${adminToken}` },
+        payload: {
+          mode: 'SCHEDULED',
+          windows: [{ dayOfWeek: 1, startHour: 8, startMin: 0, endHour: 17, endMin: 0 }],
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.success).toBe(true);
+      expect(body.schedule.mode).toBe('SCHEDULED');
+      expect(body.schedule.windows).toHaveLength(1);
+    });
+  });
+
+  describe('Storage Management (/api/recordings/storage)', () => {
+    it('allows Viewer to inspect storage metrics', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/recordings/storage',
+        headers: { authorization: `Bearer ${viewerToken}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.success).toBe(true);
+      expect(body.metrics.totalBytes).toBeGreaterThan(0);
+      expect(body.metrics.warningThresholdPercent).toBe(80);
+      expect(body.metrics.criticalThresholdPercent).toBe(90);
+    });
+
+    it('rejects storage cleanup trigger from VIEWER role (403 Forbidden)', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/recordings/storage/cleanup',
+        headers: { authorization: `Bearer ${viewerToken}` },
+      });
+
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('allows ADMIN to trigger storage check and cleanup', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/recordings/storage/cleanup',
+        headers: { authorization: `Bearer ${adminToken}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.success).toBe(true);
+      expect(['ok', 'warning', 'critical']).toContain(body.status);
+    });
+  });
 });

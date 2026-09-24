@@ -148,7 +148,7 @@ export class StorageManager {
       await this.eventBus.emitEvent({
         type: 'storage.warning',
         source: 'storage.manager',
-        severity: 'warn',
+        severity: 'warning',
         metadata: {
           usedPercent: metrics.usedPercent,
           totalBytes: metrics.totalBytes,
