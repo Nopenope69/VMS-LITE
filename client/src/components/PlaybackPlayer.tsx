@@ -96,34 +96,36 @@ export const PlaybackPlayer: React.FC<PlaybackPlayerProps> = ({
           className="w-full h-full object-contain"
         />
       ) : (
-        <div className="flex flex-col items-center justify-center text-zinc-500 gap-2 p-4 text-center">
-          <Film className="w-12 h-12 stroke-[1.2] text-zinc-600" />
-          <p className="text-sm font-medium text-zinc-400">No Recording Segment Selected</p>
-          <p className="text-xs text-zinc-600 max-w-sm">
-            Select a camera and seek to an active recorded interval on the 24-hour timeline below to start playback.
+        <div className="flex flex-col items-center justify-center text-slate-500 gap-3 p-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-[#111827] border border-[#1f2937] flex items-center justify-center">
+            <Film className="w-8 h-8 text-[#4fc3f7]/60" />
+          </div>
+          <p className="text-sm font-bold text-slate-200">No Recording Segment Selected</p>
+          <p className="text-xs text-slate-400 max-w-sm">
+            Select a camera above and seek on the blue 24-hour timeline below to start instant zero-transcode fMP4 playback.
           </p>
         </div>
       )}
 
-      {/* Buffering Spinner */}
+      {/* Buffering Spinner in Ion Blue */}
       {isBuffering && (
-        <div className="absolute inset-0 bg-black/40 flex items-center justify-center pointer-events-none">
-          <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
+        <div className="absolute inset-0 bg-[#090d16]/60 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+          <Loader2 className="w-10 h-10 text-[#4fc3f7] animate-spin" />
         </div>
       )}
 
       {/* Error Overlay */}
       {playbackError && (
-        <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center p-4 text-center">
-          <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
-          <p className="text-sm font-semibold text-zinc-200">{playbackError}</p>
+        <div className="absolute inset-0 bg-[#090d16]/90 flex flex-col items-center justify-center p-4 text-center border border-red-900/50">
+          <AlertCircle className="w-10 h-10 text-[#fb923c] mb-2" />
+          <p className="text-sm font-bold text-slate-100">{playbackError}</p>
         </div>
       )}
 
-      {/* Camera Name Tag */}
+      {/* Camera Name Tag & Playing Indicator */}
       {cameraName && (
-        <div className="absolute top-3 left-3 bg-zinc-950/80 backdrop-blur-sm border border-zinc-800 px-2.5 py-1 rounded text-xs font-medium text-zinc-200 pointer-events-none flex items-center gap-1.5 shadow">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+        <div className="absolute top-3 left-3 bg-[#111827]/90 backdrop-blur-sm border border-[#1f2937] px-3 py-1.5 rounded-md text-xs font-bold text-slate-100 pointer-events-none flex items-center gap-2 shadow-lg">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#4fc3f7] shadow-[0_0_6px_#4fc3f7] animate-pulse" />
           <span>{cameraName}</span>
         </div>
       )}

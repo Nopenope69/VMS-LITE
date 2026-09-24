@@ -143,9 +143,9 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
   const hours = Array.from({ length: 13 }, (_, i) => i * 2);
 
   return (
-    <div className={`w-full select-none flex flex-col gap-1.5 ${className}`}>
+    <div className={`w-full select-none flex flex-col gap-2 ${className}`}>
       {/* 24h Time Ruler Header */}
-      <div className="relative w-full h-5 text-[10px] text-zinc-400 font-mono">
+      <div className="relative w-full h-5 text-[11px] text-slate-400 font-mono">
         {hours.map((hour) => {
           const percent = (hour / 24) * 100;
           return (
@@ -154,49 +154,49 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
               className="absolute transform -translate-x-1/2 flex flex-col items-center pointer-events-none"
               style={{ left: `${percent}%` }}
             >
-              <span>{String(hour).padStart(2, '0')}:00</span>
-              <div className="w-[1px] h-1.5 bg-zinc-700 mt-0.5" />
+              <span className="font-semibold">{String(hour).padStart(2, '0')}:00</span>
+              <div className="w-[1px] h-1.5 bg-[#1f2937] mt-0.5" />
             </div>
           );
         })}
       </div>
 
-      {/* Main Timeline Scrubber Bar */}
+      {/* Main Timeline Scrubber Bar with Taller Ergonomic Hit Area */}
       <div
         ref={trackRef}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
-        className="relative w-full h-10 bg-zinc-900 border border-zinc-700 rounded-md cursor-pointer overflow-hidden group shadow-inner"
+        className="relative w-full h-12 bg-[#090d16] border border-[#1f2937] rounded-lg cursor-pointer overflow-hidden group shadow-inner transition-colors hover:border-[#4fc3f7]/40"
       >
         {/* Background minor grid lines every 1 hour */}
         {Array.from({ length: 24 }, (_, i) => (
           <div
             key={`minor-tick-${i}`}
-            className="absolute top-0 bottom-0 w-[1px] bg-zinc-800/80 pointer-events-none"
+            className="absolute top-0 bottom-0 w-[1px] bg-[#1f2937]/70 pointer-events-none"
             style={{ left: `${(i / 24) * 100}%` }}
           />
         ))}
 
-        {/* Recorded Video Spans (Green / Emerald Blocks) */}
+        {/* Recorded Video Spans (Continuous Blue Blocks in Palette 1) */}
         {renderedSpans.map((rendered) => rendered && (
           <div
             key={rendered.key}
-            className="absolute top-1 bottom-1 bg-emerald-500 hover:bg-emerald-400 rounded-sm opacity-90 transition-colors pointer-events-none"
+            className="absolute top-1.5 bottom-1.5 bg-[#0284c7] hover:bg-[#38bdf8] rounded-sm opacity-95 transition-colors pointer-events-none shadow-[0_0_6px_rgba(2,132,199,0.4)]"
             style={{ left: rendered.left, width: rendered.width }}
           />
         ))}
 
-        {/* Hover Tooltip and Hover Line */}
+        {/* Hover Tooltip and Hover Line in Solar Amber */}
         {hoverPosition && (
           <>
             <div
-              className="absolute top-0 bottom-0 w-[1px] bg-amber-400/70 pointer-events-none"
+              className="absolute top-0 bottom-0 w-[1px] bg-[#fb923c] pointer-events-none"
               style={{ left: `${hoverPosition.xPercent}%` }}
             />
             <div
-              className="absolute -top-7 transform -translate-x-1/2 px-1.5 py-0.5 bg-zinc-800 border border-zinc-600 rounded text-[10px] font-mono text-zinc-100 pointer-events-none shadow"
+              className="absolute -top-8 transform -translate-x-1/2 px-2 py-0.5 bg-[#111827] border border-[#fb923c] rounded text-[11px] font-mono text-[#fb923c] font-bold pointer-events-none shadow-xl z-30"
               style={{ left: `${hoverPosition.xPercent}%` }}
             >
               {hoverPosition.timeStr}
@@ -204,23 +204,23 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
           </>
         )}
 
-        {/* Playhead Indicator (Red needle with current time flag) */}
+        {/* Playhead Indicator (Ion Blue needle with glowing pin) */}
         <div
-          className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10 pointer-events-none flex flex-col items-center"
+          className="absolute top-0 bottom-0 w-[2px] bg-[#4fc3f7] z-20 pointer-events-none flex flex-col items-center"
           style={{ left: `${playheadPercent}%` }}
         >
           {/* Playhead marker pin at top */}
-          <div className="w-2.5 h-2.5 bg-red-500 rotate-45 -mt-1 shadow-sm" />
-          <div className="flex-1 w-[2px] bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+          <div className="w-3 h-3 bg-[#4fc3f7] rotate-45 -mt-1.5 shadow-[0_0_10px_#4fc3f7]" />
+          <div className="flex-1 w-[2px] bg-[#4fc3f7] shadow-[0_0_12px_#4fc3f7]" />
         </div>
       </div>
 
       {/* Playhead Time Badge */}
-      <div className="flex justify-between items-center text-xs text-zinc-400 font-mono px-1">
+      <div className="flex justify-between items-center text-xs text-slate-400 font-mono px-1">
         <span>00:00:00</span>
-        <div className="text-zinc-200 font-medium flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse" />
-          <span>Seek: {formatTimeFromOffset(currentOffsetMs)}</span>
+        <div className="text-slate-100 font-bold flex items-center gap-2 bg-[#111827] px-3 py-1 rounded-md border border-[#1f2937]">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#4fc3f7] inline-block shadow-[0_0_6px_#4fc3f7] animate-pulse" />
+          <span className="text-[#4fc3f7]">SEEK TIME: {formatTimeFromOffset(currentOffsetMs)}</span>
         </div>
         <span>23:59:59</span>
       </div>

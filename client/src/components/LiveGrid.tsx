@@ -9,6 +9,7 @@ export interface LiveGridProps {
   assignedSlots: (CameraStreamInfo | null)[];
   onAssignSlot: (slotIndex: number, camera: CameraStreamInfo) => void;
   onClearSlot: (slotIndex: number) => void;
+  activeMotionCameraIds?: Set<string>;
   iceServers?: RTCIceServer[];
 }
 
@@ -18,9 +19,21 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
   assignedSlots,
   onAssignSlot,
   onClearSlot,
+  activeMotionCameraIds,
   iceServers,
 }) => {
   const [maximizedSlotIndex, setMaximizedSlotIndex] = useState<number | null>(null);
+
+  // Keyboard accessibility: ESC key exits maximized single-camera view
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && maximizedSlotIndex !== null) {
+        setMaximizedSlotIndex(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [maximizedSlotIndex]);
 
   const getSlotCount = (mode: GridLayoutMode): number => {
     switch (mode) {
@@ -52,7 +65,7 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
   if (maximizedSlotIndex !== null) {
     const camera = assignedSlots[maximizedSlotIndex] || null;
     return (
-      <div className="w-full h-full p-2 bg-zinc-950 flex items-center justify-center">
+      <div className="w-full h-full p-2.5 bg-[#090d16] flex items-center justify-center">
         <LiveCameraTile
           slotIndex={maximizedSlotIndex}
           camera={camera}
@@ -62,6 +75,7 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
           onMaximizeSlot={() => setMaximizedSlotIndex(null)}
           isMaximized={true}
           forceSubStream={false} // Fullscreen solo uses high-res main stream
+          hasMotionAlert={Boolean(camera && activeMotionCameraIds?.has(camera.cameraId))}
           iceServers={iceServers}
         />
       </div>
@@ -74,7 +88,7 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
 
   return (
     <div
-      className={`grid w-full h-full gap-2 p-2 bg-zinc-950 overflow-auto ${getGridClasses(layout)}`}
+      className={`grid w-full h-full gap-2.5 p-2.5 bg-[#090d16] overflow-auto ${getGridClasses(layout)}`}
       style={{ minHeight: '400px' }}
     >
       {slotsToRender.map((cam, idx) => (
@@ -88,6 +102,7 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
             onMaximizeSlot={(slot) => setMaximizedSlotIndex(slot)}
             isMaximized={false}
             forceSubStream={forceSubStream}
+            hasMotionAlert={Boolean(cam && activeMotionCameraIds?.has(cam.cameraId))}
             iceServers={iceServers}
           />
         </div>

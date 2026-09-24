@@ -142,65 +142,65 @@ export const WhepHlsPlayer: React.FC<WhepHlsPlayerProps> = ({
       {/* Top Status Overlays */}
       <div className="absolute top-2 left-2 flex items-center gap-1.5 z-10">
         {/* LIVE Status Badge */}
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold tracking-wider bg-black/60 text-white backdrop-blur-sm">
+        <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-bold tracking-wider bg-[#090d16]/90 text-slate-100 border border-[#1f2937] backdrop-blur-sm shadow-sm">
           <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
           <span>LIVE</span>
         </div>
 
-        {/* Protocol Badge (LIVE-01 WebRTC vs LIVE-02 HLS) */}
+        {/* Protocol Badge (WebRTC Ion Blue vs HLS Solar Amber) */}
         <div
           className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono tracking-wider backdrop-blur-sm ${
             mode === 'webrtc'
-              ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30'
-              : 'bg-amber-950/80 text-amber-300 border border-amber-500/30'
+              ? 'bg-[#4fc3f7]/15 text-[#4fc3f7] border border-[#4fc3f7]/40'
+              : 'bg-[#fb923c]/15 text-[#fb923c] border border-[#fb923c]/40'
           }`}
         >
           <Radio className="w-3 h-3" />
-          <span>{mode === 'webrtc' ? 'WebRTC' : 'HLS Fallback'}</span>
+          <span>{mode === 'webrtc' ? 'WHEP HD' : 'HLS Fallback'}</span>
         </div>
       </div>
 
       {/* Bottom Control Overlays */}
-      <div className="absolute bottom-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+      <div className="absolute bottom-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-10">
         <button
           type="button"
           onClick={toggleMute}
           title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
-          className="p-1.5 rounded bg-black/60 hover:bg-black/80 text-white/90 transition-colors backdrop-blur-sm"
+          className="p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded bg-[#111827]/90 hover:bg-[#1f2937] text-slate-200 border border-[#1f2937] transition-colors backdrop-blur-sm shadow-md"
         >
-          {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          {isMuted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-[#4fc3f7]" />}
         </button>
 
         <button
           type="button"
           onClick={startWhepPlayback}
           title="Reconnect Stream"
-          className="p-1.5 rounded bg-black/60 hover:bg-black/80 text-white/90 transition-colors backdrop-blur-sm"
+          className="p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded bg-[#111827]/90 hover:bg-[#1f2937] text-slate-200 border border-[#1f2937] transition-colors backdrop-blur-sm shadow-md"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="w-4 h-4 text-[#4fc3f7]" />
         </button>
       </div>
 
       {/* Connecting Overlay */}
       {status === 'connecting' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 z-20 text-white">
-          <RefreshCw className="w-6 h-6 animate-spin text-zinc-400 mb-2" />
-          <span className="text-xs text-zinc-400 font-mono">Connecting to live feed...</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#090d16]/85 z-20 text-slate-200">
+          <RefreshCw className="w-7 h-7 animate-spin text-[#4fc3f7] mb-2" />
+          <span className="text-xs text-[#4fc3f7] font-mono tracking-wide">CONNECTING TO VIDEO FEED...</span>
         </div>
       )}
 
       {/* Error Overlay */}
       {status === 'error' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/90 z-20 text-white p-4 text-center">
-          <AlertTriangle className="w-8 h-8 text-amber-500 mb-2" />
-          <span className="text-sm font-medium text-zinc-200">Stream Unavailable</span>
-          <span className="text-xs text-zinc-400 mt-1 max-w-xs">{errorMessage || 'Camera stream offline or unreachable'}</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#090d16]/95 border border-red-900/50 z-20 text-slate-100 p-4 text-center">
+          <AlertTriangle className="w-10 h-10 text-[#fb923c] mb-2" />
+          <span className="text-sm font-bold text-slate-100 tracking-wide">NO SIGNAL - CAMERA OFFLINE</span>
+          <span className="text-xs text-slate-400 mt-1 max-w-xs">{errorMessage || 'Check camera network cable or PoE switch power'}</span>
           <button
             type="button"
             onClick={startWhepPlayback}
-            className="mt-3 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-xs rounded text-zinc-200 transition-colors"
+            className="mt-3 px-4 py-2 min-h-[40px] bg-[#4fc3f7] hover:bg-[#38bdf8] text-[#090d16] font-bold text-xs rounded transition-colors shadow-lg"
           >
-            Retry Connection
+            Retry Video Connection
           </button>
         </div>
       )}

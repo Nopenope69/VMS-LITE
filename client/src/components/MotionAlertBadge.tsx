@@ -18,26 +18,29 @@ export const MotionAlertBadge: React.FC<MotionAlertBadgeProps> = ({
     <button
       type="button"
       onClick={onClick}
-      title="Alert Notifications"
-      className={`relative p-2 rounded-md transition-colors ${
+      title="Alert Notifications Feed"
+      className={`relative min-h-[40px] px-3 py-1.5 flex items-center gap-2 rounded-md transition-all duration-200 border font-medium text-xs ${
         hasActiveMotion
-          ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
-          : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+          ? 'bg-[#fb923c]/20 text-[#fb923c] border-[#fb923c] shadow-[0_0_12px_rgba(251,146,60,0.3)] animate-pulse'
+          : 'bg-[#111827] text-slate-300 border-[#1f2937] hover:text-white hover:border-[#4fc3f7]/60'
       } ${className}`}
     >
       {hasActiveMotion ? (
-        <Activity className="w-4 h-4 animate-pulse text-amber-400" />
+        <Activity className="w-4 h-4 text-[#fb923c] animate-spin" />
       ) : (
-        <Bell className="w-4 h-4" />
+        <Bell className="w-4 h-4 text-slate-400" />
       )}
+      <span className="hidden sm:inline font-semibold">
+        {hasActiveMotion ? 'MOTION' : 'ALERTS'}
+      </span>
 
-      {/* Unread Count Badge */}
+      {/* Unread Count Badge in Solar Amber or Ion Blue */}
       {unreadCount > 0 && (
         <span
-          className={`absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full text-white shadow-sm ${
+          className={`flex items-center justify-center min-w-[20px] h-[20px] px-1.5 text-[11px] font-bold rounded-full shadow-sm font-mono ${
             hasActiveMotion
-              ? 'bg-amber-500 animate-bounce'
-              : 'bg-emerald-600'
+              ? 'bg-[#fb923c] text-gray-950 animate-bounce'
+              : 'bg-[#4fc3f7] text-gray-950'
           }`}
         >
           {unreadCount > 99 ? '99+' : unreadCount}
@@ -46,9 +49,9 @@ export const MotionAlertBadge: React.FC<MotionAlertBadgeProps> = ({
 
       {/* Active Motion Pulse Dot */}
       {hasActiveMotion && (
-        <span className="absolute bottom-1 right-1 flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+        <span className="absolute -top-1 -right-1 flex h-3 w-3">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#fb923c] opacity-75" />
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-[#fb923c]" />
         </span>
       )}
     </button>
