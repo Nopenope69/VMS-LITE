@@ -56,10 +56,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Deployment & Packaging
 
-- [ ] **DEP-01**: Integrator can execute a single-command installer to provision Node, MediaMTX, PostgreSQL, and Coturn
-- [ ] **DEP-02**: Integrator can achieve first live view on customer hardware in under 30 minutes
-- [ ] **DEP-03**: CI automatically generates release Software Bill of Materials (SBOM) and license inventory (`third_party/licenses/`, `third_party/notices/`)
-- [ ] **DEP-04**: Release build verifies 100% permissive licensing compliance (MIT, Apache-2.0, BSD)
+- [x] **DEP-01**: Integrator can execute a single-command installer to provision Node, MediaMTX, PostgreSQL, and Coturn
+- [x] **DEP-02**: Integrator can achieve first live view on customer hardware in under 30 minutes
+- [x] **DEP-03**: CI automatically generates release Software Bill of Materials (SBOM) and license inventory (`third_party/licenses/`, `third_party/notices/`)
+- [x] **DEP-04**: Release build verifies 100% permissive licensing compliance (MIT, Apache-2.0, BSD)
 
 ---
 
@@ -143,10 +143,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LIC-02 | Phase 1 | Complete |
 | LIC-03 | Phase 1 | Complete |
 | LIC-04 | Phase 1 | Complete |
-| DEP-01 | Phase 7 | Pending |
-| DEP-02 | Phase 7 | Pending |
-| DEP-03 | Phase 7 | Pending |
-| DEP-04 | Phase 7 | Pending |
+| DEP-01 | Phase 7 | Complete |
+| DEP-02 | Phase 7 | Complete |
+| DEP-03 | Phase 7 | Complete |
+| DEP-04 | Phase 7 | Complete |
 | EXT-01 | Deferred | v2 Extended |
 | EXT-02 | Deferred | v2 Extended |
 | EXT-03 | Deferred | v2 Extended |

@@ -174,8 +174,8 @@ Plans:
 
 Plans:
 
-- [ ] 07-01: Create Docker Compose production deployment stack, setup script, and systemd service unit.
-- [ ] 07-02: Implement CI SBOM generator, license compliance scanner, and power-loss recovery smoke tests.
+- [x] 07-01: Create Docker Compose production deployment stack, setup script, and systemd service unit.
+- [x] 07-02: Implement CI SBOM generator, license compliance scanner, and power-loss recovery smoke tests.
 
 ---
 
@@ -192,4 +192,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Live View Grid & Mobile Streaming | 2/2 | Complete    | 2026-09-24 |
 | 5. 24-Hour Playback & Timeline Scrubbing | 2/2 | Complete    | 2026-09-24 |
 | 6. ONVIF Motion Alerts & Real-Time Event Feed | 2/2 | Complete    | 2026-09-24 |
-| 7. Packaging, CI/SBOM & Single-Command Deployment | 0/2 | Not started | - |
+| 7. Packaging, CI/SBOM & Single-Command Deployment | 2/2 | Complete    | 2026-09-24 |
