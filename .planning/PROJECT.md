@@ -15,6 +15,7 @@ Sub-30-minute installer deployment with reliable CP Plus parity (live view, sche
 - [x] **CORE-RBAC**: 2-role RBAC (Admin, Viewer) for single-site installation (Validated in Phase 1)
 - [x] **CORE-EVT**: Extensible Core event bus and unified Event schema (`camera.offline/online`, `recording.started/stopped`, `storage.warning/full`, `motion.detected`) (Validated in Phase 1)
 - [x] **CORE-LIC**: Ed25519 offline license verification and capability registry (`capabilities.has(...)`) gating route namespaces and modules (Validated in Phase 1)
+- [x] **CORE-ONVIF**: ONVIF discovery and onboarding (Profile T primary with Profile S fallback) via an internal `CameraProvider` adapter over a pinned ONVIF client library (Validated in Phase 2)
 
 ### Active
 
@@ -22,7 +23,6 @@ Sub-30-minute installer deployment with reliable CP Plus parity (live view, sche
 - [ ] **CORE-REC**: Continuous and scheduled recording via MediaMTX segment recording and record-complete hooks populating the catalog
 - [ ] **CORE-PLAY**: Playback with 24h timeline scrubbing using MediaMTX's playback server (`/list`, `/get` fMP4/MP4)
 - [ ] **CORE-ALERT**: Motion alerts sourced from ONVIF Profile T native motion/tampering events emitted through the Core event bus
-- [ ] **CORE-ONVIF**: ONVIF discovery and onboarding (Profile T primary with Profile S fallback) via an internal `CameraProvider` adapter over a pinned ONVIF client library
 - [ ] **CORE-STOR**: Local disk retention policy with automatic rollover and storage warning/full events
 - [ ] **CORE-INST**: Single-command installer achieving <30-minute deployment on customer hardware
 - [ ] **CORE-REMOTE**: Mobile remote view support (WebRTC via STUN/relay/coturn for NAT traversal)
@@ -58,9 +58,9 @@ Sub-30-minute installer deployment with reliable CP Plus parity (live view, sche
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| MediaMTX as media plane | MIT licensed, provides RTSP ingest, WebRTC, segment recording, and playback server out-of-the-box | — Pending (Phase 2) |
+| MediaMTX as media plane | MIT licensed, provides RTSP ingest, WebRTC, segment recording, and playback server out-of-the-box | ✓ Validated in Phase 2 |
 | Clean-room repo & schema | Avoids inheriting VigilOne complexity, git history secrets risk, and multi-tenant overhead | ✓ Validated in Phase 1 |
-| ONVIF Profile T + S via `CameraProvider` adapter | Broad compatibility across Hikvision, Dahua, CP Plus, Prama without vendor lock-in | — Pending (Phase 2) |
+| ONVIF Profile T + S via `CameraProvider` adapter | Broad compatibility across Hikvision, Dahua, CP Plus, Prama without vendor lock-in | ✓ Validated in Phase 2 |
 | Capability registry over plan checks | Prevents tier checks from polluting controllers and UI; enables clean Package 1/2/3 modularity | ✓ Validated in Phase 1 |
 | Generic event framework in Core | Allows future Package 3 AI detections to act as regular bus producers without schema rewrites | ✓ Validated in Phase 1 |
 | Native ONVIF motion events in v1 | Delivers motion detection without heavy computer vision runtimes or CPU overhead | — Pending (Phase 6) |
@@ -83,4 +83,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-24 after Phase 1 completion*
+*Last updated: 2026-09-24 after Phase 2 completion*

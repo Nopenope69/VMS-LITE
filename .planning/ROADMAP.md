@@ -7,7 +7,7 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 ## Phases
 
 - [x] **Phase 1: Foundation, Licensing & Event Bus** - Clean-room control plane, schema, Ed25519 Capability Registry, 2-role RBAC, and unified event model (completed 2026-09-23)
-- [ ] **Phase 2: Media Plane & Camera Onboarding** - MediaMTX integration, internal `CameraProvider` adapter, ONVIF Profile T/S auto-discovery, and RTSP stream provisioning
+- [x] **Phase 2: Media Plane & Camera Onboarding** - MediaMTX integration, internal `CameraProvider` adapter, ONVIF Profile T/S auto-discovery, and RTSP stream provisioning (completed 2026-09-24)
 - [ ] **Phase 3: Recording Engine & Storage Management** - Continuous and scheduled packet-preserving fMP4 recording, segment cataloging, and automated disk rollover
 - [ ] **Phase 4: Live View Grid & Mobile Streaming** - React multi-camera live grid (1x1, 2x2, 3x3), WebRTC (WHEP) with HLS fallback, and Coturn NAT traversal
 - [ ] **Phase 5: 24-Hour Playback & Timeline Scrubbing** - Visual 24-hour timeline scrubber, MediaMTX playback server queries, and frame-accurate seeking
@@ -59,11 +59,11 @@ Plans:
 
 **Wave 1**
 
-- [ ] 02-01: Configure MediaMTX media plane service and build internal `CameraProvider` abstraction wrapping pinned ONVIF client.
+- [x] 02-01: Configure MediaMTX media plane service and build internal `CameraProvider` abstraction wrapping pinned ONVIF client.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02: Implement ONVIF WS-Discovery, camera authentication, stream URI retrieval, and dynamic MediaMTX path configuration sync.
+- [x] 02-02: Implement ONVIF WS-Discovery, camera authentication, stream URI retrieval, and dynamic MediaMTX path configuration sync.
 
 ---
 
@@ -182,7 +182,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation, Licensing & Event Bus | 3/3 | Complete    | 2026-09-23 |
-| 2. Media Plane & Camera Onboarding | 0/2 | Not started | - |
+| 2. Media Plane & Camera Onboarding | 2/2 | Complete    | 2026-09-24 |
 | 3. Recording Engine & Storage Management | 0/2 | Not started | - |
 | 4. Live View Grid & Mobile Streaming | 0/2 | Not started | - |
 | 5. 24-Hour Playback & Timeline Scrubbing | 0/2 | Not started | - |

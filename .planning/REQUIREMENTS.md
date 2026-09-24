@@ -16,11 +16,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Camera Discovery & Management
 
-- [ ] **CAM-01**: Integrator can automatically discover IP cameras on the local network via ONVIF WS-Discovery probe
-- [ ] **CAM-02**: Integrator can authenticate and onboard discovered ONVIF Profile T cameras with Profile S fallback
-- [ ] **CAM-03**: Integrator can manually add RTSP camera streams when ONVIF discovery is unavailable
-- [ ] **CAM-04**: System isolates all camera operations behind an internal `CameraProvider` adapter interface
-- [ ] **CAM-05**: System automatically syncs camera streams with MediaMTX configuration paths
+- [x] **CAM-01**: Integrator can automatically discover IP cameras on the local network via ONVIF WS-Discovery probe
+- [x] **CAM-02**: Integrator can authenticate and onboard discovered ONVIF Profile T cameras with Profile S fallback
+- [x] **CAM-03**: Integrator can manually add RTSP camera streams when ONVIF discovery is unavailable
+- [x] **CAM-04**: System isolates all camera operations behind an internal `CameraProvider` adapter interface
+- [x] **CAM-05**: System automatically syncs camera streams with MediaMTX configuration paths
 
 ### Recording & Storage Management
 
@@ -118,11 +118,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LIVE-02 | Phase 4 | Pending |
 | LIVE-03 | Phase 4 | Pending |
 | LIVE-04 | Phase 4 | Pending |
-| CAM-01 | Phase 2 | Pending |
-| CAM-02 | Phase 2 | Pending |
-| CAM-03 | Phase 2 | Pending |
-| CAM-04 | Phase 2 | Pending |
-| CAM-05 | Phase 2 | Pending |
+| CAM-01 | Phase 2 | Complete |
+| CAM-02 | Phase 2 | Complete |
+| CAM-03 | Phase 2 | Complete |
+| CAM-04 | Phase 2 | Complete |
+| CAM-05 | Phase 2 | Complete |
 | REC-01 | Phase 3 | Pending |
 | REC-02 | Phase 3 | Pending |
 | REC-03 | Phase 3 | Pending |
