@@ -8,17 +8,21 @@ import { cameraRoutes } from './cameras/camera.routes.js';
 import { recordingRoutes } from './recordings/recording.routes.js';
 import { streamingRoutes } from './streaming/streaming.routes.js';
 import { playbackRoutes } from './playback/playback.routes.js';
+import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
 
 export interface ServerOptions {
   logger?: boolean;
   jwtSecret?: string;
   licensing?: LicensingPluginOptions;
+  wsFeedService?: WebSocketFeedService;
 }
 
 export async function createServer(opts: ServerOptions = {}): Promise<FastifyInstance> {
   const app = fastify({
     logger: opts.logger ?? (process.env.NODE_ENV !== 'test'),
   });
+
+  const wsFeed = opts.wsFeedService || webSocketFeedService;
 
   // Permissive CORS
   await app.register(cors, {
@@ -54,6 +58,18 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(recordingRoutes, { prefix: '/api/recordings' });
   await app.register(streamingRoutes, { prefix: '/api/streaming' });
   await app.register(playbackRoutes, { prefix: '/api/playback' });
+
+  // Attach WebSocket feed service when server is ready
+  app.addHook('onReady', async () => {
+    wsFeed.attach(app.server, async (token: string) => {
+      return app.jwt.verify(token);
+    });
+  });
+
+  // Clean up on server close
+  app.addHook('onClose', async () => {
+    wsFeed.close();
+  });
 
   return app;
 }
