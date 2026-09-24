@@ -1,0 +1,77 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: basic_vms_app
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-vms_user}:${POSTGRES_PASSWORD:-vms_password}@postgres:5432/${POSTGRES_DB:-basic_vms}?schema=public
+      - JWT_SECRET=${JWT_SECRET:-vms_jwt_secret_change_in_production}
+      - MEDIAMTX_API_URL=http://mediamtx:9997
+      - MEDIAMTX_WHEP_URL=http://localhost:8889
+      - MEDIAMTX_HLS_URL=http://localhost:8888
+      - MEDIAMTX_PLAYBACK_URL=http://localhost:9996
+      - RECORDING_STORAGE_PATH=/recordings
+      - COTURN_SECRET=${COTURN_SECRET:-vms_turn_secret_change_in_production}
+      - COTURN_EXTERNAL_IP=${COTURN_EXTERNAL_IP:-}
+    volumes:
+      - vms_recordings:/recordings
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+    restart: unless-stopped
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.11.0
+    container_name: basic_vms_mediamtx
+    ports:
+      - "8554:8554"          # RTSP ingest
+      - "8888:8888"          # HLS live stream
+      - "8889:8889"          # WebRTC / WHEP live stream (TCP)
+      - "8889:8889/udp"      # WebRTC / WHEP live stream (UDP)
+      - "9996:9996"          # fMP4 playback server
+      - "9997:9997"          # Control plane API
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+      - vms_recordings:/recordings
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: basic_vms_postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-vms_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-vms_password}
+      - POSTGRES_DB=${POSTGRES_DB:-basic_vms}
+    volumes:
+      - vms_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vms_user} -d ${POSTGRES_DB:-basic_vms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  coturn:
+    image: coturn/coturn:4.6.2-alpine
+    container_name: basic_vms_coturn
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "49152-49160:49152-49160/udp"
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    restart: unless-stopped
+
+volumes:
+  vms_postgres_data:
+    name: basic_vms_postgres_data
+  vms_recordings:
+    name: basic_vms_recordings

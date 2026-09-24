@@ -1,0 +1,60 @@
+###############################################
+# MediaMTX Configuration for Basic VMS Core
+###############################################
+
+# General logging
+logLevel: info
+logDestinations: [stdout]
+
+# Internal Control Plane API
+api: yes
+apiAddress: :9997
+
+# Metrics
+metrics: no
+
+# Playback Server (fMP4 query and playback: PLAY-03)
+playback: yes
+playbackAddress: :9996
+
+# RTSP Server (Camera Ingest: CAM-05)
+rtsp: yes
+rtspAddress: :8554
+protocols: [tcp, udp]
+encryption: "no"
+
+# WebRTC / WHEP Server (Low Latency Live Streaming: LIVE-01)
+webrtc: yes
+webrtcAddress: :8889
+webrtcEncryption: "no"
+webrtcLocalUDPAddress: :8889
+webrtcIPsFromInterfaces: yes
+
+# HLS Server (Fallback Streaming: LIVE-02)
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsVariant: fmp4
+hlsSegmentCount: 5
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+
+# Path Configuration & Automated Segment Recording (REC-01, REC-03)
+paths:
+  all:
+    # Allow dynamic on-demand RTSP ingest from Fastify control plane
+    source: publisher
+
+    # Segment Recording Configuration (zero-transcode fMP4)
+    record: yes
+    recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S
+    recordFormat: fmp4
+    recordPartDuration: 1s
+    recordSegmentDuration: 60s
+    recordDeleteAfter: 0s
+
+    # Segment Completion Webhook dispatched to Basic VMS Core (REC-03)
+    runOnRecordSegmentComplete: >
+      curl -s -X POST http://app:3000/api/recordings/segments/complete
+      -H "Content-Type: application/json"
+      -d '{"path":"$MTX_PATH","segmentPath":"$MTX_SEGMENT_PATH","duration":60,"size":1048576,"startTime":"$MTX_SEGMENT_START"}'
