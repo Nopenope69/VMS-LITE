@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Maximize2, Minimize2, Video, X, Layers, Compass } from 'lucide-react';
+import { Maximize2, Minimize2, Video, X, Layers, Compass, ShieldAlert } from 'lucide-react';
 import { WhepHlsPlayer } from './WhepHlsPlayer.js';
 import { PtzControlsOverlay } from './PtzControlsOverlay.js';
+import { MotionZoneEditorModal } from './MotionZoneEditorModal.js';
+import { useAuth } from '../context/AuthContext.js';
 
 export interface CameraStreamInfo {
   cameraId: string;
@@ -25,6 +27,7 @@ export interface LiveCameraTileProps {
   forceSubStream?: boolean;
   hasMotionAlert?: boolean;
   canControlPtz?: boolean;
+  isAdmin?: boolean;
   iceServers?: RTCIceServer[];
 }
 
@@ -39,10 +42,14 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
   forceSubStream = false,
   hasMotionAlert = false,
   canControlPtz = true,
+  isAdmin,
   iceServers,
 }) => {
+  const { isAdmin: authIsAdmin } = useAuth();
+  const canEditZones = isAdmin !== undefined ? isAdmin : authIsAdmin;
   const [streamQuality, setStreamQuality] = useState<'main' | 'sub'>('main');
   const [showPtzOverlay, setShowPtzOverlay] = useState(false);
+  const [showZoneModal, setShowZoneModal] = useState(false);
 
   // If grid forces sub-stream (2x2, 3x3) and sub-stream is available, use it (T-04-03)
   const activeQuality =
@@ -120,6 +127,25 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
                 }`}
               >
                 <Compass className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Motion Zones Modal Trigger (Admin only) */}
+            {canEditZones && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowZoneModal(true);
+                }}
+                title="Configure Motion Zones & Spatial Exclusion"
+                className={`p-1.5 rounded transition-colors ${
+                  showZoneModal
+                    ? 'bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/50'
+                    : 'text-slate-400 hover:text-[#10b981] rounded hover:bg-[#1f2937]'
+                }`}
+              >
+                <ShieldAlert className="w-4 h-4" />
               </button>
             )}
 
@@ -234,6 +260,16 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
           </div>
         )}
       </div>
+
+      {/* Motion Zone Editor Modal */}
+      {showZoneModal && camera && (
+        <MotionZoneEditorModal
+          isOpen={showZoneModal}
+          onClose={() => setShowZoneModal(false)}
+          cameraId={camera.cameraId}
+          cameraName={camera.name}
+        />
+      )}
     </div>
   );
 };
