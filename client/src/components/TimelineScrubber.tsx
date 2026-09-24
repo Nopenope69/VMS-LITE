@@ -1,11 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
+import type { TimelineSpan } from '../hooks/usePlaybackSession.js';
 
-export interface TimelineSpan {
-  startTime: string; // ISO string
-  endTime: string;   // ISO string
-  durationSeconds?: number;
-  recordingId?: string;
-}
+export type { TimelineSpan };
 
 export interface TimelineScrubberProps {
   currentDate: string; // YYYY-MM-DD

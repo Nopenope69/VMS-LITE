@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { TimelineSpan } from '../components/TimelineScrubber.js';
+
+export interface TimelineSpan {
+  startTime: string;
+  endTime: string;
+  durationSeconds: number;
+  recordingId?: string;
+}
 
 export interface CameraOption {
   id: string;
@@ -99,7 +105,7 @@ export function usePlaybackSession(options: UsePlaybackSessionOptions = {}): Pla
         throw new Error(`Failed to load camera list: HTTP ${res.status}`);
       }
 
-      const data = await res.json();
+      const data = (await res.json()) as any;
       const list: CameraOption[] = Array.isArray(data)
         ? data.map((c: any) => ({ id: c.id, name: c.name, mediaMtxPath: c.mediaMtxPath }))
         : (data.cameras || []).map((c: any) => ({ id: c.id, name: c.name, mediaMtxPath: c.mediaMtxPath }));
@@ -133,7 +139,7 @@ export function usePlaybackSession(options: UsePlaybackSessionOptions = {}): Pla
         throw new Error(`Failed to fetch timeline: HTTP ${res.status}`);
       }
 
-      const data = await res.json();
+      const data = (await res.json()) as any;
       const spans: TimelineSpan[] = (data.spans || []).map((s: any) => ({
         startTime: s.startTime,
         endTime: s.endTime,
@@ -180,7 +186,7 @@ export function usePlaybackSession(options: UsePlaybackSessionOptions = {}): Pla
           throw new Error(`Failed to resolve playback stream: HTTP ${res.status}`);
         }
 
-        const data = await res.json();
+        const data = (await res.json()) as any;
         setStreamUrl(data.fmp4StreamUrl);
         setStreamStartTime(seekDate);
       } catch (err: any) {
