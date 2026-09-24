@@ -267,8 +267,8 @@ Plans:
 
 Plans:
 
-- [ ] 11-01: Motion zone schema, API routes, and Ray-Casting (`point-in-polygon`) event filter intercepting ONVIF motion triggers.
-- [ ] 11-02: React interactive SVG polygon canvas editor for camera tiles with inclusion/exclusion zone color coding.
+- [x] 11-01: Motion zone schema, API routes, and Ray-Casting (`point-in-polygon`) event filter intercepting ONVIF motion triggers.
+- [x] 11-02: React interactive SVG polygon canvas editor for camera tiles with inclusion/exclusion zone color coding.
 
 ---
 
@@ -310,5 +310,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Operator Role & Granular RBAC | 2/2 | Complete    | 2026-09-24 |
 | 9. ONVIF PTZ Controls & Camera Presets | 2/2 | Complete    | 2026-09-24 |
 | 10. Server-Side Clip Export & Timeline Bookmarks | 2/2 | Complete    | 2026-09-24 |
-| 11. Motion Zones & Spatial Exclusion Masking | 0/2 | Not started | - |
+| 11. Motion Zones & Spatial Exclusion Masking | 2/2 | Complete    | 2026-09-24 |
 | 12. Camera Health Telemetry, WhatsApp Alerts & Webhooks | 0/2 | Not started | - |
