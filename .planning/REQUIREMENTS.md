@@ -24,11 +24,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Recording & Storage Management
 
-- [ ] **REC-01**: System records video streams continuously in packet-preserving fMP4 segments without re-encoding
-- [ ] **REC-02**: System supports scheduled recording windows per camera (e.g. business hours vs after-hours)
-- [ ] **REC-03**: System captures segment completion events via MediaMTX `runOnRecordSegmentComplete` hook and records metadata into the PostgreSQL catalog
-- [ ] **REC-04**: System monitors disk usage on the storage mount and emits storage warning/full events
-- [ ] **REC-05**: System automatically purges the oldest recording segments when disk capacity threshold is exceeded (rollover)
+- [x] **REC-01**: System records video streams continuously in packet-preserving fMP4 segments without re-encoding
+- [x] **REC-02**: System supports scheduled recording windows per camera (e.g. business hours vs after-hours)
+- [x] **REC-03**: System captures segment completion events via MediaMTX `runOnRecordSegmentComplete` hook and records metadata into the PostgreSQL catalog
+- [x] **REC-04**: System monitors disk usage on the storage mount and emits storage warning/full events
+- [x] **REC-05**: System automatically purges the oldest recording segments when disk capacity threshold is exceeded (rollover)
 
 ### Playback & Timeline
 
@@ -123,11 +123,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CAM-03 | Phase 2 | Complete |
 | CAM-04 | Phase 2 | Complete |
 | CAM-05 | Phase 2 | Complete |
-| REC-01 | Phase 3 | Pending |
-| REC-02 | Phase 3 | Pending |
-| REC-03 | Phase 3 | Pending |
-| REC-04 | Phase 3 | Pending |
-| REC-05 | Phase 3 | Pending |
+| REC-01 | Phase 3 | Complete |
+| REC-02 | Phase 3 | Complete |
+| REC-03 | Phase 3 | Complete |
+| REC-04 | Phase 3 | Complete |
+| REC-05 | Phase 3 | Complete |
 | PLAY-01 | Phase 5 | Pending |
 | PLAY-02 | Phase 5 | Pending |
 | PLAY-03 | Phase 5 | Pending |

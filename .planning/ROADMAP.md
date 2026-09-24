@@ -8,7 +8,7 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 
 - [x] **Phase 1: Foundation, Licensing & Event Bus** - Clean-room control plane, schema, Ed25519 Capability Registry, 2-role RBAC, and unified event model (completed 2026-09-23)
 - [x] **Phase 2: Media Plane & Camera Onboarding** - MediaMTX integration, internal `CameraProvider` adapter, ONVIF Profile T/S auto-discovery, and RTSP stream provisioning (completed 2026-09-24)
-- [ ] **Phase 3: Recording Engine & Storage Management** - Continuous and scheduled packet-preserving fMP4 recording, segment cataloging, and automated disk rollover
+- [x] **Phase 3: Recording Engine & Storage Management** - Continuous and scheduled packet-preserving fMP4 recording, segment cataloging, and automated disk rollover (completed 2026-09-24)
 - [ ] **Phase 4: Live View Grid & Mobile Streaming** - React multi-camera live grid (1x1, 2x2, 3x3), WebRTC (WHEP) with HLS fallback, and Coturn NAT traversal
 - [ ] **Phase 5: 24-Hour Playback & Timeline Scrubbing** - Visual 24-hour timeline scrubber, MediaMTX playback server queries, and frame-accurate seeking
 - [ ] **Phase 6: ONVIF Motion Alerts & Real-Time Event Feed** - Native camera motion event subscriptions via Profile T PullPoint, event bus dispatch, and WebSocket alerts
@@ -86,11 +86,11 @@ Plans:
 
 **Wave 1**
 
-- [ ] 03-01: Configure MediaMTX fMP4 segment recording, implement webhook handler for `runOnRecordSegmentComplete`, and record metadata to database.
+- [x] 03-01: Configure MediaMTX fMP4 segment recording, implement webhook handler for `runOnRecordSegmentComplete`, and record metadata to database.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-02: Implement camera recording scheduler worker and storage disk monitor with automatic FIFO rollover.
+- [x] 03-02: Implement camera recording scheduler worker and storage disk monitor with automatic FIFO rollover.
 
 ---
 
