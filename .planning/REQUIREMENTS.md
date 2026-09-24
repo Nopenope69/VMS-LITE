@@ -65,18 +65,31 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ## v2 Requirements (Package 2: Extended)
 
-Deferred to fast-follow release. Tracked but not in current Package 1 roadmap.
+Active requirements for Milestone v2.0. Each maps directly to roadmap phases.
 
-### Extended Capabilities
+### Access Control & Operator Workflow
+- [ ] **EXT-01**: User can assign users the `OPERATOR` role with per-camera permission ACLs (live view, playback, PTZ, bookmarks), preventing unauthorized configuration changes while enabling shift monitoring.
 
-- **EXT-01**: Operator role with granular per-camera permissions
-- **EXT-02**: Motion zones and exclusion masks
-- **EXT-03**: PTZ control and camera presets
-- **EXT-04**: Basic MP4 clip export (standard media export without evidentiary chain)
-- **EXT-05**: Timeline bookmarks and annotations
-- **EXT-06**: Camera health monitoring and latency diagnostics
-- **EXT-07**: WhatsApp and SMS alert dispatch channels
-- **EXT-08**: Basic external REST API and outgoing webhooks
+### Motion Masking & Spatial Filtering
+- [ ] **EXT-02**: User can draw inclusion and exclusion polygon zones on camera feeds to filter out environmental false positives (swaying branches, traffic) using normalized ray-casting coordinate containment.
+
+### Camera PTZ Controls
+- [ ] **EXT-03**: User can control ONVIF Profile S Pan-Tilt-Zoom cameras using an on-screen joystick pad, optical zoom controls, preset positions, and a 1.5-second server-side safety watchdog auto-stop.
+
+### Video Export & Watermarking
+- [ ] **EXT-04**: User can export recorded time ranges into standalone MP4 video files with optional burned-in timestamp OSD and camera watermark, served with SHA-256 integrity verification and automated 48-hour disk pruning.
+
+### Timeline Bookmarking
+- [ ] **EXT-05**: User can mark incident timestamps on the 24-hour playback timeline with title, description, and category tags, visible as color-coded pins with search and filtering.
+
+### Diagnostics & Telemetry
+- [ ] **EXT-06**: System continuously tracks camera health, latency, RTSP packet drops, and MediaMTX stream bitrates, raising `camera.degraded` and `camera.offline` events upon failure.
+
+### WhatsApp & SMS Alerting
+- [ ] **EXT-07**: System can dispatch critical motion alert messages with snapshot links directly to WhatsApp / SMS recipients with token-bucket rate limiting and anti-spam cooldowns.
+
+### Integrations & Webhooks
+- [ ] **EXT-08**: System can dispatch HMAC-SHA256 signed outbound webhooks on system events to integrate with barrier gates, RFID turnstiles, and building management systems.
 
 ---
 
