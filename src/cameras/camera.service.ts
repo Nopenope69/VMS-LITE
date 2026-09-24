@@ -4,6 +4,7 @@ import { prisma as defaultPrisma } from '../db/prisma.js';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
 import { MediaMtxClient, mediaMtxClient as defaultMediaMtx } from '../mediamtx/mediamtx.client.js';
 import {
+  CameraDeviceDetails,
   DiscoveredCamera,
   ICameraProvider,
 } from './camera-provider.interface.js';
@@ -73,7 +74,9 @@ export class CameraService {
     };
 
     // Query device info
-    const info = await this.provider.getDeviceInformation(connectionParams).catch(() => ({}));
+    const info: Partial<CameraDeviceDetails> = await this.provider
+      .getDeviceInformation(connectionParams)
+      .catch(() => ({}));
 
     // Query video stream profiles
     const profiles = await this.provider.getProfiles(connectionParams);
