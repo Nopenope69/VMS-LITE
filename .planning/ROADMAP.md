@@ -246,8 +246,8 @@ Plans:
 
 Plans:
 
-- [ ] 10-01: FFmpeg stream-copy export engine with segment compatibility validator, Transcoded Derivative OSD pipeline, SHA-256 integrity checksum, two-tier storage pruner, and range-queryable bookmarks API.
-- [ ] 10-02: React clip export modal (Original Stream Copy vs Transcoded Derivative), gap-aware timeline scrubber with bookmark pins, and playback integration.
+- [x] 10-01: FFmpeg stream-copy export engine with segment compatibility validator, Transcoded Derivative OSD pipeline, SHA-256 integrity checksum, two-tier storage pruner, and range-queryable bookmarks API.
+- [x] 10-02: React clip export modal (Original Stream Copy vs Transcoded Derivative), gap-aware timeline scrubber with bookmark pins, and playback integration.
 
 ---
 
@@ -309,6 +309,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Packaging, CI/SBOM & Single-Command Deployment | 2/2 | Complete    | 2026-09-24 |
 | 8. Operator Role & Granular RBAC | 2/2 | Complete    | 2026-09-24 |
 | 9. ONVIF PTZ Controls & Camera Presets | 2/2 | Complete    | 2026-09-24 |
-| 10. Server-Side Clip Export & Timeline Bookmarks | 0/2 | Not started | - |
+| 10. Server-Side Clip Export & Timeline Bookmarks | 2/2 | Complete    | 2026-09-24 |
 | 11. Motion Zones & Spatial Exclusion Masking | 0/2 | Not started | - |
 | 12. Camera Health Telemetry, WhatsApp Alerts & Webhooks | 0/2 | Not started | - |
