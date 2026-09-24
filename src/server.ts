@@ -9,12 +9,14 @@ import { recordingRoutes } from './recordings/recording.routes.js';
 import { streamingRoutes } from './streaming/streaming.routes.js';
 import { playbackRoutes } from './playback/playback.routes.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
+import { recordingEngine as defaultRecordingEngine, RecordingEngine } from './recordings/recording-engine.js';
 
 export interface ServerOptions {
   logger?: boolean;
   jwtSecret?: string;
   licensing?: LicensingPluginOptions;
   wsFeedService?: WebSocketFeedService;
+  recordingEngine?: RecordingEngine;
 }
 
 export async function createServer(opts: ServerOptions = {}): Promise<FastifyInstance> {
@@ -23,6 +25,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   });
 
   const wsFeed = opts.wsFeedService || webSocketFeedService;
+  const engine = opts.recordingEngine || defaultRecordingEngine;
 
   // Permissive CORS
   await app.register(cors, {
@@ -59,8 +62,9 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(streamingRoutes, { prefix: '/api/streaming' });
   await app.register(playbackRoutes, { prefix: '/api/playback' });
 
-  // Attach WebSocket feed service when server is ready
+  // Attach background services when server is ready
   app.addHook('onReady', async () => {
+    await engine.start();
     wsFeed.attach(app.server, async (token: string) => {
       return app.jwt.verify(token);
     });
@@ -68,6 +72,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
 
   // Clean up on server close
   app.addHook('onClose', async () => {
+    await engine.stop();
     wsFeed.close();
   });
 

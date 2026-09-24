@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 import { CameraService, cameraService as defaultCameraService } from '../cameras/camera.service.js';
-import { RecordingService, recordingService as defaultRecordingService } from '../recordings/recording.service.js';
+import { RecordingEngine, recordingEngine as defaultRecordingEngine } from '../recordings/recording-engine.js';
 import {
   PlaybackStreamUrlDto,
   TimelineQueryParams,
@@ -12,20 +12,20 @@ import {
 export interface PlaybackServiceDependencies {
   prisma?: PrismaClient;
   cameraService?: CameraService;
-  recordingService?: RecordingService;
+  recordingEngine?: RecordingEngine;
   playbackBaseUrl?: string;
 }
 
 export class PlaybackService {
   private readonly prisma: PrismaClient;
   private readonly cameraService: CameraService;
-  private readonly recordingService: RecordingService;
+  private readonly recordingEngine: RecordingEngine;
   private readonly playbackBaseUrl: string;
 
   constructor(deps: PlaybackServiceDependencies = {}) {
     this.prisma = deps.prisma || defaultPrisma;
     this.cameraService = deps.cameraService || defaultCameraService;
-    this.recordingService = deps.recordingService || defaultRecordingService;
+    this.recordingEngine = deps.recordingEngine || defaultRecordingEngine;
     this.playbackBaseUrl =
       deps.playbackBaseUrl ||
       process.env.MEDIAMTX_PLAYBACK_BASE_URL ||
@@ -68,8 +68,8 @@ export class PlaybackService {
         take: 500,
       });
     } catch {
-      // In-memory fallback
-      const inMemory = await this.recordingService.queryRecordings({
+      // Fallback query
+      const inMemory = await this.recordingEngine.queryRecordings({
         cameraId: params.cameraId,
         startTime: startDate.toISOString(),
         endTime: endDate.toISOString(),

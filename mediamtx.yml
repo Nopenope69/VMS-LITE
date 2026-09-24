@@ -57,4 +57,4 @@ paths:
     runOnRecordSegmentComplete: >
       curl -s -X POST http://app:3000/api/recordings/segments/complete
       -H "Content-Type: application/json"
-      -d '{"path":"$MTX_PATH","segmentPath":"$MTX_SEGMENT_PATH","duration":60,"size":1048576,"startTime":"$MTX_SEGMENT_START"}'
+      -d '{"path":"$MTX_PATH","segmentPath":"$MTX_SEGMENT_PATH","duration":$MTX_SEGMENT_DURATION}'

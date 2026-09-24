@@ -3,7 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { Role } from '@prisma/client';
 import { createServer } from '../src/server.js';
 import { cameraService } from '../src/cameras/camera.service.js';
-import { recordingService } from '../src/recordings/recording.service.js';
+import { recordingEngine } from '../src/recordings/recording-engine.js';
 
 describe('Playback API (/api/playback) (PLAY-01, PLAY-03)', () => {
   let app: FastifyInstance;
@@ -37,7 +37,7 @@ describe('Playback API (/api/playback) (PLAY-01, PLAY-03)', () => {
     testCameraId = camera.id;
 
     // Ingest dummy recorded segment for this camera
-    await recordingService.ingestSegment({
+    await recordingEngine.ingestSegment({
       mediaMtxPath: camera.mediaMtxPath,
       segmentPath: `/var/recordings/${camera.mediaMtxPath}/2026-09-24_10-00-00.mp4`,
       duration: 120,

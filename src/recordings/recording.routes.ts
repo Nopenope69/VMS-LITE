@@ -1,9 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { Role } from '@prisma/client';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
-import { recordingService } from './recording.service.js';
-import { recordingScheduler } from './recording-scheduler.service.js';
-import { storageManager } from './storage-manager.service.js';
+import { recordingEngine } from './recording-engine.js';
 import {
   RecordingQuerySchema,
   SegmentCompleteWebhookSchema,
@@ -12,13 +10,12 @@ import {
 
 export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
-   * POST /api/recordings/segments
-   * Webhook endpoint called by MediaMTX runOnRecordSegmentComplete hook (REC-03)
+   * Helper handler for MediaMTX segment complete webhook
    */
-  app.post('/segments', async (request, reply) => {
+  const handleSegmentComplete = async (request: any, reply: any) => {
     try {
       const payload = SegmentCompleteWebhookSchema.parse(request.body);
-      const recording = await recordingService.ingestSegment(payload);
+      const recording = await recordingEngine.ingestSegment(payload);
       return reply.status(201).send({
         success: true,
         recording,
@@ -36,7 +33,19 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         message: err.message || 'Failed to ingest segment',
       });
     }
-  });
+  };
+
+  /**
+   * POST /api/recordings/segments
+   * Standard segment ingestion endpoint
+   */
+  app.post('/segments', handleSegmentComplete);
+
+  /**
+   * POST /api/recordings/segments/complete
+   * MediaMTX runOnRecordSegmentComplete endpoint alias (aligns with mediamtx.yml)
+   */
+  app.post('/segments/complete', handleSegmentComplete);
 
   /**
    * GET /api/recordings/storage
@@ -49,7 +58,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     },
     async (_request, reply) => {
       try {
-        const metrics = await storageManager.getStorageMetrics();
+        const metrics = await recordingEngine.getStorageStatus();
         return reply.send({
           success: true,
           metrics,
@@ -74,7 +83,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     },
     async (_request, reply) => {
       try {
-        const result = await storageManager.checkStorage();
+        const result = await recordingEngine.runStorageCleanup();
         return reply.send({
           success: true,
           ...result,
@@ -99,7 +108,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     },
     async (request, reply) => {
       const { cameraId } = request.params;
-      const schedule = await recordingScheduler.getCameraSchedule(cameraId);
+      const schedule = await recordingEngine.getSchedule(cameraId);
       return reply.send({
         success: true,
         cameraId,
@@ -121,8 +130,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       const { cameraId } = request.params;
       try {
         const body = SetCameraScheduleSchema.parse(request.body);
-        await recordingScheduler.setCameraSchedule(cameraId, body.mode, body.windows);
-        const schedule = await recordingScheduler.getCameraSchedule(cameraId);
+        const schedule = await recordingEngine.setSchedule(cameraId, body.mode, body.windows);
         return reply.send({
           success: true,
           cameraId,
@@ -146,7 +154,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
 
   /**
    * GET /api/recordings
-   * Queries cataloged recording chunks with camera and time filters (Admin & Viewer)
+   * Queries recorded segments with optional camera, date, and limit filtering (REC-01, T-03-02)
    */
   app.get(
     '/',
@@ -156,7 +164,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     async (request, reply) => {
       try {
         const query = RecordingQuerySchema.parse(request.query);
-        const recordings = await recordingService.queryRecordings(query);
+        const recordings = await recordingEngine.queryRecordings(query);
         return reply.send({
           count: recordings.length,
           recordings,
@@ -165,7 +173,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         if (err.name === 'ZodError') {
           return reply.status(400).send({
             error: 'ValidationError',
-            message: 'Invalid query parameters',
+            message: 'Invalid recording query parameters',
             details: err.errors,
           });
         }
@@ -179,7 +187,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
 
   /**
    * GET /api/recordings/:id
-   * Retrieves single recording chunk metadata (Admin & Viewer)
+   * Retrieves single recording metadata by UUID (REC-01, T-03-02)
    */
   app.get<{ Params: { id: string } }>(
     '/:id',
@@ -188,12 +196,12 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     },
     async (request, reply) => {
       const { id } = request.params;
-      const recording = await recordingService.getRecordingById(id);
+      const recording = await recordingEngine.getRecordingById(id);
 
       if (!recording) {
         return reply.status(404).send({
           error: 'NotFound',
-          message: `Recording segment with id ${id} not found`,
+          message: `Recording with id ${id} not found`,
         });
       }
 
