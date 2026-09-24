@@ -8,6 +8,20 @@ Basic VMS is a purpose-built video management system targeting the Indian SMB an
 
 Sub-30-minute installer deployment with reliable CP Plus parity (live view, scheduled recording, 24h timeline playback, native ONVIF motion alerts) built on permissively licensed infrastructure (MediaMTX) with zero VigilOne domain entanglement.
 
+## Current Milestone: v2.0 Package 2 (Extended)
+
+**Goal:** Expand Basic VMS with commercial operator controls, camera PTZ, motion zone masking, clip export with OSD watermark, timeline bookmarks, stream health telemetry, WhatsApp alerts, and external integration webhooks under an entitlement-gated Extended license.
+
+**Target features:**
+- Operator Role & Granular RBAC (`extended.operator_role`, EXT-01)
+- Motion Zones & Exclusion Masks (`extended.motion_zones`, EXT-02)
+- PTZ Controls & Camera Presets (`extended.ptz`, EXT-03)
+- Server-side MP4 Clip Export with OSD Watermark (`extended.clip_export`, EXT-04)
+- Timeline Bookmarks & Audit Annotations (`extended.bookmarks`, EXT-05)
+- Camera Health Diagnostics & Telemetry (`extended.camera_health`, EXT-06)
+- WhatsApp / SMS Incident Alerting (`extended.whatsapp_alerts`, EXT-07)
+- Outgoing REST API & Webhooks (`extended.api_webhooks`, EXT-08)
+
 ## Requirements
 
 ### Validated
@@ -16,26 +30,33 @@ Sub-30-minute installer deployment with reliable CP Plus parity (live view, sche
 - [x] **CORE-EVT**: Extensible Core event bus and unified Event schema (`camera.offline/online`, `recording.started/stopped`, `storage.warning/full`, `motion.detected`) (Validated in Phase 1)
 - [x] **CORE-LIC**: Ed25519 offline license verification and capability registry (`capabilities.has(...)`) gating route namespaces and modules (Validated in Phase 1)
 - [x] **CORE-ONVIF**: ONVIF discovery and onboarding (Profile T primary with Profile S fallback) via an internal `CameraProvider` adapter over a pinned ONVIF client library (Validated in Phase 2)
+- [x] **CORE-LIVE**: Live multi-camera view via WebRTC with HLS fallback served by MediaMTX (Validated in Phase 4)
+- [x] **CORE-REC**: Continuous and scheduled recording via MediaMTX segment recording and record-complete hooks populating the catalog (Validated in Phase 3)
+- [x] **CORE-PLAY**: Playback with 24h timeline scrubbing using MediaMTX's playback server (`/list`, `/get` fMP4/MP4) (Validated in Phase 5)
+- [x] **CORE-ALERT**: Motion alerts sourced from ONVIF Profile T native motion/tampering events emitted through the Core event bus (Validated in Phase 6)
+- [x] **CORE-STOR**: Local disk retention policy with automatic rollover and storage warning/full events (Validated in Phase 3)
+- [x] **CORE-INST**: Single-command installer achieving <30-minute deployment on customer hardware (Validated in Phase 7)
+- [x] **CORE-REMOTE**: Mobile remote view support (WebRTC via STUN/relay/coturn for NAT traversal) (Validated in Phase 4)
+- [x] **CORE-COMP**: Automated SBOM and license inventory generation (`third_party/licenses/`, `third_party/notices/`) in CI (Validated in Phase 7)
 
-### Active
+### Active (Package 2: Extended)
 
-- [ ] **CORE-LIVE**: Live multi-camera view via WebRTC with HLS fallback served by MediaMTX
-- [ ] **CORE-REC**: Continuous and scheduled recording via MediaMTX segment recording and record-complete hooks populating the catalog
-- [ ] **CORE-PLAY**: Playback with 24h timeline scrubbing using MediaMTX's playback server (`/list`, `/get` fMP4/MP4)
-- [ ] **CORE-ALERT**: Motion alerts sourced from ONVIF Profile T native motion/tampering events emitted through the Core event bus
-- [ ] **CORE-STOR**: Local disk retention policy with automatic rollover and storage warning/full events
-- [ ] **CORE-INST**: Single-command installer achieving <30-minute deployment on customer hardware
-- [ ] **CORE-REMOTE**: Mobile remote view support (WebRTC via STUN/relay/coturn for NAT traversal)
-- [ ] **CORE-COMP**: Automated SBOM and license inventory generation (`third_party/licenses/`, `third_party/notices/`) in CI
+- [ ] **EXT-01**: Operator role with granular per-camera permissions
+- [ ] **EXT-02**: Motion zones and exclusion masks
+- [ ] **EXT-03**: PTZ control and camera presets via ONVIF Profile S
+- [ ] **EXT-04**: Server-side MP4 clip export with timestamp OSD & watermark
+- [ ] **EXT-05**: Timeline bookmarks and annotations
+- [ ] **EXT-06**: Camera health monitoring and latency diagnostics
+- [ ] **EXT-07**: WhatsApp and SMS alert dispatch channels
+- [ ] **EXT-08**: Basic external REST API and outgoing webhooks
 
 ### Out of Scope
 
-- **Multi-tenant hierarchy** — Two roles (Admin, Viewer) cover this market; multi-tenancy adds unnecessary operational and schema complexity.
-- **Evidentiary export (Section 63 BSA chain-of-custody)** — Differentiator for VigilOne enterprise compliance tier; basic MP4 clip export is deferred to Package 2.
-- **Computer vision / AI detection in Package 1** — Deferred to Package 3; Package 1 ships with zero AI dependencies to keep the base install lightweight and OSS licenses clean.
-- **Multi-site federation** — Real distributed-systems overhead (WAN auth, sync, clock skew) not suited for budget standalone NVR/DVR tier; scope separately if demanded.
-- **Cloud/offsite archiving** — Local disk storage only for v1, matching standard CP Plus/Hikvision DVR expectations.
-- **Operator role, motion zones, masks, PTZ, bookmarks, WhatsApp/SMS alerts** — Scoped as Package 2 (Extended).
+- **Multi-tenant hierarchy** — Two/three roles cover single-site SMBs; multi-tenancy adds unnecessary operational and schema complexity.
+- **Evidentiary export (Section 63 BSA chain-of-custody)** — Differentiator for VigilOne enterprise compliance tier; basic MP4 clip export with OSD watermark is provided in Package 2.
+- **Computer vision / AI detection in Package 2** — Deferred to Package 3; Package 2 retains lightweight CPU footprint.
+- **Multi-site federation** — Standalone site deployment focus; cloud sync deferred.
+- **Cloud/offsite archiving** — Local disk storage matches CP Plus baseline; cloud sync deferred.
 
 ## Context
 

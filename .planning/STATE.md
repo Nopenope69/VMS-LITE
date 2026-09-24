@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: complete
-stopped_at: Milestone v1.0 complete & Architecture Deepening Finalized
-last_updated: "2026-09-24T17:25:00.000Z"
-last_activity: 2026-09-24 -- Milestone v1.0 delivered (7 phases, 15 plans) and architecture deepening verified (5 candidates, 123 tests passing)
+milestone: v2.0
+milestone_name: "Package 2 (Extended)"
+status: planning
+stopped_at: "Defining requirements and research for Milestone v2.0"
+last_updated: "2026-09-24T20:05:00.000Z"
+last_activity: "2026-09-24 -- Milestone v2.0 started (Package 2 Extended)"
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 15
-  completed_plans: 15
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,17 +21,16 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-24)
 
 **Core value:** Sub-30-minute installer deployment with reliable CP Plus parity (live view, scheduled recording, 24h timeline playback, native ONVIF motion alerts) built on permissively licensed infrastructure (MediaMTX) with zero VigilOne domain entanglement.  
-**Current focus:** Milestone v1.0 Complete & Architecture Hardened — Ready for Next Project Phase
+**Current focus:** Milestone v2.0: Package 2 (Extended) — Commercial Operator Controls, PTZ, Motion Zones, Watermarked Clip Export, Bookmarks, Diagnostics, WhatsApp Alerts & Webhooks
 
 ## Current Position
 
-Phase: 7 of 7 (Packaging, CI/SBOM & Single-Command Deployment)
-Plan: 07-02 complete
-Architecture Deepening: Complete across all 5 candidates
-Status: Milestone v1.0 Complete (15/15 plans complete, 123/123 tests passing)
-Last activity: 2026-09-24 -- Deep RecordingEngine, playback absorption, event bridge, ephemeral ICE, and headless playback session hook verified and documented.
+Phase: Not started (defining requirements & research)
+Plan: —
+Status: Defining requirements & researching domain ecosystem
+Last activity: 2026-09-24 -- Milestone v2.0 started
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
