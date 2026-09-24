@@ -77,10 +77,10 @@ Active requirements for Milestone v2.0. Each maps directly to roadmap phases.
 - [x] **EXT-03**: User can control ONVIF Profile S Pan-Tilt-Zoom cameras using an on-screen joystick pad, optical zoom controls, preset positions, and a 1.5-second server-side safety watchdog auto-stop. (Validated in Phase 9)
 
 ### Video Export & Watermarking
-- [ ] **EXT-04**: User can export recorded time ranges into standalone MP4 video files with optional burned-in timestamp OSD and camera watermark, served with SHA-256 integrity verification and automated 48-hour disk pruning.
+- [x] **EXT-04**: User can export recorded time ranges into standalone MP4 video files with optional burned-in timestamp OSD and camera watermark, served with SHA-256 integrity verification and automated 48-hour disk pruning. (Validated in Phase 10)
 
 ### Timeline Bookmarking
-- [ ] **EXT-05**: User can mark incident timestamps on the 24-hour playback timeline with title, description, and category tags, visible as color-coded pins with search and filtering.
+- [x] **EXT-05**: User can mark incident timestamps on the 24-hour playback timeline with title, description, and category tags, visible as color-coded pins with search and filtering. (Validated in Phase 10)
 
 ### Diagnostics & Telemetry
 - [ ] **EXT-06**: System continuously tracks camera health, latency, RTSP packet drops, and MediaMTX stream bitrates, raising `camera.degraded` and `camera.offline` events upon failure.
