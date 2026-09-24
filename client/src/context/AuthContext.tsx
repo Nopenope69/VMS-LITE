@@ -2,10 +2,19 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 
 export type UserRole = 'ADMIN' | 'OPERATOR' | 'VIEWER';
 
+export interface CameraPermissionDto {
+  cameraId: string;
+  canViewLive: boolean;
+  canViewPlayback: boolean;
+  canControlPtz: boolean;
+  canExportClips: boolean;
+}
+
 export interface User {
   id: string;
   username: string;
   role: UserRole;
+  cameraPermissions?: CameraPermissionDto[];
 }
 
 export interface AuthContextType {

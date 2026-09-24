@@ -55,7 +55,7 @@ describe('Server-Side Clip Export & Timeline Bookmarks (Phase 10 - EXT-04, EXT-0
     });
 
     // Mock CameraPermission lookups in prisma
-    vi.spyOn(prisma.cameraPermission, 'findUnique').mockImplementation(async (args: any) => {
+    vi.spyOn(prisma.cameraPermission as any, 'findUnique').mockImplementation(async (args: any): Promise<any> => {
       const { userId, cameraId } = args.where.userId_cameraId;
       if (cameraId !== testCameraId) return null;
 

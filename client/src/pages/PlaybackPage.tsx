@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Shield,
   Video,
@@ -9,17 +9,20 @@ import {
   Film,
   History,
   Clock,
+  Bookmark,
   Sparkles,
 } from 'lucide-react';
-import { TimelineScrubber } from '../components/TimelineScrubber.js';
+import { TimelineScrubber, BookmarkItem } from '../components/TimelineScrubber.js';
 import { PlaybackControls } from '../components/PlaybackControls.js';
 import { PlaybackPlayer } from '../components/PlaybackPlayer.js';
+import { ClipExportModal } from '../components/ClipExportModal.js';
+import { BookmarkModal } from '../components/BookmarkModal.js';
 import {
   usePlaybackSession,
   getTodayString,
   CameraOption,
 } from '../hooks/usePlaybackSession.js';
-import { useAuth } from '../context/AuthContext.js';
+import { useAuth, CameraPermissionDto } from '../context/AuthContext.js';
 import { OperatorBanner } from '../components/OperatorBanner.js';
 
 export type { CameraOption };
@@ -35,7 +38,7 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
   authToken = '',
   onNavigateLive,
 }) => {
-  const { token: authContextToken } = useAuth();
+  const { token: authContextToken, user } = useAuth();
   const effectiveToken = authToken || authContextToken || '';
 
   const {
@@ -64,11 +67,70 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
     authToken: effectiveToken,
   });
 
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [isBookmarkModalOpen, setIsBookmarkModalOpen] = useState<boolean>(false);
+  const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
+
   const todayStr = getTodayString();
   const yesterdayDate = new Date(Date.now() - 86400000);
   const yesterdayStr = getTodayString(yesterdayDate);
   const dayBeforeDate = new Date(Date.now() - 2 * 86400000);
   const dayBeforeStr = getTodayString(dayBeforeDate);
+
+  // Determine export permissions
+  const canExport =
+    user?.role === 'ADMIN' ||
+    (user?.role === 'OPERATOR' &&
+      user?.cameraPermissions?.find((p: CameraPermissionDto) => p.cameraId === selectedCameraId)?.canExportClips !== false);
+
+  // Fetch bookmarks for current camera and date window
+  const fetchBookmarks = useCallback(async () => {
+    if (!selectedCameraId) return;
+    try {
+      const headers: Record<string, string> = {};
+      if (effectiveToken) headers['Authorization'] = `Bearer ${effectiveToken}`;
+
+      const dayStart = `${selectedDate}T00:00:00.000Z`;
+      const dayEnd = `${selectedDate}T23:59:59.999Z`;
+
+      const res = await fetch(
+        `${apiBaseUrl}/api/cameras/${selectedCameraId}/bookmarks?from=${encodeURIComponent(
+          dayStart
+        )}&to=${encodeURIComponent(dayEnd)}`,
+        { headers }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.bookmarks) {
+          setBookmarks(data.bookmarks);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch bookmarks:', err);
+    }
+  }, [selectedCameraId, selectedDate, effectiveToken, apiBaseUrl]);
+
+  useEffect(() => {
+    fetchBookmarks();
+  }, [fetchBookmarks]);
+
+  // Keyboard shortcut: 'b' or 'B' to add bookmark at current playback time
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if typing in an input
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
+        return;
+      }
+      if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        setIsBookmarkModalOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Quick incident jump helper (-5m, -15m, -1h)
   const handleQuickJump = (minutesAgo: number) => {
@@ -85,21 +147,6 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
     const target = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000);
     setSelectedDate(yesterdayStr);
     handleSeek(target);
-  };
-
-  // 1-Click Clip Export
-  const handleExportClip = () => {
-    if (streamUrl) {
-      const a = document.createElement('a');
-      a.href = streamUrl;
-      a.download = `clip_${selectedCamera?.name || 'camera'}_${selectedDate}.mp4`;
-      a.target = '_blank';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } else {
-      alert('Please seek to an active recorded interval on the blue timeline to save a clip.');
-    }
   };
 
   return (
@@ -195,7 +242,10 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
           {/* Refresh Timeline */}
           <button
             type="button"
-            onClick={fetchTimeline}
+            onClick={() => {
+              fetchTimeline();
+              fetchBookmarks();
+            }}
             title="Refresh Timeline Data"
             className="p-2 text-slate-300 hover:text-white rounded-md bg-[#090d16] border border-[#1f2937] hover:border-[#4fc3f7]/50 transition-colors"
           >
@@ -246,7 +296,7 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
           </div>
         )}
 
-        {/* Quick-Jump Incident Bar (CP Plus Guard Mental Model) */}
+        {/* Quick-Jump Incident & Bookmark Bar */}
         <div className="w-full bg-[#111827] px-4 py-2 border-t border-[#1f2937] flex items-center justify-between gap-3 text-xs shrink-0 select-none">
           <div className="flex items-center gap-2 text-slate-300 font-semibold">
             <History className="w-4 h-4 text-[#4fc3f7]" />
@@ -286,6 +336,17 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
               <Clock className="w-3.5 h-3.5" />
               <span>Yesterday Same Time</span>
             </button>
+
+            {/* Add Bookmark Action Button */}
+            <button
+              type="button"
+              onClick={() => setIsBookmarkModalOpen(true)}
+              title="Bookmark current playback frame (Hotkey: B)"
+              className="flex items-center gap-1.5 px-3 py-1 bg-[#111827] hover:bg-[#1f2937] border border-[#fb923c]/60 text-[#fb923c] font-bold text-xs rounded-md transition-colors shrink-0 shadow-sm"
+            >
+              <Bookmark className="w-3.5 h-3.5 text-[#fb923c]" />
+              <span>Add Bookmark (B)</span>
+            </button>
           </div>
         </div>
 
@@ -295,7 +356,9 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
             currentDate={selectedDate}
             currentTime={currentTime}
             spans={timelineSpans}
+            bookmarks={bookmarks}
             onSeek={handleSeek}
+            onAddBookmarkAtTime={() => setIsBookmarkModalOpen(true)}
           />
         </div>
 
@@ -311,10 +374,34 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
             onChangeDate={setSelectedDate}
             currentTime={currentTime}
             isLoading={isLoading}
-            onExportClip={handleExportClip}
+            onExportClip={canExport ? () => setIsExportModalOpen(true) : undefined}
           />
         </div>
       </main>
+
+      {/* Clip Export Modal */}
+      <ClipExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        cameraId={selectedCameraId}
+        cameraName={selectedCamera?.name || 'Selected Camera'}
+        initialStartTime={new Date(currentTime.getTime() - 2.5 * 60 * 1000)}
+        initialEndTime={new Date(currentTime.getTime() + 2.5 * 60 * 1000)}
+        apiBaseUrl={apiBaseUrl}
+        authToken={effectiveToken}
+      />
+
+      {/* Bookmark Modal */}
+      <BookmarkModal
+        isOpen={isBookmarkModalOpen}
+        onClose={() => setIsBookmarkModalOpen(false)}
+        onSaved={fetchBookmarks}
+        cameraId={selectedCameraId}
+        cameraName={selectedCamera?.name || 'Selected Camera'}
+        timestamp={currentTime}
+        apiBaseUrl={apiBaseUrl}
+        authToken={effectiveToken}
+      />
     </div>
   );
 };

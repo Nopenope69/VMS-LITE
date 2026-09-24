@@ -1,13 +1,24 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
+import { Bookmark, AlertCircle, Eye, Tag, Wrench, Activity } from 'lucide-react';
 import type { TimelineSpan } from '../hooks/usePlaybackSession.js';
 
 export type { TimelineSpan };
+
+export interface BookmarkItem {
+  id: string;
+  timestamp: string | Date;
+  title: string;
+  description?: string | null;
+  category: string; // incident, visitor, maintenance, activity
+}
 
 export interface TimelineScrubberProps {
   currentDate: string; // YYYY-MM-DD
   currentTime: Date;
   spans: TimelineSpan[];
+  bookmarks?: BookmarkItem[];
   onSeek: (time: Date) => void;
+  onAddBookmarkAtTime?: (time: Date) => void;
   className?: string;
 }
 
@@ -15,17 +26,22 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
   currentDate,
   currentTime,
   spans,
+  bookmarks = [],
   onSeek,
+  onAddBookmarkAtTime,
   className = '',
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [hoverPosition, setHoverPosition] = useState<{ xPercent: number; timeStr: string } | null>(null);
+  const [activeBookmarkTooltip, setActiveBookmarkTooltip] = useState<{
+    bookmark: BookmarkItem;
+    xPercent: number;
+  } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
   // Compute start of the given date in local time
   const getDayStartMs = useCallback((): number => {
-    // If currentDate is YYYY-MM-DD, create date at 00:00:00
     const parts = currentDate.split('-').map(Number);
     if (parts.length === 3) {
       return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0).getTime();
@@ -96,39 +112,34 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
       try {
         e.currentTarget.releasePointerCapture(e.pointerId);
       } catch {
-        // Ignore if pointer capture already released
+        // Ignore
       }
     }
   };
 
   const handlePointerLeave = () => {
-    if (!isDragging) {
-      setHoverPosition(null);
+    setHoverPosition(null);
+    if (isDragging) {
+      setIsDragging(false);
     }
   };
 
-  useEffect(() => {
-    return () => {
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, []);
-
-  // Pre-calculate spans relative to the day
+  // Convert spans to percentage bars on the 24-hour timeline
   const renderedSpans = spans.map((span, idx) => {
-    const spanStartMs = new Date(span.startTime).getTime();
-    const spanEndMs = new Date(span.endTime).getTime();
+    const spanStart = new Date(span.startTime).getTime();
+    const spanEnd = new Date(span.endTime).getTime();
 
-    const startOffset = Math.max(0, spanStartMs - dayStartMs);
-    const endOffset = Math.min(DAY_MS, spanEndMs - dayStartMs);
+    // Clip to current day bounds [dayStartMs, dayStartMs + DAY_MS]
+    const clampedStart = Math.max(dayStartMs, spanStart);
+    const clampedEnd = Math.min(dayStartMs + DAY_MS, spanEnd);
 
-    if (endOffset <= 0 || startOffset >= DAY_MS || startOffset >= endOffset) {
-      return null;
-    }
+    if (clampedStart >= clampedEnd) return null;
+
+    const startOffset = clampedStart - dayStartMs;
+    const endOffset = clampedEnd - dayStartMs;
 
     const left = (startOffset / DAY_MS) * 100;
-    const width = Math.max(0.15, ((endOffset - startOffset) / DAY_MS) * 100);
+    const width = Math.max(0.2, ((endOffset - startOffset) / DAY_MS) * 100);
 
     return {
       key: span.recordingId || `span-${idx}`,
@@ -136,6 +147,29 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
       width: `${width}%`,
       startTime: span.startTime,
       endTime: span.endTime,
+    };
+  }).filter(Boolean);
+
+  // Filter and map bookmarks for current day
+  const renderedBookmarks = bookmarks.map((bm) => {
+    const bmTime = new Date(bm.timestamp).getTime();
+    const offset = bmTime - dayStartMs;
+    if (offset < 0 || offset > DAY_MS) return null;
+    const percent = (offset / DAY_MS) * 100;
+
+    let pinColor = 'bg-[#fb923c] border-[#ea580c] text-[#fb923c]'; // default incident
+    if (bm.category === 'visitor') {
+      pinColor = 'bg-[#10b981] border-[#059669] text-[#10b981]';
+    } else if (bm.category === 'activity') {
+      pinColor = 'bg-[#4fc3f7] border-[#0284c7] text-[#4fc3f7]';
+    } else if (bm.category === 'maintenance') {
+      pinColor = 'bg-slate-400 border-slate-500 text-slate-300';
+    }
+
+    return {
+      bookmark: bm,
+      percent,
+      pinColor,
     };
   }).filter(Boolean);
 
@@ -161,7 +195,7 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
         })}
       </div>
 
-      {/* Main Timeline Scrubber Bar with Taller Ergonomic Hit Area */}
+      {/* Main Timeline Scrubber Bar with Gap Awareness & Bookmark Overlays */}
       <div
         ref={trackRef}
         onPointerDown={handlePointerDown}
@@ -169,6 +203,10 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
         className="relative w-full h-12 bg-[#090d16] border border-[#1f2937] rounded-lg cursor-pointer overflow-hidden group shadow-inner transition-colors hover:border-[#4fc3f7]/40"
+        style={{
+          // Subtle diagonal gap stripes pattern to visually communicate unrecorded time
+          backgroundImage: `repeating-linear-gradient(45deg, #090d16, #090d16 10px, #0e1320 10px, #0e1320 20px)`,
+        }}
       >
         {/* Background minor grid lines every 1 hour */}
         {Array.from({ length: 24 }, (_, i) => (
@@ -179,7 +217,7 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
           />
         ))}
 
-        {/* Recorded Video Spans (Continuous Blue Blocks in Palette 1) */}
+        {/* Recorded Video Spans (Continuous Ion Blue Blocks in Palette 1) */}
         {renderedSpans.map((rendered) => rendered && (
           <div
             key={rendered.key}
@@ -204,25 +242,94 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
           </>
         )}
 
-        {/* Playhead Indicator (Ion Blue needle with glowing pin) */}
+        {/* Bookmark Pins (Interactive Incident Overlays) */}
+        {renderedBookmarks.map((rendered) => rendered && (
+          <div
+            key={rendered.bookmark.id}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onSeek(new Date(rendered.bookmark.timestamp));
+            }}
+            onMouseEnter={() =>
+              setActiveBookmarkTooltip({
+                bookmark: rendered.bookmark,
+                xPercent: rendered.percent,
+              })
+            }
+            onMouseLeave={() => setActiveBookmarkTooltip(null)}
+            className="absolute top-0 bottom-0 w-3 -ml-1.5 z-25 flex flex-col items-center justify-start group/pin cursor-pointer"
+            style={{ left: `${rendered.percent}%` }}
+          >
+            {/* Top Flag Marker */}
+            <div
+              className={`w-2.5 h-3.5 rounded-b-sm border shadow-md transform group-hover/pin:scale-125 transition-transform ${rendered.pinColor}`}
+            />
+            {/* Pin line */}
+            <div className={`w-[1px] flex-1 opacity-70 ${rendered.pinColor.split(' ')[0]}`} />
+          </div>
+        ))}
+
+        {/* Bookmark Floating Tooltip */}
+        {activeBookmarkTooltip && (
+          <div
+            className="absolute -top-12 transform -translate-x-1/2 px-2.5 py-1 bg-[#111827] border border-slate-700 rounded-lg text-xs shadow-2xl z-35 pointer-events-none font-sans min-w-[120px]"
+            style={{ left: `${activeBookmarkTooltip.xPercent}%` }}
+          >
+            <div className="font-semibold text-slate-100 truncate">
+              {activeBookmarkTooltip.bookmark.title}
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono mt-0.5">
+              <span className="uppercase text-[#fb923c] font-bold">
+                {activeBookmarkTooltip.bookmark.category}
+              </span>
+              <span>•</span>
+              <span>
+                {new Date(activeBookmarkTooltip.bookmark.timestamp).toLocaleTimeString()}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Playhead Indicator (Ion Blue needle with glowing diamond) */}
         <div
           className="absolute top-0 bottom-0 w-[2px] bg-[#4fc3f7] z-20 pointer-events-none flex flex-col items-center"
           style={{ left: `${playheadPercent}%` }}
         >
-          {/* Playhead marker pin at top */}
           <div className="w-3 h-3 bg-[#4fc3f7] rotate-45 -mt-1.5 shadow-[0_0_10px_#4fc3f7]" />
           <div className="flex-1 w-[2px] bg-[#4fc3f7] shadow-[0_0_12px_#4fc3f7]" />
         </div>
       </div>
 
-      {/* Playhead Time Badge */}
-      <div className="flex justify-between items-center text-xs text-slate-400 font-mono px-1">
-        <span>00:00:00</span>
-        <div className="text-slate-100 font-bold flex items-center gap-2 bg-[#111827] px-3 py-1 rounded-md border border-[#1f2937]">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#4fc3f7] inline-block shadow-[0_0_6px_#4fc3f7] animate-pulse" />
-          <span className="text-[#4fc3f7]">SEEK TIME: {formatTimeFromOffset(currentOffsetMs)}</span>
+      {/* Scrubber Footer: Legend & Playhead Readout */}
+      <div className="flex flex-wrap justify-between items-center text-xs text-slate-400 font-mono px-1 gap-2">
+        {/* Visual Legend */}
+        <div className="flex items-center gap-3 text-[11px] font-sans">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-2 rounded-sm bg-[#0284c7] inline-block shadow-[0_0_4px_#0284c7]" />
+            <span className="text-slate-300">Recorded Footage</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-2 rounded-sm bg-[#090d16] border border-[#1f2937] inline-block" />
+            <span className="text-slate-500">Recording Gap</span>
+          </div>
+          <div className="flex items-center gap-2 pl-2 border-l border-[#1f2937]">
+            <span className="flex items-center gap-1 text-[#fb923c]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#fb923c]" /> Incident
+            </span>
+            <span className="flex items-center gap-1 text-[#10b981]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" /> Visitor
+            </span>
+            <span className="flex items-center gap-1 text-[#4fc3f7]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#4fc3f7]" /> Activity
+            </span>
+          </div>
         </div>
-        <span>23:59:59</span>
+
+        {/* Current Seek Readout */}
+        <div className="text-slate-100 font-bold flex items-center gap-2 bg-[#111827] px-3 py-1 rounded-md border border-[#1f2937]">
+          <span className="w-2 h-2 rounded-full bg-[#4fc3f7] inline-block shadow-[0_0_6px_#4fc3f7] animate-pulse" />
+          <span className="text-[#4fc3f7]">SEEK: {formatTimeFromOffset(currentOffsetMs)}</span>
+        </div>
       </div>
     </div>
   );
