@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { authenticate } from '../users/rbac.guard.js';
-import { playbackService } from './playback.service.js';
+import { recordingEngine } from '../recordings/recording-engine.js';
 import { TimelineQuerySchema } from './playback.types.js';
 
 const StreamQuerySchema = z.object({
@@ -23,7 +23,7 @@ export const playbackRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
     async (request, reply) => {
       try {
         const query = TimelineQuerySchema.parse(request.query);
-        const timeline = await playbackService.getTimelineSpans(query);
+        const timeline = await recordingEngine.getTimelineSpans(query);
         return reply.send({
           success: true,
           ...timeline,
@@ -56,7 +56,7 @@ export const playbackRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
     async (request, reply) => {
       try {
         const query = StreamQuerySchema.parse(request.query);
-        const streamInfo = await playbackService.getPlaybackStreamUrl(
+        const streamInfo = await recordingEngine.getPlaybackStreamUrl(
           query.cameraId,
           query.startTime,
           query.duration

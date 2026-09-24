@@ -376,4 +376,79 @@ describe('RecordingEngine Architecture Tests', () => {
       ).rejects.toThrow('Directory traversal denied');
     });
   });
+
+  describe('7. Playback & Timeline Spans (PLAY-01, PLAY-03)', () => {
+    it('retrieves chronological timeline spans and calculates total duration', async () => {
+      repository.registerCamera({
+        id: 'cam_yard',
+        name: 'Backyard',
+        mediaMtxPath: 'cam_yard',
+      });
+
+      await repository.createRecording({
+        cameraId: 'cam_yard',
+        mediaMtxPath: 'cam_yard',
+        filePath: '/var/recordings/cam_yard/2026-09-24_10-00-00.mp4',
+        fileName: '2026-09-24_10-00-00.mp4',
+        startTime: new Date('2026-09-24T10:00:00.000Z'),
+        endTime: new Date('2026-09-24T10:02:00.000Z'),
+        duration: 120,
+        sizeBytes: 10_000_000,
+      });
+
+      await repository.createRecording({
+        cameraId: 'cam_yard',
+        mediaMtxPath: 'cam_yard',
+        filePath: '/var/recordings/cam_yard/2026-09-24_10-05-00.mp4',
+        fileName: '2026-09-24_10-05-00.mp4',
+        startTime: new Date('2026-09-24T10:05:00.000Z'),
+        endTime: new Date('2026-09-24T10:07:30.000Z'),
+        duration: 150,
+        sizeBytes: 12_000_000,
+      });
+
+      const engine = createEngine({ playbackBaseUrl: 'http://test-server:9996' });
+      const timeline = await engine.getTimelineSpans({
+        cameraId: 'cam_yard',
+        date: '2026-09-24',
+      });
+
+      expect(timeline.cameraId).toBe('cam_yard');
+      expect(timeline.date).toBe('2026-09-24');
+      expect(timeline.playbackBaseUrl).toBe('http://test-server:9996');
+      expect(timeline.totalDurationSeconds).toBe(270);
+      expect(timeline.spans).toHaveLength(2);
+      expect(timeline.spans[0].durationSeconds).toBe(120);
+      expect(timeline.spans[1].durationSeconds).toBe(150);
+      // Ensure sorted ascending by start time
+      expect(new Date(timeline.spans[0].startTime).getTime()).toBeLessThan(
+        new Date(timeline.spans[1].startTime).getTime()
+      );
+    });
+
+    it('resolves MediaMTX fMP4 stream URL for camera and timestamp', async () => {
+      repository.registerCamera({
+        id: 'cam_yard',
+        name: 'Backyard',
+        mediaMtxPath: 'cam_yard',
+      });
+
+      const engine = createEngine({ playbackBaseUrl: 'http://test-server:9996' });
+      const streamInfo = await engine.getPlaybackStreamUrl('cam_yard', '2026-09-24T10:00:00.000Z', 600);
+
+      expect(streamInfo.cameraId).toBe('cam_yard');
+      expect(streamInfo.mediaMtxPath).toBe('cam_yard');
+      expect(streamInfo.duration).toBe(600);
+      expect(streamInfo.fmp4StreamUrl).toBe(
+        'http://test-server:9996/get?path=cam_yard&start=2026-09-24T10%3A00%3A00.000Z&duration=600'
+      );
+    });
+
+    it('throws error when resolving stream URL for non-existent camera', async () => {
+      const engine = createEngine();
+      await expect(
+        engine.getPlaybackStreamUrl('non-existent', '2026-09-24T10:00:00.000Z')
+      ).rejects.toThrow('Camera with id non-existent not found');
+    });
+  });
 });

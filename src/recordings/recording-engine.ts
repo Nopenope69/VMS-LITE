@@ -6,6 +6,7 @@ import { RecordingSchedulerCollaborator } from './recording-scheduler.js';
 import {
   CameraScheduleConfig,
   IRecordingEngine,
+  PlaybackStreamUrlDto,
   RecordingDto,
   RecordingMode,
   RecordingQueryParams,
@@ -13,6 +14,8 @@ import {
   SegmentCompleteWebhookPayload,
   StorageCleanupResult,
   StorageMetricsDto,
+  TimelineQueryParams,
+  TimelineResponseDto,
 } from './recording.types.js';
 import {
   InMemoryRecordingRepository,
@@ -40,6 +43,8 @@ export interface RecordingEngineOptions {
   }>;
   fsStatFn?: (filePath: string) => Promise<{ size: number }>;
   fsUnlinkFn?: (filePath: string) => Promise<void>;
+  playbackBaseUrl?: string;
+  cameraLookup?: (cameraId: string) => Promise<{ id: string; name: string; mediaMtxPath: string } | null>;
 }
 
 export class RecordingEngine implements IRecordingEngine {
@@ -47,6 +52,7 @@ export class RecordingEngine implements IRecordingEngine {
   private readonly scheduler: RecordingSchedulerCollaborator;
   private readonly storageController: StorageController;
   private readonly clock: IClock;
+  private readonly playbackBaseUrl: string;
 
   private isRunning = false;
   private scheduleTimerId?: NodeJS.Timeout;
@@ -68,6 +74,21 @@ export class RecordingEngine implements IRecordingEngine {
     const mediaMtx = opts.mediaMtx || defaultMediaMtx;
     const eventBus = opts.eventBus || defaultEventBus;
     this.clock = opts.clock || systemClock;
+    this.playbackBaseUrl =
+      opts.playbackBaseUrl ||
+      process.env.MEDIAMTX_PLAYBACK_BASE_URL ||
+      'http://localhost:9996';
+
+    const cameraLookup =
+      opts.cameraLookup ||
+      (async (id: string) => {
+        try {
+          const { cameraService } = await import('../cameras/camera.service.js');
+          return await cameraService.getCameraById(id);
+        } catch {
+          return null;
+        }
+      });
 
     this.scheduleIntervalMs = opts.scheduleIntervalMs ?? 60_000;
     this.storageIntervalMs = opts.storageIntervalMs ?? 60_000;
@@ -79,6 +100,19 @@ export class RecordingEngine implements IRecordingEngine {
       recordingsDir: opts.recordingsDir,
       fsStatFn: opts.fsStatFn,
       fsUnlinkFn: opts.fsUnlinkFn,
+      cameraLookup,
+    });
+
+    eventBus.subscribe('camera.online', (evt: any) => {
+      if (evt.cameraId && evt.metadata?.mediaMtxPath) {
+        if ('registerCamera' in (repository as any)) {
+          (repository as any).registerCamera({
+            id: evt.cameraId,
+            name: evt.metadata.name || evt.cameraId,
+            mediaMtxPath: evt.metadata.mediaMtxPath,
+          });
+        }
+      }
     });
 
     this.scheduler = new RecordingSchedulerCollaborator({
@@ -126,6 +160,18 @@ export class RecordingEngine implements IRecordingEngine {
     windows: ScheduleWindow[] = []
   ): Promise<CameraScheduleConfig> {
     return this.scheduler.setCameraSchedule(cameraId, mode, windows);
+  }
+
+  async getTimelineSpans(params: TimelineQueryParams): Promise<TimelineResponseDto> {
+    return this.catalog.getTimelineSpans(params, this.playbackBaseUrl);
+  }
+
+  async getPlaybackStreamUrl(
+    cameraId: string,
+    startTime: string,
+    durationSeconds: number = 300
+  ): Promise<PlaybackStreamUrlDto> {
+    return this.catalog.getPlaybackStreamUrl(cameraId, startTime, durationSeconds, this.playbackBaseUrl);
   }
 
   async getStorageStatus(): Promise<StorageMetricsDto> {

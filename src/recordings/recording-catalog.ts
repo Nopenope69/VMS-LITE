@@ -7,9 +7,13 @@ import {
   PrismaRecordingRepository,
 } from './repositories/recording.repository.js';
 import {
+  PlaybackStreamUrlDto,
   RecordingDto,
   RecordingQueryParams,
   SegmentCompleteWebhookPayload,
+  TimelineQueryParams,
+  TimelineResponseDto,
+  TimelineSpanDto,
 } from './recording.types.js';
 
 export interface RecordingCatalogOptions {
@@ -19,6 +23,7 @@ export interface RecordingCatalogOptions {
   recordingsDir?: string;
   fsStatFn?: (filePath: string) => Promise<{ size: number }>;
   fsUnlinkFn?: (filePath: string) => Promise<void>;
+  cameraLookup?: (cameraId: string) => Promise<{ id: string; name: string; mediaMtxPath: string } | null>;
 }
 
 export interface SegmentDeletionResult {
@@ -36,6 +41,7 @@ export class RecordingCatalog {
   private readonly recordingsRoot: string;
   private readonly fsStatFn: (filePath: string) => Promise<{ size: number }>;
   private readonly fsUnlinkFn: (filePath: string) => Promise<void>;
+  private readonly cameraLookup?: (cameraId: string) => Promise<{ id: string; name: string; mediaMtxPath: string } | null>;
 
   constructor(opts: RecordingCatalogOptions = {}) {
     this.repository = opts.repository || new PrismaRecordingRepository();
@@ -46,6 +52,7 @@ export class RecordingCatalog {
     );
     this.fsStatFn = opts.fsStatFn || (async (p) => fs.stat(p));
     this.fsUnlinkFn = opts.fsUnlinkFn || (async (p) => fs.unlink(p));
+    this.cameraLookup = opts.cameraLookup;
   }
 
   /**
@@ -219,6 +226,96 @@ export class RecordingCatalog {
       success: true,
       recordingId,
       freedBytes,
+    };
+  }
+
+  /**
+   * Retrieves recorded timeline spans for a 24-hour window (PLAY-01).
+   */
+  async getTimelineSpans(
+    params: TimelineQueryParams,
+    playbackBaseUrl: string
+  ): Promise<TimelineResponseDto> {
+    let startDate: Date;
+    let endDate: Date;
+    let dateStr: string;
+
+    if (params.startTime && params.endTime) {
+      startDate = new Date(params.startTime);
+      endDate = new Date(params.endTime);
+      dateStr = startDate.toISOString().split('T')[0];
+    } else if (params.date) {
+      dateStr = params.date;
+      startDate = new Date(`${params.date}T00:00:00.000Z`);
+      endDate = new Date(`${params.date}T23:59:59.999Z`);
+    } else {
+      const now = this.clock.now();
+      dateStr = now.toISOString().split('T')[0];
+      startDate = new Date(`${dateStr}T00:00:00.000Z`);
+      endDate = new Date(`${dateStr}T23:59:59.999Z`);
+    }
+
+    const records = await this.repository.queryRecordings({
+      cameraId: params.cameraId,
+      startTime: startDate.toISOString(),
+      endTime: endDate.toISOString(),
+      limit: 500,
+    });
+
+    // Sort ascending for chronological playback scrubbing
+    records.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+    const spans: TimelineSpanDto[] = records.map((r) => ({
+      recordingId: r.id,
+      startTime: r.startTime,
+      endTime: r.endTime,
+      durationSeconds: Number(r.duration),
+    }));
+
+    const totalDurationSeconds = spans.reduce((sum, s) => sum + s.durationSeconds, 0);
+
+    return {
+      cameraId: params.cameraId,
+      date: dateStr,
+      playbackBaseUrl,
+      totalDurationSeconds,
+      spans,
+    };
+  }
+
+  /**
+   * Resolves MediaMTX fMP4 stream URL for a camera at a given timestamp (PLAY-03).
+   */
+  async getPlaybackStreamUrl(
+    cameraId: string,
+    startTime: string,
+    durationSeconds: number = 300,
+    playbackBaseUrl: string
+  ): Promise<PlaybackStreamUrlDto> {
+    let camera = await this.repository.getCameraById(cameraId);
+    if (!camera && this.cameraLookup) {
+      const lookup = await this.cameraLookup(cameraId);
+      if (lookup) {
+        camera = { id: lookup.id, name: lookup.name, mediaMtxPath: lookup.mediaMtxPath };
+        if ('registerCamera' in (this.repository as any)) {
+          (this.repository as any).registerCamera(camera);
+        }
+      }
+    }
+    if (!camera) {
+      throw new Error(`Camera with id ${cameraId} not found`);
+    }
+
+    const base = playbackBaseUrl.replace(/\/$/, '');
+    const encodedStart = encodeURIComponent(new Date(startTime).toISOString());
+    const fmp4StreamUrl = `${base}/get?path=${camera.mediaMtxPath}&start=${encodedStart}&duration=${durationSeconds}`;
+
+    return {
+      cameraId,
+      mediaMtxPath: camera.mediaMtxPath,
+      fmp4StreamUrl,
+      startTime: new Date(startTime).toISOString(),
+      duration: durationSeconds,
     };
   }
 }
