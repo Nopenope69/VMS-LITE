@@ -57,7 +57,12 @@ Plans:
 
 Plans:
 
+**Wave 1**
+
 - [ ] 02-01: Configure MediaMTX media plane service and build internal `CameraProvider` abstraction wrapping pinned ONVIF client.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 02-02: Implement ONVIF WS-Discovery, camera authentication, stream URI retrieval, and dynamic MediaMTX path configuration sync.
 
 ---
