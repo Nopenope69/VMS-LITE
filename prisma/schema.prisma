@@ -208,3 +208,32 @@ model ExportJob {
   @@index([expiresAt])
   @@map("export_jobs")
 }
+
+model WebhookEndpoint {
+  id        String   @id @default(uuid())
+  name      String
+  url       String
+  secret    String
+  events    Json     // string[] of event types or ["*"]
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("webhook_endpoints")
+}
+
+model NotificationConfig {
+  id              String   @id @default(uuid())
+  provider        String   @default("mock") // "mock", "whatsapp_cloud", "twilio"
+  credentialsJson String?  @map("credentials_json") // JSON-encoded API credentials
+  sender          String?  // From phone / Phone Number ID / Twilio WhatsApp from
+  recipientPhones Json     @default("[]") @map("recipient_phones") // string[]
+  cooldownSeconds Int      @default(60) @map("cooldown_seconds")
+  events          Json     @default("[\"motion.detected\",\"camera.offline\"]")
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("notification_configs")
+}
+

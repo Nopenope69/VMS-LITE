@@ -18,3 +18,5 @@ export * from './components/PtzControlsOverlay.js';
 export * from './components/ClipExportModal.js';
 export * from './components/BookmarkModal.js';
 export * from './components/MotionZoneEditorModal.js';
+export * from './hooks/useCameraHealth.js';
+export * from './components/NotificationSettingsModal.js';

@@ -4,6 +4,7 @@ import { WhepHlsPlayer } from './WhepHlsPlayer.js';
 import { PtzControlsOverlay } from './PtzControlsOverlay.js';
 import { MotionZoneEditorModal } from './MotionZoneEditorModal.js';
 import { useAuth } from '../context/AuthContext.js';
+import { CameraHealthTelemetry } from '../hooks/useCameraHealth.js';
 
 export interface CameraStreamInfo {
   cameraId: string;
@@ -19,6 +20,7 @@ export interface CameraStreamInfo {
 export interface LiveCameraTileProps {
   slotIndex: number;
   camera?: CameraStreamInfo | null;
+  telemetry?: CameraHealthTelemetry | null;
   availableCameras?: CameraStreamInfo[];
   onAssignCamera?: (slotIndex: number, camera: CameraStreamInfo) => void;
   onClearSlot?: (slotIndex: number) => void;
@@ -34,6 +36,7 @@ export interface LiveCameraTileProps {
 export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
   slotIndex,
   camera,
+  telemetry,
   availableCameras = [],
   onAssignCamera,
   onClearSlot,
@@ -87,6 +90,33 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
           <span className="font-semibold truncate select-none text-slate-100 text-xs">
             {camera ? camera.name : `Slot ${slotIndex + 1}: Unassigned`}
           </span>
+          {telemetry && (
+            <div
+              title={`Health: ${telemetry.status}\nLatency: ${telemetry.latencyMs !== null ? `${telemetry.latencyMs}ms` : 'N/A'}\nBitrate: ${telemetry.bitrateKbps !== null ? `${telemetry.bitrateKbps} kbps` : 'Warm-up'}${telemetry.reason ? `\nReason: ${telemetry.reason}` : ''}`}
+              className="flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono cursor-help bg-[#090d16] border border-[#1f2937] shrink-0 select-none"
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  telemetry.status === 'ONLINE'
+                    ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]'
+                    : telemetry.status === 'DEGRADED'
+                    ? 'bg-amber-500 animate-pulse shadow-[0_0_6px_rgba(245,158,11,0.8)]'
+                    : 'bg-rose-500 animate-ping shadow-[0_0_6px_rgba(239,68,68,0.8)]'
+                }`}
+              />
+              <span
+                className={`text-[9px] font-bold uppercase tracking-wider ${
+                  telemetry.status === 'ONLINE'
+                    ? 'text-emerald-400'
+                    : telemetry.status === 'DEGRADED'
+                    ? 'text-amber-400'
+                    : 'text-rose-400'
+                }`}
+              >
+                {telemetry.status}
+              </span>
+            </div>
+          )}
         </div>
 
         {camera && (

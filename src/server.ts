@@ -13,6 +13,12 @@ import { ptzService } from './ptz/ptz.service.js';
 import { exportRoutes } from './export/export.routes.js';
 import { bookmarkRoutes } from './bookmarks/bookmark.routes.js';
 import { zoneRoutes } from './zones/zone.routes.js';
+import { healthRoutes } from './health/health.routes.js';
+import { cameraHealthService } from './health/camera-health.service.js';
+import { notificationRoutes } from './notifications/notification.routes.js';
+import { notificationService } from './notifications/notification-dispatcher.service.js';
+import { webhookRoutes } from './webhooks/webhook.routes.js';
+import { webhookDispatcherService } from './webhooks/webhook-dispatcher.service.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
 import { onvifEventListenerService as defaultOnvifEvents, OnvifEventListenerService } from './events/onvif-events.service.js';
 import { recordingEngine as defaultRecordingEngine, RecordingEngine } from './recordings/recording-engine.js';
@@ -71,6 +77,9 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(exportRoutes, { prefix: '/api/recordings' });
   await app.register(bookmarkRoutes, { prefix: '/api/cameras' });
   await app.register(zoneRoutes, { prefix: '/api/cameras' });
+  await app.register(healthRoutes, { prefix: '/api/cameras' });
+  await app.register(notificationRoutes, { prefix: '/api/notifications' });
+  await app.register(webhookRoutes, { prefix: '/api/webhooks' });
   await app.register(streamingRoutes, { prefix: '/api/streaming' });
   await app.register(playbackRoutes, { prefix: '/api/playback' });
 
@@ -78,6 +87,9 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   app.addHook('onReady', async () => {
     await engine.start();
     onvifEvents.start();
+    cameraHealthService.start();
+    await notificationService.start();
+    await webhookDispatcherService.start();
     wsFeed.attach(app.server, async (token: string) => {
       return app.jwt.verify(token);
     });
@@ -85,6 +97,9 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
 
   // Clean up on server close
   app.addHook('onClose', async () => {
+    notificationService.stop();
+    webhookDispatcherService.stop();
+    cameraHealthService.stop();
     ptzService.destroy();
     await engine.stop();
     onvifEvents.stop();
