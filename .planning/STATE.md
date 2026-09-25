@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: "Package 2 (Extended)"
 status: in_progress
-stopped_at: "Phase 11 complete (11-01, 11-02). Next: Phase 12 (Camera Health Telemetry, WhatsApp Alerts & Webhooks)"
-last_updated: "2026-09-24T23:49:00.000Z"
-last_activity: "2026-09-24 -- Phase 11 executed (Motion Zones & Spatial Exclusion Masking)"
+stopped_at: "Phase 12 planned (12-01, 12-02). Ready for execution."
+last_updated: "2026-09-25T07:53:00.000Z"
+last_activity: "2026-09-25 -- Phase 12 planned (Camera Health Telemetry, WhatsApp Alerts & Webhooks)"
 progress:
   total_phases: 5
   completed_phases: 4
@@ -25,10 +25,10 @@ See: `.planning/PROJECT.md` (updated 2026-09-24)
 
 ## Current Position
 
-Phase: Phase 11 (Motion Zones & Spatial Exclusion Masking)
-Plan: Complete (11-01, 11-02)
-Status: Verified (20/20 Phase 11 tests passing, 58/58 Extended tests passing, zero TypeScript errors)
-Last activity: 2026-09-24 -- Phase 11 executed (Ray-Casting Point-in-Polygon, multi-zone truth table, strict bounds validation, dynamic cache, interactive SVG canvas editor)
+Phase: Phase 12 (Camera Health Telemetry, WhatsApp Alerts & Webhooks)
+Plan: Ready to execute (12-01, 12-02)
+Status: Planned
+Last activity: 2026-09-25 -- Phase 12 planned (Dual-plane health telemetry, token-bucket WhatsApp alerts with 60s cooldown, HMAC-SHA256 signed webhooks)
 
 Progress: [████████░░] 80%
 
