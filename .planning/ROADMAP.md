@@ -288,8 +288,8 @@ Plans:
 
 Plans:
 
-- [ ] 12-01: Background health monitor worker (TCP ping + MediaMTX path metrics) with `camera.degraded`/`offline` alert events and UI indicators.
-- [ ] 12-02: Token-bucket WhatsApp Cloud API / Twilio dispatcher, HMAC-SHA256 outbound webhook engine, and admin notification settings UI.
+- [x] 12-01: Background health monitor worker (TCP ping + MediaMTX path metrics) with `camera.degraded`/`offline` alert events and UI indicators.
+- [x] 12-02: Token-bucket WhatsApp Cloud API / Twilio dispatcher, HMAC-SHA256 outbound webhook engine, and admin notification settings UI.
 
 ---
 
@@ -311,4 +311,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. ONVIF PTZ Controls & Camera Presets | 2/2 | Complete    | 2026-09-24 |
 | 10. Server-Side Clip Export & Timeline Bookmarks | 2/2 | Complete    | 2026-09-24 |
 | 11. Motion Zones & Spatial Exclusion Masking | 2/2 | Complete    | 2026-09-24 |
-| 12. Camera Health Telemetry, WhatsApp Alerts & Webhooks | 0/2 | Planned     | - |
+| 12. Camera Health Telemetry, WhatsApp Alerts & Webhooks | 2/2 | Complete    | 2026-09-25 |
