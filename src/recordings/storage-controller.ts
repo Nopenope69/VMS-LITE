@@ -11,6 +11,7 @@ export interface StorageControllerOptions {
   warningThresholdPercent?: number;
   criticalThresholdPercent?: number;
   targetThresholdPercent?: number;
+  retentionDays?: number;
   batchSize?: number;
   maxIterations?: number;
   statfsFn?: (dirPath: string) => Promise<{
@@ -18,15 +19,17 @@ export interface StorageControllerOptions {
     blocks: number | bigint;
     bfree: number | bigint;
   }>;
+  isBookmarkedFn?: (segment: any) => Promise<boolean>;
 }
 
 export class StorageController {
   private readonly catalog: RecordingCatalog;
   private readonly eventBus: EventBus;
   private readonly recordingsRoot: string;
-  private readonly warningThresholdPercent: number;
-  private readonly criticalThresholdPercent: number;
-  private readonly targetThresholdPercent: number;
+  private warningThresholdPercent: number;
+  private criticalThresholdPercent: number;
+  private targetThresholdPercent: number;
+  private retentionDays: number;
   private readonly batchSize: number;
   private readonly maxIterations: number;
   private readonly statfsFn: (dirPath: string) => Promise<{
@@ -34,6 +37,7 @@ export class StorageController {
     blocks: number | bigint;
     bfree: number | bigint;
   }>;
+  private isBookmarkedFn?: (segment: any) => Promise<boolean>;
 
   constructor(opts: StorageControllerOptions) {
     this.catalog = opts.catalog;
@@ -44,9 +48,31 @@ export class StorageController {
     this.warningThresholdPercent = opts.warningThresholdPercent ?? 80;
     this.criticalThresholdPercent = opts.criticalThresholdPercent ?? 90;
     this.targetThresholdPercent = opts.targetThresholdPercent ?? 80;
+    this.retentionDays = opts.retentionDays ?? 15;
     this.batchSize = opts.batchSize ?? 50;
     this.maxIterations = opts.maxIterations ?? 10;
     this.statfsFn = opts.statfsFn || (async (p) => fs.statfs(p));
+    this.isBookmarkedFn = opts.isBookmarkedFn;
+  }
+
+  setRetentionDays(days: number): void {
+    this.retentionDays = Math.max(0, days);
+  }
+
+  getRetentionDays(): number {
+    return this.retentionDays;
+  }
+
+  setThresholds(warning: number, critical: number, target?: number): void {
+    this.warningThresholdPercent = warning;
+    this.criticalThresholdPercent = critical;
+    if (target !== undefined) {
+      this.targetThresholdPercent = target;
+    }
+  }
+
+  setBookmarkChecker(fn: (segment: any) => Promise<boolean>): void {
+    this.isBookmarkedFn = fn;
   }
 
   /**
@@ -162,6 +188,9 @@ export class StorageController {
       }
 
       for (const segment of candidates) {
+        if (this.isBookmarkedFn && (await this.isBookmarkedFn(segment))) {
+          continue; // Preserve bookmarked evidence
+        }
         try {
           const res = await this.catalog.deleteSegmentInternal(
             segment.id,
@@ -203,5 +232,57 @@ export class StorageController {
       freedBytes: totalFreedBytes,
       metrics: currentMetrics,
     };
+  }
+
+  /**
+   * Purges recordings exceeding target retention days (excluding bookmarked segments).
+   */
+  async purgeRetention(overrideDays?: number): Promise<{ deletedSegmentsCount: number; freedBytes: number }> {
+    const days = overrideDays ?? this.retentionDays;
+    if (!days || days <= 0) {
+      return { deletedSegmentsCount: 0, freedBytes: 0 };
+    }
+
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    let deletedSegmentsCount = 0;
+    let totalFreedBytes = 0;
+
+    let hasMore = true;
+    let iteration = 0;
+
+    while (hasMore && iteration < this.maxIterations) {
+      iteration++;
+      const candidates = await this.catalog.getOldestRecordings(this.batchSize);
+      if (candidates.length === 0) break;
+
+      const expiredCandidates = candidates.filter((s) => new Date(s.startTime) < cutoff);
+      if (expiredCandidates.length === 0) break;
+
+      for (const segment of expiredCandidates) {
+        if (this.isBookmarkedFn && (await this.isBookmarkedFn(segment))) {
+          continue; // Preserve bookmarked evidence
+        }
+
+        try {
+          const res = await this.catalog.deleteSegmentInternal(
+            segment.id,
+            segment.filePath,
+            Number(segment.sizeBytes)
+          );
+          if (res.success) {
+            deletedSegmentsCount++;
+            totalFreedBytes += res.freedBytes || 0;
+          }
+        } catch {
+          // Ignore error per item
+        }
+      }
+
+      if (expiredCandidates.length < candidates.length) {
+        hasMore = false;
+      }
+    }
+
+    return { deletedSegmentsCount, freedBytes: totalFreedBytes };
   }
 }

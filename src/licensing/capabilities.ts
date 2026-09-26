@@ -22,6 +22,17 @@ export class CapabilityRegistry implements ICapabilityRegistry {
     if (this.isExpired()) {
       return false;
     }
+    if (
+      capability === 'camera.health' ||
+      capability === 'core.camera_health' ||
+      capability === 'extended.camera_health'
+    ) {
+      return (
+        this.capabilities.has('camera.health') ||
+        this.capabilities.has('core.camera_health') ||
+        this.capabilities.has('extended.camera_health')
+      );
+    }
     return this.capabilities.has(capability);
   }
 
@@ -55,14 +66,15 @@ export class CapabilityRegistry implements ICapabilityRegistry {
 /**
  * Creates a fallback evaluation registry for cold-boot or unlicensed dev mode.
  * Provides Package 1 Core capabilities with a 2-camera limit.
+ * Core production license tokens unlock up to 16 cameras.
  */
-export function createEvaluationRegistry(): CapabilityRegistry {
+export function createEvaluationRegistry(cameraLimit: number = 2): CapabilityRegistry {
   const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
   return new CapabilityRegistry({
     product: 'basic-vms',
     edition: 'core',
     capabilities: [...CORE_CAPABILITIES],
-    cameraLimit: 2,
+    cameraLimit,
     expiresAt: thirtyDaysFromNow,
     issuedAt: new Date().toISOString(),
   });

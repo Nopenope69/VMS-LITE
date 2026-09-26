@@ -104,8 +104,13 @@ describe('Ed25519 Licensing & Capability Registry', () => {
     const evalRegistry = createEvaluationRegistry();
     expect(evalRegistry.isExpired()).toBe(false);
     expect(evalRegistry.has('core.live')).toBe(true);
+    expect(evalRegistry.has('core.camera_health')).toBe(true);
+    expect(evalRegistry.has('extended.camera_health')).toBe(true);
     expect(evalRegistry.has('extended.ptz')).toBe(false);
     expect(evalRegistry.getCameraLimit()).toBe(2);
+
+    const customRegistry = createEvaluationRegistry(16);
+    expect(customRegistry.getCameraLimit()).toBe(16);
   });
 
   describe('Fastify requireCapability Route Guard', () => {

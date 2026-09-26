@@ -64,7 +64,7 @@ export class RecordingSchedulerCollaborator {
     if (config.mode === 'CONTINUOUS') {
       return true;
     }
-    if (config.mode === 'MANUAL_OFF') {
+    if (config.mode === 'MANUAL_OFF' || config.mode === 'MOTION_ONLY') {
       return false;
     }
 

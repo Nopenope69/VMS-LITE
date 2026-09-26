@@ -70,10 +70,10 @@ export const ScheduleWindowSchema = z.object({
 
 export type ScheduleWindow = z.infer<typeof ScheduleWindowSchema>;
 
-export type RecordingMode = 'CONTINUOUS' | 'SCHEDULED' | 'MANUAL_OFF';
+export type RecordingMode = 'CONTINUOUS' | 'MOTION_ONLY' | 'SCHEDULED' | 'MANUAL_OFF';
 
 export const SetCameraScheduleSchema = z.object({
-  mode: z.enum(['CONTINUOUS', 'SCHEDULED', 'MANUAL_OFF']).default('SCHEDULED'),
+  mode: z.enum(['CONTINUOUS', 'MOTION_ONLY', 'SCHEDULED', 'MANUAL_OFF']).default('SCHEDULED'),
   windows: z.array(ScheduleWindowSchema).default([]),
 });
 

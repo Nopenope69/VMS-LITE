@@ -26,7 +26,7 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 - [x] **Phase 13: Live Infrastructure & Mock Elimination** - Fail explicitly on database/network error, remove in-memory fallback branching from production runtime, and prove full suite against live PostgreSQL & MediaMTX
 - [x] **Phase 14: Vite App Shell & Production Serving** - Top-level App.tsx router, persistent header/sidebar navigation, Vite production build, Caddyfile reverse proxy, and Fastify static fallback
 - [x] **Phase 15: 6-Step Robust Camera Onboarding Wizard** - Discovery, auth & dual-stream probe, TCP port check, MediaMTX path sync, WebRTC visual preview, and atomic DB commit (completed 2026-09-27)
-- [ ] **Phase 16: Operational Settings & Core Health Licensing Realignment** - Move camera health into Core capability baseline, continuous/motion/scheduled recording policies, visual 7-day schedule grid, and storage FIFO auto-purge
+- [x] **Phase 16: Operational Settings & Core Health Licensing Realignment** - Move camera health into Core capability baseline, continuous/motion/scheduled recording policies, visual 7-day schedule grid, and storage FIFO auto-purge (completed 2026-09-27)
 - [ ] **Phase 17: Motion Recording with Rolling Ring Buffer** - 2-second short fMP4 segments, FIFO queue auto-discard, and 10s pre-buffer / 30s post-buffer promotion engine
 - [ ] **Phase 18: Operator Controls & System Dashboard** - Instant canvas snapshot download, multi-grid kiosk fullscreen, 1x-4x CSS digital zoom, and fleet health/storage overview dashboard
 - [ ] **Phase 19: Built-in SMTP Email Alerting** - Zero-cloud in-process SMTP dispatcher, HTML alert templates with IST timestamps, and token-bucket rate limiting
@@ -367,6 +367,26 @@ Plans:
 - [x] 15-01: Implement backend probe endpoints and transactional onboarding pipeline (`probe-network`, `probe-auth`, `provision-preview`, `commit`).
 - [x] 15-02: Build frontend 6-step camera onboarding wizard modal with live WebRTC preview and integrate into `App.tsx`.
 
+### Phase 16: Operational Settings & Core Health Licensing Realignment
+
+**Goal**: Move camera health into Core capability baseline, implement continuous/motion/scheduled recording policies, interactive visual 7-day schedule grid, and storage FIFO auto-purge with bookmark evidence protection.
+**Mode**: mvp
+**Depends on**: Phase 15
+**Requirements**: [MVP-07, MVP-08]
+**Success Criteria**:
+
+1. Camera health telemetry (`camera.health`, `core.camera_health`, `extended.camera_health`) included in Core Package 1 baseline entitlement without requiring Pro tier.
+2. Operational settings REST API (`/api/settings/operational`, `/schedule/:cameraId`, `/storage/purge`) manages system recording mode, weekly 7-day schedule grid, storage retention, and quotas.
+3. `StorageController` supports retention days cutoff and shields bookmarked incident evidence from deletion.
+4. `OperationalSettingsModal` provides interactive 4-tab control over recording policies, drag-to-paint 7-day schedule grid, storage pool gauge, and cryptographic license status.
+
+**Plans**: 2 plans
+
+Plans:
+
+- [x] 16-01: Core health licensing realignment and operational settings backend service & API.
+- [x] 16-02: Build frontend operational settings UI with interactive 7-day schedule grid, storage gauge, and licensing summary.
+
 ---
 
 ## Progress
@@ -391,7 +411,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 13. Live Infrastructure & Mock Elimination | 2/2 | Complete    | 2026-09-27 |
 | 14. Vite App Shell & Production Serving | 2/2 | Complete    | 2026-09-27 |
 | 15. 6-Step Robust Camera Onboarding Wizard | 2/2 | Complete    | 2026-09-27 |
-| 16. Operational Settings & Core Health Licensing | 0/2 | Planned     | - |
+| 16. Operational Settings & Core Health Licensing | 2/2 | Complete    | 2026-09-27 |
 | 17. Motion Recording with Rolling Ring Buffer | 0/2 | Planned     | - |
 | 18. Operator Controls & System Dashboard | 0/2 | Planned     | - |
 | 19. Built-in SMTP Email Alerting | 0/2 | Planned     | - |

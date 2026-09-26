@@ -37,6 +37,7 @@ import { NotificationSettingsModal } from './components/NotificationSettingsModa
 import { MotionZoneEditorModal } from './components/MotionZoneEditorModal.js';
 import { EventNotificationDrawer } from './components/EventNotificationDrawer.js';
 import { CameraOnboardingWizardModal } from './components/CameraOnboardingWizardModal.js';
+import { OperationalSettingsModal } from './components/OperationalSettingsModal.js';
 import { EventsWsClient, EventPayload } from './utils/events-ws-client.js';
 
 export type ViewType = 'dashboard' | 'live' | 'playback' | 'cameras' | 'events' | 'settings';
@@ -64,6 +65,7 @@ export const App: React.FC = () => {
   // Modals state
   const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState<boolean>(false);
+  const [isOperationalSettingsOpen, setIsOperationalSettingsOpen] = useState<boolean>(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [selectedCameraForZones, setSelectedCameraForZones] = useState<CameraRecord | null>(null);
 
@@ -1169,16 +1171,31 @@ export const App: React.FC = () => {
                 <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
                     <Film size={20} style={{ color: '#a855f7' }} />
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#f8fafc' }}>Recording Policies</h3>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#f8fafc' }}>Recording Policies & Storage</h3>
                   </div>
                   <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '12px' }}>
-                    Packet-preserving fMP4 recording directly off RTSP without re-encoding CPU load.
+                    24/7 Continuous, Motion Ring Buffer, or 7-Day Visual Calendar Schedule with FIFO quota auto-purge.
                   </p>
-                  <div style={{ fontSize: '12px', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div><strong>Mode:</strong> 24/7 Continuous + Motion Ring Buffer</div>
-                    <div><strong>Segment Duration:</strong> 60 seconds (fMP4 chunks)</div>
-                    <div><strong>Rollover:</strong> FIFO auto-purge at 90% disk quota</div>
+                  <div style={{ fontSize: '12px', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+                    <div><strong>Active Modes:</strong> Continuous / Motion-Buffered / Weekly Grid</div>
+                    <div><strong>Storage Management:</strong> 15-day target retention with FIFO auto-purge at 90%</div>
+                    <div><strong>Evidence Protection:</strong> Bookmarked segments strictly preserved</div>
                   </div>
+                  <button
+                    onClick={() => setIsOperationalSettingsOpen(true)}
+                    style={{
+                      padding: '8px 14px',
+                      backgroundColor: '#0284c7',
+                      border: 'none',
+                      borderRadius: '6px',
+                      color: '#fff',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Configure Policies & Schedule Grid
+                  </button>
                 </div>
 
                 {/* License & Capabilities */}
@@ -1190,11 +1207,26 @@ export const App: React.FC = () => {
                   <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '12px' }}>
                     Offline Ed25519 signature verified at node startup. Zero cloud telemetry dependencies.
                   </p>
-                  <div style={{ fontSize: '12px', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ fontSize: '12px', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
                     <div><strong>Package Tier:</strong> Package 1 (Core) + Package 2 (Ext)</div>
-                    <div><strong>Status:</strong> Valid Cryptographic Signature</div>
-                    <div><strong>Verified Features:</strong> Live View, Recording, 24h Playback, ONVIF PTZ, Webhooks</div>
+                    <div><strong>Camera Capacity:</strong> Up to 16 Cameras (Core Tier Headroom)</div>
+                    <div><strong>Camera Health:</strong> <span style={{ color: '#22c55e', fontWeight: 600 }}>Active (Included in Core!)</span></div>
                   </div>
+                  <button
+                    onClick={() => setIsOperationalSettingsOpen(true)}
+                    style={{
+                      padding: '8px 14px',
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #475569',
+                      borderRadius: '6px',
+                      color: '#f8fafc',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    View Entitlement Summary
+                  </button>
                 </div>
               </div>
             </div>
@@ -1216,6 +1248,15 @@ export const App: React.FC = () => {
       <NotificationSettingsModal
         isOpen={isNotificationModalOpen}
         onClose={() => setIsNotificationModalOpen(false)}
+      />
+
+      <OperationalSettingsModal
+        isOpen={isOperationalSettingsOpen}
+        onClose={() => setIsOperationalSettingsOpen(false)}
+        token={token}
+        isAdmin={isAdmin}
+        cameras={cameras.map((c) => ({ id: c.id, name: c.name }))}
+        onSettingsSaved={loadCameras}
       />
 
       {selectedCameraForZones && (

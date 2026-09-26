@@ -21,6 +21,7 @@ import { cameraHealthService } from './health/camera-health.service.js';
 import { notificationRoutes } from './notifications/notification.routes.js';
 import { notificationService } from './notifications/notification-dispatcher.service.js';
 import { webhookRoutes } from './webhooks/webhook.routes.js';
+import { settingsRoutes } from './settings/settings.routes.js';
 import { webhookDispatcherService } from './webhooks/webhook-dispatcher.service.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
 import { onvifEventListenerService as defaultOnvifEvents, OnvifEventListenerService } from './events/onvif-events.service.js';
@@ -121,6 +122,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(webhookRoutes, { prefix: '/api/webhooks' });
   await app.register(streamingRoutes, { prefix: '/api/streaming' });
   await app.register(playbackRoutes, { prefix: '/api/playback' });
+  await app.register(settingsRoutes, { prefix: '/api/settings' });
 
   // Register static file serving & SPA fallback if client/dist exists
   const clientDist = path.resolve(process.cwd(), 'client/dist');

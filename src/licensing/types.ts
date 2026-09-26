@@ -21,6 +21,7 @@ export interface ICapabilityRegistry {
   getExpiresAt(): Date | null;
   getEdition(): LicenseEdition;
   getAllCapabilities(): string[];
+  isExpired(): boolean;
 }
 
 export const CORE_CAPABILITIES = [
@@ -29,6 +30,8 @@ export const CORE_CAPABILITIES = [
   'core.playback',
   'core.events',
   'core.onvif',
+  'core.camera_health',
+  'extended.camera_health',
 ] as const;
 
 export const EXTENDED_CAPABILITIES = [
@@ -38,7 +41,6 @@ export const EXTENDED_CAPABILITIES = [
   'extended.ptz',
   'extended.clip_export',
   'extended.bookmarks',
-  'extended.camera_health',
   'extended.whatsapp_alerts',
   'extended.api_webhooks',
 ] as const;

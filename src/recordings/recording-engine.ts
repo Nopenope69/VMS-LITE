@@ -178,6 +178,14 @@ export class RecordingEngine implements IRecordingEngine {
     return this.storageController.checkStorage();
   }
 
+  async purgeRetention(days?: number): Promise<{ deletedSegmentsCount: number; freedBytes: number }> {
+    return this.storageController.purgeRetention(days);
+  }
+
+  getStorageController(): StorageController {
+    return this.storageController;
+  }
+
   // ==========================================
   // Lifecycle & Worker Ownership
   // ==========================================
