@@ -385,7 +385,25 @@ Plans:
 Plans:
 
 - [x] 16-01: Core health licensing realignment and operational settings backend service & API.
-- [x] 16-02: Build frontend operational settings UI with interactive 7-day schedule grid, storage gauge, and licensing summary.
+### Phase 17: Motion Recording with Rolling Ring Buffer
+
+**Goal**: Implement zero-transcode rolling ring buffer engine with pre-buffer and post-buffer promotion, REST API diagnostics, and operator UI indicators.
+**Mode**: mvp
+**Depends on**: Phase 16
+**Requirements**: [MVP-09]
+**Success Criteria**:
+
+1. `MotionRingBufferEngine` manages unpromoted short video segments in memory, purging unpromoted segments older than TTL via `fs.unlink`.
+2. Native ONVIF `motion.detected` events atomically promote preceding 10s pre-buffer segments to permanent recordings and maintain 30s post-buffer cooldown window.
+3. Configurable pre/post buffer durations exposed in Operational Settings and synchronized with engine.
+4. Live camera tiles display `REC (MOTION)` and `BUF (MOTION)` indicators.
+
+**Plans**: 2 plans
+
+Plans:
+
+- [x] 17-01: Zero-transcode rolling ring buffer engine with pre-buffer and post-buffer promotion.
+- [x] 17-02: Expose motion buffer status REST API, configurable pre/post windows in settings, and operator UI indicators.
 
 ---
 
@@ -412,7 +430,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 14. Vite App Shell & Production Serving | 2/2 | Complete    | 2026-09-27 |
 | 15. 6-Step Robust Camera Onboarding Wizard | 2/2 | Complete    | 2026-09-27 |
 | 16. Operational Settings & Core Health Licensing | 2/2 | Complete    | 2026-09-27 |
-| 17. Motion Recording with Rolling Ring Buffer | 0/2 | Planned     | - |
+| 17. Motion Recording with Rolling Ring Buffer | 2/2 | Complete    | 2026-09-27 |
 | 18. Operator Controls & System Dashboard | 0/2 | Planned     | - |
 | 19. Built-in SMTP Email Alerting | 0/2 | Planned     | - |
 | 20. Self-Verifying Evidence Export Package | 0/2 | Planned     | - |

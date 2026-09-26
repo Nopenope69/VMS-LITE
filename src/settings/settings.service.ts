@@ -26,6 +26,8 @@ export class SettingsService {
     retentionDays: 15,
     warningThresholdPercent: 80,
     criticalThresholdPercent: 90,
+    preBufferSeconds: 10,
+    postBufferSeconds: 30,
     weeklySchedule: gridToWindows(SCHEDULE_PRESETS.ALL_HOURS()),
   };
 
@@ -42,6 +44,17 @@ export class SettingsService {
       this.operationalSettings.warningThresholdPercent,
       this.operationalSettings.criticalThresholdPercent
     );
+
+    // Sync motion buffer durations
+    try {
+      const ringBuffer = recordingEngine.getMotionRingBuffer();
+      ringBuffer.setWindowDurations(
+        this.operationalSettings.preBufferSeconds,
+        this.operationalSettings.postBufferSeconds
+      );
+    } catch {
+      // Safe fallback
+    }
   }
 
   /**
@@ -93,6 +106,20 @@ export class SettingsService {
         ? Math.max(1, Math.floor(storageMetrics.freeBytes / dailyIngestBytes))
         : 30;
 
+    let motionBuffer: any = undefined;
+    try {
+      const ringBuffer = recordingEngine.getMotionRingBuffer();
+      const status = ringBuffer.getBufferStatus();
+      motionBuffer = {
+        preBufferSeconds: this.operationalSettings.preBufferSeconds,
+        postBufferSeconds: this.operationalSettings.postBufferSeconds,
+        totalBufferedSegments: status.totalBufferedSegments,
+        activeIncidentsCount: status.activeIncidentsCount,
+      };
+    } catch {
+      // Ignored
+    }
+
     return {
       settings: { ...this.operationalSettings },
       grid: windowsToGrid(this.operationalSettings.weeklySchedule),
@@ -101,6 +128,7 @@ export class SettingsService {
         retentionDays: this.operationalSettings.retentionDays,
         estimatedDaysRemaining,
       },
+      motionBuffer,
       licensing: {
         edition: capabilities.getEdition(),
         cameraLimit: capabilities.getCameraLimit(),
@@ -133,6 +161,21 @@ export class SettingsService {
         this.operationalSettings.warningThresholdPercent,
         this.operationalSettings.criticalThresholdPercent
       );
+    }
+
+    if (
+      input.preBufferSeconds !== undefined ||
+      input.postBufferSeconds !== undefined
+    ) {
+      try {
+        const ringBuffer = recordingEngine.getMotionRingBuffer();
+        ringBuffer.setWindowDurations(
+          this.operationalSettings.preBufferSeconds,
+          this.operationalSettings.postBufferSeconds
+        );
+      } catch {
+        // Ignored
+      }
     }
 
     return { ...this.operationalSettings };

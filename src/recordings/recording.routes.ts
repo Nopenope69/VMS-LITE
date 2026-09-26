@@ -186,6 +186,33 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
   );
 
   /**
+   * GET /api/recordings/motion-buffer/status
+   * Returns per-camera buffered segment counts and active incident timers (MVP-09)
+   */
+  app.get<{ Querystring: { cameraId?: string } }>(
+    '/motion-buffer/status',
+    {
+      preHandler: [authenticate],
+    },
+    async (request, reply) => {
+      try {
+        const { cameraId } = request.query;
+        const ringBuffer = recordingEngine.getMotionRingBuffer();
+        const status = ringBuffer.getBufferStatus(cameraId);
+        return reply.send({
+          success: true,
+          ...status,
+        });
+      } catch (err: any) {
+        return reply.status(500).send({
+          error: 'MotionBufferStatusFailed',
+          message: err.message || 'Failed to retrieve motion buffer status',
+        });
+      }
+    }
+  );
+
+  /**
    * GET /api/recordings/:id
    * Retrieves single recording metadata by UUID (REC-01, T-03-02)
    */

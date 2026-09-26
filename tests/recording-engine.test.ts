@@ -68,10 +68,11 @@ describe('RecordingEngine Architecture Tests', () => {
         duration: 60,
       });
 
-      expect(recording.cameraId).toBe('cam-1');
-      expect(recording.startTime).toBe('2026-09-24T16:30:00.000Z');
-      expect(recording.endTime).toBe('2026-09-24T16:31:00.000Z');
-      expect(recording.duration).toBe(60);
+      expect(recording).toBeDefined();
+      expect(recording!.cameraId).toBe('cam-1');
+      expect(recording!.startTime).toBe('2026-09-24T16:30:00.000Z');
+      expect(recording!.endTime).toBe('2026-09-24T16:31:00.000Z');
+      expect(recording!.duration).toBe(60);
       expect(emittedEvents.length).toBe(1);
       expect(emittedEvents[0].metadata.mediaMtxPath).toBe('front_door_1');
     });
@@ -90,8 +91,9 @@ describe('RecordingEngine Architecture Tests', () => {
         duration: 30,
       } as any);
 
-      expect(recording.cameraId).toBe('cam-2');
-      expect(recording.mediaMtxPath).toBe('backyard_stream');
+      expect(recording).toBeDefined();
+      expect(recording!.cameraId).toBe('cam-2');
+      expect(recording!.mediaMtxPath).toBe('backyard_stream');
     });
   });
 

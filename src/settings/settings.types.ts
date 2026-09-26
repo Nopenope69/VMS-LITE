@@ -21,6 +21,8 @@ export const OperationalSettingsSchema = z.object({
   retentionDays: z.number().int().min(0).max(365).default(15),
   warningThresholdPercent: z.number().int().min(50).max(95).default(80),
   criticalThresholdPercent: z.number().int().min(60).max(99).default(90),
+  preBufferSeconds: z.number().int().min(2).max(60).default(10),
+  postBufferSeconds: z.number().int().min(5).max(300).default(30),
   weeklySchedule: z.array(ScheduleWindowSchema).default([]),
 });
 
@@ -55,6 +57,12 @@ export interface OperationalSettingsResponseDto {
     criticalThresholdPercent: number;
     retentionDays: number;
     estimatedDaysRemaining?: number;
+  };
+  motionBuffer?: {
+    preBufferSeconds: number;
+    postBufferSeconds: number;
+    totalBufferedSegments: number;
+    activeIncidentsCount: number;
   };
   licensing: {
     edition: string;

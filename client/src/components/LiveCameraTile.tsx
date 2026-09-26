@@ -28,6 +28,7 @@ export interface LiveCameraTileProps {
   isMaximized?: boolean;
   forceSubStream?: boolean;
   hasMotionAlert?: boolean;
+  isMotionBuffering?: boolean;
   canControlPtz?: boolean;
   isAdmin?: boolean;
   iceServers?: RTCIceServer[];
@@ -44,6 +45,7 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
   isMaximized = false,
   forceSubStream = false,
   hasMotionAlert = false,
+  isMotionBuffering = false,
   canControlPtz = true,
   isAdmin,
   iceServers,
@@ -121,6 +123,23 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
               </span>
             </div>
           )}
+          {hasMotionAlert ? (
+            <div
+              title="Motion detected! Recording incident promoted to permanent storage."
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950/70 text-rose-300 border border-rose-500/50 shrink-0 select-none animate-pulse"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+              <span>REC (MOTION)</span>
+            </div>
+          ) : isMotionBuffering ? (
+            <div
+              title="Rolling 2s fMP4 ring-buffer active in memory (standby)"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950/40 text-amber-300 border border-amber-600/30 shrink-0 select-none"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <span>BUF (MOTION)</span>
+            </div>
+          ) : null}
         </div>
 
         {camera && (

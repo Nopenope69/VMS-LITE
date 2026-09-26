@@ -164,7 +164,7 @@ export interface PlaybackStreamUrlDto {
 }
 
 export interface IRecordingEngine {
-  ingestSegment(payload: SegmentCompleteWebhookPayload): Promise<RecordingDto>;
+  ingestSegment(payload: SegmentCompleteWebhookPayload): Promise<RecordingDto | null>;
   queryRecordings(params?: RecordingQueryParams): Promise<RecordingDto[]>;
   getRecordingById(id: string): Promise<RecordingDto | null>;
   getSchedule(cameraId: string): Promise<CameraScheduleConfig>;

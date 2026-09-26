@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: "Deployable MVP (Days 45 → 75)"
 status: in_progress
-stopped_at: "Completed Phase 16: Operational Settings & Core Health Licensing Realignment. Ready for Phase 17: Motion Recording with Rolling Ring Buffer."
-last_updated: "2026-09-27T03:04:00.000Z"
-last_activity: "2026-09-27 -- Completed Phase 16 (Core health licensing realignment, operational settings API, 7-day schedule grid, and storage retention with bookmark protection)"
+stopped_at: "Completed Phase 17: Motion Recording with Rolling Ring Buffer. Ready for Phase 18: Operator Controls & System Dashboard."
+last_updated: "2026-09-27T03:13:00.000Z"
+last_activity: "2026-09-27 -- Completed Phase 17 (Zero-transcode rolling ring buffer engine, pre/post buffer promotion, REST diagnostics, settings & live view badge)"
 progress:
   total_phases: 9
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 17
-  completed_plans: 8
-  percent: 47
+  completed_plans: 10
+  percent: 59
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: `.planning/MVP-ROADMAP.md` and `.planning/PROJECT.md`
 
 **Core value:** Sub-30-minute installer deployment with reliable CP Plus parity (live view, scheduled recording, 24h timeline playback, native ONVIF motion alerts) built on permissively licensed infrastructure (MediaMTX) with zero VigilOne domain entanglement.  
-**Current focus:** Milestone v3.0: Deployable MVP (Days 45 → 75) — Live Infrastructure, Mock Elimination, Vite App Shell, Camera Onboarding Wizard, Operational Settings & Motion Ring Buffer
+**Current focus:** Milestone v3.0: Deployable MVP (Days 45 → 75) — Live Infrastructure, Mock Elimination, Vite App Shell, Camera Onboarding Wizard, Operational Settings, Motion Ring Buffer & Operator Controls
 
 ## Current Position
 
-Phase: Phase 17 (Motion Recording with Rolling Ring Buffer)
+Phase: Phase 18 (Operator Controls & System Dashboard)
 Plan: Ready to plan
 Status: In Progress
-Last activity: 2026-09-27 -- Phase 16 completed (2/2 plans). Starting Phase 17.
+Last activity: 2026-09-27 -- Phase 17 completed (2/2 plans). Starting Phase 18.
 
-Progress: [█████░░░░░] 47%
+Progress: [██████░░░░] 59%
 
 ## Performance Metrics
 

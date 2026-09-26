@@ -54,13 +54,18 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
     null
   );
 
-  // Operational settings state
   const [recordingMode, setRecordingMode] = useState<
     'CONTINUOUS' | 'MOTION_ONLY' | 'SCHEDULED' | 'MANUAL_OFF'
   >('CONTINUOUS');
   const [retentionDays, setRetentionDays] = useState<number>(15);
   const [warningThreshold, setWarningThreshold] = useState<number>(80);
   const [criticalThreshold, setCriticalThreshold] = useState<number>(90);
+  const [preBufferSeconds, setPreBufferSeconds] = useState<number>(10);
+  const [postBufferSeconds, setPostBufferSeconds] = useState<number>(30);
+  const [motionBufferStatus, setMotionBufferStatus] = useState<{
+    totalBufferedSegments: number;
+    activeIncidentsCount: number;
+  }>({ totalBufferedSegments: 0, activeIncidentsCount: 0 });
 
   // 7x24 grid: scheduleGrid[day][hour] = boolean
   const [scheduleGrid, setScheduleGrid] = useState<boolean[][]>(
@@ -131,6 +136,14 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
           setRetentionDays(data.settings.retentionDays ?? 15);
           setWarningThreshold(data.settings.warningThresholdPercent ?? 80);
           setCriticalThreshold(data.settings.criticalThresholdPercent ?? 90);
+          setPreBufferSeconds(data.settings.preBufferSeconds ?? 10);
+          setPostBufferSeconds(data.settings.postBufferSeconds ?? 30);
+        }
+        if (data.motionBuffer) {
+          setMotionBufferStatus({
+            totalBufferedSegments: data.motionBuffer.totalBufferedSegments ?? 0,
+            activeIncidentsCount: data.motionBuffer.activeIncidentsCount ?? 0,
+          });
         }
         if (data.grid && Array.isArray(data.grid) && data.grid.length === 7) {
           setScheduleGrid(data.grid);
@@ -297,6 +310,8 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
             retentionDays,
             warningThresholdPercent: warningThreshold,
             criticalThresholdPercent: criticalThreshold,
+            preBufferSeconds,
+            postBufferSeconds,
             weeklySchedule: windows,
           }),
         });
@@ -677,8 +692,132 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
                   </div>
                   <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>
                     Rolling 2s fMP4 ring-buffer promoted to permanent storage on native ONVIF motion
-                    triggers. Captures 10s pre-buffer and 30s post-buffer.
+                    triggers. Captures pre-event buffer and post-event cooldown without transcoding.
                   </p>
+
+                  {/* Configurable Ring Buffer Inputs */}
+                  {recordingMode === 'MOTION_ONLY' && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        marginTop: '16px',
+                        padding: '14px',
+                        backgroundColor: '#0f172a',
+                        borderRadius: '6px',
+                        border: '1px solid #1e293b',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '16px',
+                          marginBottom: '12px',
+                        }}
+                      >
+                        <div>
+                          <label
+                            style={{
+                              display: 'block',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              color: '#94a3b8',
+                              marginBottom: '6px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em',
+                            }}
+                          >
+                            Pre-Event Buffer (Seconds)
+                          </label>
+                          <input
+                            type="number"
+                            min={2}
+                            max={60}
+                            value={preBufferSeconds}
+                            onChange={(e) => setPreBufferSeconds(Number(e.target.value))}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              backgroundColor: '#1e293b',
+                              border: '1px solid #334155',
+                              borderRadius: '4px',
+                              color: '#f8fafc',
+                              fontSize: '13px',
+                              fontFamily: 'monospace',
+                            }}
+                          />
+                          <span style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', display: 'block' }}>
+                            Preceding footage saved on trigger (2 - 60s)
+                          </span>
+                        </div>
+                        <div>
+                          <label
+                            style={{
+                              display: 'block',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              color: '#94a3b8',
+                              marginBottom: '6px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em',
+                            }}
+                          >
+                            Post-Event Cooldown (Seconds)
+                          </label>
+                          <input
+                            type="number"
+                            min={5}
+                            max={300}
+                            value={postBufferSeconds}
+                            onChange={(e) => setPostBufferSeconds(Number(e.target.value))}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              backgroundColor: '#1e293b',
+                              border: '1px solid #334155',
+                              borderRadius: '4px',
+                              color: '#f8fafc',
+                              fontSize: '13px',
+                              fontFamily: 'monospace',
+                            }}
+                          />
+                          <span style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', display: 'block' }}>
+                            Recording extends after motion ceases (5 - 300s)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Live Status Diagnostics */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '8px 12px',
+                          backgroundColor: '#1e293b',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          color: '#38bdf8',
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: motionBufferStatus.activeIncidentsCount > 0 ? '#ef4444' : '#22c55e',
+                            boxShadow: motionBufferStatus.activeIncidentsCount > 0
+                              ? '0 0 6px #ef4444'
+                              : '0 0 6px #22c55e',
+                          }}
+                        />
+                        <span>
+                          Motion Ring Buffer Live: {motionBufferStatus.totalBufferedSegments} rolling segment(s) |{' '}
+                          {motionBufferStatus.activeIncidentsCount} active incident(s)
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Scheduled Grid */}

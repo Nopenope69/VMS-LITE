@@ -23,6 +23,7 @@ import {
   PrismaRecordingRepository,
 } from './repositories/recording.repository.js';
 import { StorageController } from './storage-controller.js';
+import { MotionRingBufferEngine } from './motion-ring-buffer.js';
 
 export interface RecordingEngineOptions {
   repository?: IRecordingRepository;
@@ -33,6 +34,8 @@ export interface RecordingEngineOptions {
   warningThresholdPercent?: number;
   criticalThresholdPercent?: number;
   targetThresholdPercent?: number;
+  preBufferSeconds?: number;
+  postBufferSeconds?: number;
   batchSize?: number;
   scheduleIntervalMs?: number;
   storageIntervalMs?: number;
@@ -48,9 +51,11 @@ export interface RecordingEngineOptions {
 }
 
 export class RecordingEngine implements IRecordingEngine {
+  private readonly repository: IRecordingRepository;
   private readonly catalog: RecordingCatalog;
   private readonly scheduler: RecordingSchedulerCollaborator;
   private readonly storageController: StorageController;
+  private readonly motionRingBuffer: MotionRingBufferEngine;
   private readonly clock: IClock;
   private readonly playbackBaseUrl: string;
 
@@ -67,6 +72,7 @@ export class RecordingEngine implements IRecordingEngine {
 
   constructor(opts: RecordingEngineOptions = {}) {
     const repository = opts.repository || new PrismaRecordingRepository();
+    this.repository = repository;
     const mediaMtx = opts.mediaMtx || defaultMediaMtx;
     const eventBus = opts.eventBus || defaultEventBus;
     this.clock = opts.clock || systemClock;
@@ -128,14 +134,48 @@ export class RecordingEngine implements IRecordingEngine {
       batchSize: opts.batchSize,
       statfsFn: opts.statfsFn,
     });
+
+    this.motionRingBuffer = new MotionRingBufferEngine({
+      catalog: this.catalog,
+      eventBus,
+      clock: this.clock,
+      preBufferSeconds: opts.preBufferSeconds,
+      postBufferSeconds: opts.postBufferSeconds,
+      fsUnlinkFn: opts.fsUnlinkFn,
+      fsStatFn: opts.fsStatFn,
+    });
   }
 
   // ==========================================
   // Public Seam Methods
   // ==========================================
 
-  async ingestSegment(payload: SegmentCompleteWebhookPayload): Promise<RecordingDto> {
+  async ingestSegment(payload: SegmentCompleteWebhookPayload): Promise<RecordingDto | null> {
+    const mediaMtxPath = payload.mediaMtxPath || (payload as any).path;
+    let camera = await this.repository.getCameraByMediaMtxPath(mediaMtxPath);
+    let isMotionOnly = false;
+
+    if (camera) {
+      try {
+        const schedule = await this.scheduler.getCameraSchedule(camera.id);
+        if (schedule.mode === 'MOTION_ONLY') {
+          isMotionOnly = true;
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    if (isMotionOnly && camera) {
+      const res = await this.motionRingBuffer.handleSegment(payload, camera.id);
+      return res.recording || null;
+    }
+
     return this.catalog.ingestSegment(payload);
+  }
+
+  getMotionRingBuffer(): MotionRingBufferEngine {
+    return this.motionRingBuffer;
   }
 
   async queryRecordings(params: RecordingQueryParams = {}): Promise<RecordingDto[]> {
