@@ -1,0 +1,19 @@
+{
+  "host": "smtp.gmail.com",
+  "port": 465,
+  "secure": true,
+  "requireTls": false,
+  "user": "security@mycctv.com",
+  "pass": "mypassword",
+  "from": "Basic VMS <alerts@basic-vms.local>",
+  "recipients": [
+    "duty-officer@mycctv.com"
+  ],
+  "cooldownSeconds": 45,
+  "events": [
+    "motion.detected",
+    "camera.offline",
+    "storage.warning"
+  ],
+  "enabled": true
+}

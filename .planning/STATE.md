@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: "Deployable MVP (Days 45 → 75)"
 status: in_progress
-stopped_at: "Completed Phase 18: Operator Controls & System Dashboard. Ready for Phase 19: Built-in SMTP Email Alerting."
-last_updated: "2026-09-27T03:22:00.000Z"
-last_activity: "2026-09-27 -- Completed Phase 18 (HTML5 canvas snapshot download, kiosk fullscreen, 1x-4x CSS digital zoom, system landing dashboard)"
+stopped_at: "Completed Phase 19: Built-in SMTP Email Alerting. Ready for Phase 20: Self-Verifying Evidence Export Package."
+last_updated: "2026-09-27T03:28:00.000Z"
+last_activity: "2026-09-27 -- Completed Phase 19 (Zero-dependency RFC 5321 SMTP client, IST HTML template, rate limiting, REST routes & UI)"
 progress:
   total_phases: 9
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 17
-  completed_plans: 12
-  percent: 71
+  completed_plans: 14
+  percent: 82
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: `.planning/MVP-ROADMAP.md` and `.planning/PROJECT.md`
 
 **Core value:** Sub-30-minute installer deployment with reliable CP Plus parity (live view, scheduled recording, 24h timeline playback, native ONVIF motion alerts) built on permissively licensed infrastructure (MediaMTX) with zero VigilOne domain entanglement.  
-**Current focus:** Milestone v3.0: Deployable MVP (Days 45 → 75) — Phase 19: Built-in SMTP Email Alerting
+**Current focus:** Milestone v3.0: Deployable MVP (Days 45 → 75) — Phase 20: Self-Verifying Evidence Export Package
 
 ## Current Position
 
-Phase: Phase 19 (Built-in SMTP Email Alerting)
+Phase: Phase 20 (Self-Verifying Evidence Export Package)
 Plan: Ready to plan
 Status: In Progress
-Last activity: 2026-09-27 -- Phase 18 completed (2/2 plans). Ready for Phase 19.
+Last activity: 2026-09-27 -- Phase 19 completed (2/2 plans). Ready for Phase 20.
 
-Progress: [███████░░░] 71%
+Progress: [████████░░] 82%
 
 ## Performance Metrics
 

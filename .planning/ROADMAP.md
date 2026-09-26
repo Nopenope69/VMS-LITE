@@ -29,7 +29,7 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 - [x] **Phase 16: Operational Settings & Core Health Licensing Realignment** - Move camera health into Core capability baseline, continuous/motion/scheduled recording policies, visual 7-day schedule grid, and storage FIFO auto-purge (completed 2026-09-27)
 - [x] **Phase 17: Motion Recording with Rolling Ring Buffer** - 2-second short fMP4 segments, FIFO queue auto-discard, and 10s pre-buffer / 30s post-buffer promotion engine (completed 2026-09-27)
 - [x] **Phase 18: Operator Controls & System Dashboard** - Instant canvas snapshot download, multi-grid kiosk fullscreen, 1x-4x CSS digital zoom, and fleet health/storage overview dashboard (completed 2026-09-27)
-- [ ] **Phase 19: Built-in SMTP Email Alerting** - Zero-cloud in-process SMTP dispatcher, HTML alert templates with IST timestamps, and token-bucket rate limiting
+- [x] **Phase 19: Built-in SMTP Email Alerting** - Zero-cloud in-process SMTP dispatcher, HTML alert templates with IST timestamps, and token-bucket rate limiting (completed 2026-09-27)
 - [ ] **Phase 20: Self-Verifying Evidence Export Package** - Standalone signed ZIP bundle with video.mp4, cryptographic manifest.json, audit.json, and portable verify.js script
 - [ ] **Phase 21: Field Validation & 72-Hour Acceptance Gate** - Automated 72-hour unattended soak test, network cable disconnect/reconnect simulation, and installer litmus test verification
 

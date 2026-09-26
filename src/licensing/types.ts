@@ -32,6 +32,7 @@ export const CORE_CAPABILITIES = [
   'core.onvif',
   'core.camera_health',
   'extended.camera_health',
+  'core.email_alerts',
 ] as const;
 
 export const EXTENDED_CAPABILITIES = [

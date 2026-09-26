@@ -20,6 +20,7 @@ import { healthRoutes } from './health/health.routes.js';
 import { cameraHealthService } from './health/camera-health.service.js';
 import { notificationRoutes } from './notifications/notification.routes.js';
 import { notificationService } from './notifications/notification-dispatcher.service.js';
+import { smtpDispatcherService } from './notifications/smtp-dispatcher.service.js';
 import { webhookRoutes } from './webhooks/webhook.routes.js';
 import { settingsRoutes } from './settings/settings.routes.js';
 import { systemRoutes } from './system/system.routes.js';
@@ -163,6 +164,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
     cameraHealthService.start();
     await notificationService.start();
     await webhookDispatcherService.start();
+    await smtpDispatcherService.start();
     wsFeed.attach(app.server, async (token: string) => {
       return app.jwt.verify(token);
     });
@@ -172,6 +174,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   app.addHook('onClose', async () => {
     notificationService.stop();
     webhookDispatcherService.stop();
+    smtpDispatcherService.stop();
     cameraHealthService.stop();
     ptzService.destroy();
     await engine.stop();
