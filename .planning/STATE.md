@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: "Deployable MVP (Days 45 → 75)"
 status: in_progress
-stopped_at: "Phase 13: Live Infrastructure & Mock Elimination completed. Ready for Phase 14: Vite App Shell & Production Serving."
-last_updated: "2026-09-27T02:35:00.000Z"
-last_activity: "2026-09-27 -- Completed Phase 13 (Plans 13-01 and 13-02) with 231/231 passing tests and zero mock fallbacks"
+stopped_at: "Phase 14: Vite App Shell & Production Serving completed. Ready for Phase 15: 6-Step Robust Camera Onboarding Wizard."
+last_updated: "2026-09-27T02:44:00.000Z"
+last_activity: "2026-09-27 -- Completed Phase 14 (Plans 14-01 and 14-02) with standalone browser app, Vite build, App.tsx shell, Fastify static serving, and Caddyfile"
 progress:
   total_phases: 9
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 17
-  completed_plans: 2
-  percent: 11
+  completed_plans: 4
+  percent: 23
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: `.planning/MVP-ROADMAP.md` and `.planning/PROJECT.md`
 ## Current Position
 
 Phase: Phase 14 (Vite App Shell & Production Serving)
-Plan: Ready to plan and execute
-Status: Ready
-Last activity: 2026-09-27 -- Phase 13 completed with 100% mock elimination in production code and 231/231 passing tests
+Plan: Complete (14-01, 14-02)
+Status: Complete
+Last activity: 2026-09-27 -- Phase 14 verified and completed; next is Phase 15 (6-Step Robust Camera Onboarding Wizard)
 
-Progress: [█░░░░░░░░░] 11%
+Progress: [██░░░░░░░░] 23%
 
 ## Performance Metrics
 

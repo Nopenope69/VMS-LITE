@@ -56,7 +56,7 @@ export function useCameraHealth(options: UseCameraHealthOptions = {}): UseCamera
 
   const fetchHealth = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('vms_token') || localStorage.getItem('token');
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };

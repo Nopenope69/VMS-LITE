@@ -1,6 +1,9 @@
+import fs from 'fs';
+import path from 'path';
 import fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import fastifyJwt from '@fastify/jwt';
+import fastifyStatic from '@fastify/static';
 import { licensingPlugin, LicensingPluginOptions } from './licensing/plugin.js';
 import { authRoutes } from './users/auth.routes.js';
 import { eventRoutes } from './events/event.routes.js';
@@ -118,6 +121,36 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(webhookRoutes, { prefix: '/api/webhooks' });
   await app.register(streamingRoutes, { prefix: '/api/streaming' });
   await app.register(playbackRoutes, { prefix: '/api/playback' });
+
+  // Register static file serving & SPA fallback if client/dist exists
+  const clientDist = path.resolve(process.cwd(), 'client/dist');
+  if (fs.existsSync(path.join(clientDist, 'index.html'))) {
+    await app.register(fastifyStatic, {
+      root: clientDist,
+      prefix: '/',
+      wildcard: false,
+    });
+
+    app.setNotFoundHandler((request, reply) => {
+      if (request.url.startsWith('/api/') || request.url.startsWith('/health')) {
+        return reply.status(404).send({
+          error: 'NotFound',
+          statusCode: 404,
+          message: `Route ${request.method}:${request.url} not found`,
+        });
+      }
+
+      if (request.method === 'GET') {
+        return reply.sendFile('index.html');
+      }
+
+      return reply.status(404).send({
+        error: 'NotFound',
+        statusCode: 404,
+        message: 'Resource not found',
+      });
+    });
+  }
 
   // Attach background services when server is ready
   app.addHook('onReady', async () => {

@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:c5432036-f6bc-46f5-aa97-009b02d13c42",
+  "serialNumber": "urn:uuid:47d0c235-2423-4ab4-890b-3fa5ec32b67f",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-09-24T09:53:49.135Z",
+    "timestamp": "2026-09-26T21:14:04.106Z",
     "tools": [
       {
         "vendor": "Basic VMS Engineering",
@@ -28,6 +28,26 @@
     }
   },
   "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40fastify%2Faccept-negotiator@1.1.0",
+      "name": "@fastify/accept-negotiator",
+      "version": "1.1.0",
+      "purl": "pkg:npm/%40fastify%2Faccept-negotiator@1.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
     {
       "type": "library",
       "bom-ref": "pkg:npm/%40fastify%2Fajv-compiler@3.6.0",
@@ -138,6 +158,106 @@
         {
           "license": {
             "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40fastify%2Fsend@2.1.0",
+      "name": "@fastify/send",
+      "version": "2.1.0",
+      "purl": "pkg:npm/%40fastify%2Fsend@2.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40fastify%2Fstatic@6.12.0",
+      "name": "@fastify/static",
+      "version": "6.12.0",
+      "purl": "pkg:npm/%40fastify%2Fstatic@6.12.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40fastify%2Fstatic%2Fnode_modules%2Fbrace-expansion@2.1.7",
+      "name": "@fastify/static/node_modules/brace-expansion",
+      "version": "2.1.7",
+      "purl": "pkg:npm/%40fastify%2Fstatic%2Fnode_modules%2Fbrace-expansion@2.1.7",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40fastify%2Fstatic%2Fnode_modules%2Fglob@8.1.0",
+      "name": "@fastify/static/node_modules/glob",
+      "version": "8.1.0",
+      "purl": "pkg:npm/%40fastify%2Fstatic%2Fnode_modules%2Fglob@8.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40fastify%2Fstatic%2Fnode_modules%2Fminimatch@5.1.9",
+      "name": "@fastify/static/node_modules/minimatch",
+      "version": "5.1.9",
+      "purl": "pkg:npm/%40fastify%2Fstatic%2Fnode_modules%2Fminimatch@5.1.9",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
           }
         }
       ],
@@ -890,6 +1010,26 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:npm/content-disposition@0.5.4",
+      "name": "content-disposition",
+      "version": "0.5.4",
+      "purl": "pkg:npm/content-disposition@0.5.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:npm/cookie@0.7.2",
       "name": "cookie",
       "version": "0.7.2",
@@ -970,6 +1110,26 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:npm/depd@2.0.0",
+      "name": "depd",
+      "version": "2.0.0",
+      "purl": "pkg:npm/depd@2.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:npm/detect-libc@2.1.2",
       "name": "detect-libc",
       "version": "2.1.2",
@@ -1034,6 +1194,26 @@
       "name": "emoji-regex",
       "version": "8.0.0",
       "purl": "pkg:npm/emoji-regex@8.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/escape-html@1.0.3",
+      "name": "escape-html",
+      "version": "1.0.3",
+      "purl": "pkg:npm/escape-html@1.0.3",
       "licenses": [
         {
           "license": {
@@ -1530,6 +1710,26 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:npm/http-errors@2.0.0",
+      "name": "http-errors",
+      "version": "2.0.0",
+      "purl": "pkg:npm/http-errors@2.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:npm/https-proxy-agent@5.0.1",
       "name": "https-proxy-agent",
       "version": "5.0.1",
@@ -1758,6 +1958,26 @@
         {
           "license": {
             "id": "ISC"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/mime@3.0.0",
+      "name": "mime",
+      "version": "3.0.0",
+      "purl": "pkg:npm/mime@3.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
           }
         }
       ],
@@ -2098,6 +2318,26 @@
         {
           "license": {
             "id": "ISC"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/p-limit@3.1.0",
+      "name": "p-limit",
+      "version": "3.1.0",
+      "purl": "pkg:npm/p-limit@3.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
           }
         }
       ],
@@ -2690,6 +2930,26 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:npm/setprototypeof@1.2.0",
+      "name": "setprototypeof",
+      "version": "1.2.0",
+      "purl": "pkg:npm/setprototypeof@1.2.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:npm/signal-exit@3.0.7",
       "name": "signal-exit",
       "version": "3.0.7",
@@ -2738,6 +2998,26 @@
         {
           "license": {
             "id": "ISC"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/statuses@2.0.1",
+      "name": "statuses",
+      "version": "2.0.1",
+      "purl": "pkg:npm/statuses@2.0.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
           }
         }
       ],
@@ -2874,6 +3154,26 @@
       "name": "toad-cache",
       "version": "3.7.4",
       "purl": "pkg:npm/toad-cache@3.7.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/toidentifier@1.0.1",
+      "name": "toidentifier",
+      "version": "1.0.1",
+      "purl": "pkg:npm/toidentifier@1.0.1",
       "licenses": [
         {
           "license": {
@@ -3138,6 +3438,26 @@
         {
           "license": {
             "id": "ISC"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "basic-vms:dependency-scope",
+          "value": "production"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/yocto-queue@0.1.0",
+      "name": "yocto-queue",
+      "version": "0.1.0",
+      "purl": "pkg:npm/yocto-queue@0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
           }
         }
       ],

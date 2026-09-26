@@ -42,7 +42,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
   }, [isOpen]);
 
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('vms_token') || localStorage.getItem('token');
     return {
       'Content-Type': 'application/json',
       Authorization: token ? `Bearer ${token}` : '',

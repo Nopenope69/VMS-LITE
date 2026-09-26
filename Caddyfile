@@ -1,0 +1,56 @@
+# Basic VMS - Canonical Appliance Ingress Reverse Proxy
+# Canonical port 80 / 443 reverse proxy configuration for CP Plus / Hikvision DVR replacement tier.
+
+{
+    admin off
+    auto_https off
+}
+
+:80 {
+    # Gzip and Zstandard compression for UI assets and API payloads
+    encode gzip zstd
+
+    # Basic security headers
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # 1. Media Plane Ingress: WebRTC WHEP and HLS directly to MediaMTX
+    @media {
+        path /whep/*
+        path /hls/*
+        path /list*
+        path /get*
+    }
+    handle @media {
+        reverse_proxy 127.0.0.1:8889 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # 2. Control Plane & Event Feed Ingress: Fastify REST API & WebSockets
+    @controlPlane {
+        path /api/*
+        path /ws
+        path /health
+    }
+    handle @controlPlane {
+        reverse_proxy 127.0.0.1:3000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # 3. Static Web App: Single Page Application (SPA) with fallback to index.html
+    handle {
+        root * ./client/dist
+        try_files {path} /index.html
+        file_server
+    }
+}

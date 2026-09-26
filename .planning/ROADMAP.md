@@ -23,8 +23,8 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 - [x] **Phase 12: Camera Health Telemetry, WhatsApp Alerts & Webhooks** - 30s ping/stream health monitoring, rate-limited WhatsApp incident alerting, and signed integration webhooks (completed 2026-09-25)
 
 ### Milestone v3.0: Deployable MVP (Days 45 → 75)
-- [ ] **Phase 13: Live Infrastructure & Mock Elimination** - Fail explicitly on database/network error, remove in-memory fallback branching from production runtime, and prove full suite against live PostgreSQL & MediaMTX
-- [ ] **Phase 14: Vite App Shell & Production Serving** - Top-level App.tsx router, persistent header/sidebar navigation, Vite production build, Caddyfile reverse proxy, and Fastify static fallback
+- [x] **Phase 13: Live Infrastructure & Mock Elimination** - Fail explicitly on database/network error, remove in-memory fallback branching from production runtime, and prove full suite against live PostgreSQL & MediaMTX
+- [x] **Phase 14: Vite App Shell & Production Serving** - Top-level App.tsx router, persistent header/sidebar navigation, Vite production build, Caddyfile reverse proxy, and Fastify static fallback
 - [ ] **Phase 15: 6-Step Robust Camera Onboarding Wizard** - Discovery, auth & dual-stream probe, TCP port check, MediaMTX path sync, WebRTC visual preview, and atomic DB commit
 - [ ] **Phase 16: Operational Settings & Core Health Licensing Realignment** - Move camera health into Core capability baseline, continuous/motion/scheduled recording policies, visual 7-day schedule grid, and storage FIFO auto-purge
 - [ ] **Phase 17: Motion Recording with Rolling Ring Buffer** - 2-second short fMP4 segments, FIFO queue auto-discard, and 10s pre-buffer / 30s post-buffer promotion engine
@@ -325,6 +325,28 @@ Plans:
 
 ---
 
+### Phase 14: Vite App Shell & Production Serving
+
+**Goal**: Deliver a standalone browser operator experience with Vite bundler toolchain, top-level `App.tsx` shell, persistent navigation header with real-time clock, collapsible sidebar, full view routing (Dashboard, Live View, Playback, Cameras, Events & Alerts, Settings), and production serving via Fastify static fallback and edge Caddyfile.
+**Mode**: mvp
+**Depends on**: Phase 13
+**Requirements**: [MVP-03, MVP-04]
+**Success Criteria**:
+
+1. `client/` builds cleanly to `client/dist` via `npm run build:client` with 0 TypeScript/bundler errors.
+2. Top-level `App.tsx` provides high-contrast login screen, persistent header (branding, system clock, role badge, logout), collapsible sidebar, and full routing for 6 operator views.
+3. Fastify serves `client/dist` static assets as fallback with SPA routing rewrite (`index.html`) for client navigation while preserving API routes.
+4. Canonical `Caddyfile` reverse-proxies SPA, `/api/*`, `/ws`, and MediaMTX `/whep/*` / `/hls/*` for appliance installations.
+
+**Plans**: 2 plans
+
+Plans:
+
+- [x] 14-01: Build Vite toolchain (`index.html`, `vite.config.ts`, `client/src/main.tsx`) and unified `App.tsx` shell with navigation layout, header, collapsible sidebar, and full view routing.
+- [x] 14-02: Configure production serving via `@fastify/static` fallback and canonical edge `Caddyfile`, verifying dev proxy and production build serving.
+
+---
+
 ## Progress
 
 **Execution Order:**
@@ -345,8 +367,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 11. Motion Zones & Spatial Exclusion Masking | 2/2 | Complete    | 2026-09-24 |
 | 12. Camera Health Telemetry, WhatsApp Alerts & Webhooks | 2/2 | Complete    | 2026-09-25 |
 | 13. Live Infrastructure & Mock Elimination | 2/2 | Complete    | 2026-09-27 |
-| 14. Vite App Shell & Production Serving | 0/2 | Planned     | - |
-| 15. 6-Step Robust Camera Onboarding Wizard | 0/2 | Planned     | - |
+| 14. Vite App Shell & Production Serving | 2/2 | Complete    | 2026-09-27 |
+| 15. 6-Step Robust Camera Onboarding Wizard | 0/2 | Next        | - |
 | 16. Operational Settings & Core Health Licensing | 0/2 | Planned     | - |
 | 17. Motion Recording with Rolling Ring Buffer | 0/2 | Planned     | - |
 | 18. Operator Controls & System Dashboard | 0/2 | Planned     | - |
