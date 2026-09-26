@@ -6,6 +6,11 @@
  *    for cooldownSeconds (default 60s).
  * 2. Token Bucket: Limits burst alerts across different event types on the same camera
  *    (capacity: 3 tokens, refills 1 token every 60s).
+ *
+ * ARCHITECTURAL INVARIANT:
+ * Single active worker instance per appliance. The token bucket and cooldown states
+ * are managed in-process in memory. This eliminates external distributed cache
+ * dependencies (Redis) for on-premise single-appliance VMS-Lite installations.
  */
 
 export interface TokenBucketOptions {

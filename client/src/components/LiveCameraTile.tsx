@@ -101,6 +101,8 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
                     ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]'
                     : telemetry.status === 'DEGRADED'
                     ? 'bg-amber-500 animate-pulse shadow-[0_0_6px_rgba(245,158,11,0.8)]'
+                    : telemetry.status === 'UNKNOWN'
+                    ? 'bg-slate-400'
                     : 'bg-rose-500 animate-ping shadow-[0_0_6px_rgba(239,68,68,0.8)]'
                 }`}
               />
@@ -110,6 +112,8 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
                     ? 'text-emerald-400'
                     : telemetry.status === 'DEGRADED'
                     ? 'text-amber-400'
+                    : telemetry.status === 'UNKNOWN'
+                    ? 'text-slate-400'
                     : 'text-rose-400'
                 }`}
               >

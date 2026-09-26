@@ -2,7 +2,9 @@
  * Camera Health Types & DTOs (EXT-06)
  */
 
-export type CameraHealthStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE';
+export type CameraHealthStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN';
+
+export type NetworkCheckResult = 'PASSED' | 'FAILED' | 'NOT_APPLICABLE';
 
 export interface MediaMtxRuntimeInfo {
   ready: boolean;
@@ -19,9 +21,10 @@ export interface CameraHealthTelemetry {
   latencyMs: number | null;
   bitrateKbps: number | null;
   bytesReceived: number;
-  lastChecked: string;
+  lastChecked: string | null;
   consecutiveFailures: number;
   unhealthySince: string | null;
+  networkCheck?: NetworkCheckResult;
   reason?: string;
 }
 
@@ -30,6 +33,7 @@ export interface CameraHealthSummaryResponse {
   onlineCount: number;
   degradedCount: number;
   offlineCount: number;
+  unknownCount: number;
   cameras: Record<string, CameraHealthTelemetry>;
   checkedAt: string;
 }
@@ -43,5 +47,7 @@ export interface CameraHealthEventMetadata {
   latencyMs?: number | null;
   bitrateKbps?: number | null;
   consecutiveFailures: number;
+  outageDurationMs?: number | null;
+  networkCheck?: NetworkCheckResult;
   timestamp: string; // ISO-8601
 }

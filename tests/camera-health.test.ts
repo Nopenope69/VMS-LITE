@@ -4,7 +4,7 @@ import { FastifyInstance } from 'fastify';
 import { Role } from '@prisma/client';
 import { createServer } from '../src/server.js';
 import { CameraHealthService, cameraHealthService } from '../src/health/camera-health.service.js';
-import { eventBus } from '../src/events/event-bus.js';
+import { EventBus, eventBus } from '../src/events/event-bus.js';
 import { CameraService } from '../src/cameras/camera.service.js';
 import { IMediaMtxRuntimeAdapter, CameraHealthEventMetadata } from '../src/health/health.types.js';
 
@@ -175,16 +175,20 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
       };
 
       const service = new CameraHealthService({ mediaMtxClient: mockMediaMtx });
-      vi.spyOn(service, 'pingTcp').mockResolvedValue({ reachable: true, latencyMs: 650 });
+      vi.spyOn(service, 'pingTcp').mockResolvedValue({ reachable: true, latencyMs: 50 });
 
       const camera = { id: 'cam-deg-1', name: 'Warehouse', ip: '10.0.0.2', port: 554, mediaMtxPath: 'cam-deg-1' };
 
-      // Poll 1: Candidate state
+      // Poll 1: Baseline established healthy -> ONLINE
+      await service.checkCamera(camera);
+
+      // Poll 2: Latency degrades to 650ms (1st failure, candidate state)
+      vi.spyOn(service, 'pingTcp').mockResolvedValue({ reachable: true, latencyMs: 650 });
       const sample1 = await service.checkCamera(camera);
       expect(sample1.status).toBe('ONLINE'); // Not yet flipped
       expect(sample1.consecutiveFailures).toBe(1);
 
-      // Poll 2: Second consecutive failure -> flips to DEGRADED
+      // Poll 3: Second consecutive failure -> flips to DEGRADED
       const sample2 = await service.checkCamera(camera);
       expect(sample2.status).toBe('DEGRADED');
       expect(sample2.consecutiveFailures).toBe(2);
@@ -193,7 +197,7 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
 
     it('identifies degraded sample when stream is not ready in MediaMTX', async () => {
       const mockMediaMtx: IMediaMtxRuntimeAdapter = {
-        getPathRuntime: vi.fn().mockResolvedValue({ ready: false, bytesReceived: 0 }),
+        getPathRuntime: vi.fn().mockResolvedValue({ ready: true, bytesReceived: 100_000 }),
       };
 
       const service = new CameraHealthService({ mediaMtxClient: mockMediaMtx });
@@ -201,7 +205,14 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
 
       const camera = { id: 'cam-deg-2', name: 'Parking', ip: '10.0.0.3', port: 554, mediaMtxPath: 'cam-deg-2' };
 
-      await service.checkCamera(camera); // sample 1: candidate
+      // Baseline healthy
+      await service.checkCamera(camera);
+
+      // Stream goes unready
+      (mockMediaMtx.getPathRuntime as any).mockResolvedValue({ ready: false, bytesReceived: 0 });
+      const sample1 = await service.checkCamera(camera); // sample 1: candidate
+      expect(sample1.status).toBe('ONLINE');
+
       const sample2 = await service.checkCamera(camera); // sample 2: flips
       expect(sample2.status).toBe('DEGRADED');
       expect(sample2.reason).toContain('MediaMTX stream path not ready');
@@ -210,28 +221,40 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
 
   describe('4. Anti-Flapping Hysteresis & Offline Boundary', () => {
     it('requires 2 consecutive failures before transitioning to OFFLINE, and 1 healthy sample to recover', async () => {
+      let now = 1_000_000;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+
       const mockMediaMtx: IMediaMtxRuntimeAdapter = {
-        getPathRuntime: vi.fn().mockResolvedValue({ ready: false, bytesReceived: 0 }),
+        getPathRuntime: vi.fn().mockResolvedValue({ ready: true, bytesReceived: 100_000 }),
       };
 
       const service = new CameraHealthService({ mediaMtxClient: mockMediaMtx });
-      vi.spyOn(service, 'pingTcp').mockResolvedValue({ reachable: false, latencyMs: null, error: 'Connection refused' });
+      vi.spyOn(service, 'pingTcp').mockResolvedValue({ reachable: true, latencyMs: 20 });
 
       const camera = { id: 'cam-flap-1', name: 'Server Room', ip: '10.0.0.4', port: 554, mediaMtxPath: 'cam-flap-1' };
 
-      // Sample 1: TCP unreachable -> candidate (status stays ONLINE)
+      // Sample 1 at t=0s: Camera starts ONLINE
+      const s0 = await service.checkCamera(camera);
+      expect(s0.status).toBe('ONLINE');
+
+      // Sample 2 at t=15s: TCP unreachable -> candidate (status stays ONLINE)
+      now += 15_000;
+      vi.spyOn(service, 'pingTcp').mockResolvedValue({ reachable: false, latencyMs: null, error: 'Connection refused' });
+      (mockMediaMtx.getPathRuntime as any).mockResolvedValue({ ready: false, bytesReceived: 0 });
       const s1 = await service.checkCamera(camera);
       expect(s1.status).toBe('ONLINE');
       expect(s1.consecutiveFailures).toBe(1);
 
-      // Sample 2: TCP unreachable -> 2nd consecutive failure -> flips to OFFLINE
+      // Sample 3 at t=46s (31s continuous downtime >= 30s) -> 2nd consecutive failure -> flips to OFFLINE
+      now += 31_000;
       const s2 = await service.checkCamera(camera);
       expect(s2.status).toBe('OFFLINE');
       expect(s2.consecutiveFailures).toBe(2);
 
-      // Sample 3: Camera recovers
+      // Sample 4 at t=60s: Camera recovers
+      now += 14_000;
       vi.spyOn(service, 'pingTcp').mockResolvedValue({ reachable: true, latencyMs: 15 });
-      (mockMediaMtx.getPathRuntime as any).mockResolvedValue({ ready: true, bytesReceived: 50_000 });
+      (mockMediaMtx.getPathRuntime as any).mockResolvedValue({ ready: true, bytesReceived: 500_000 });
 
       const s3 = await service.checkCamera(camera);
       expect(s3.status).toBe('ONLINE');
@@ -255,13 +278,23 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
       // Poll 1 at t=0s
       await service.checkCamera(camera);
 
-      // Poll at t=29s (less than 30s) -> 2 consecutive failures
-      now += 29_000;
+      // Poll at t=15s (less than 30s) -> 2 consecutive failures, but downtime 15s < 30s -> DEGRADED (not OFFLINE!)
+      now += 15_000;
+      const s15 = await service.checkCamera(camera);
+      expect(s15.status).toBe('DEGRADED');
+
+      // Poll at t=29s (less than 30s) -> 3 consecutive failures, but downtime 29s < 30s -> still DEGRADED (not OFFLINE!)
+      now += 14_000;
       const s29 = await service.checkCamera(camera);
-      expect(s29.status).toBe('OFFLINE');
+      expect(s29.status).toBe('DEGRADED');
+
+      // Poll at t=31s (exceeds 30s downtime) -> flips to OFFLINE
+      now += 2_000;
+      const s31 = await service.checkCamera(camera);
+      expect(s31.status).toBe('OFFLINE');
 
       // Recover at t=35s with healthy bitrate (>50kbps)
-      now += 6_000;
+      now += 4_000;
       vi.spyOn(service, 'pingTcp').mockResolvedValue({ reachable: true, latencyMs: 20 });
       (mockMediaMtx.getPathRuntime as any).mockResolvedValue({ ready: true, bytesReceived: 500_000 });
 
@@ -272,6 +305,9 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
 
   describe('5. Standardized EventBus Emission Contract', () => {
     it('emits events ONLY on status transition with complete CameraHealthEventMetadata', async () => {
+      let now = 2_000_000;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+
       const emittedEvents: any[] = [];
       const unsubscribe = eventBus.subscribe('*', (ev) => {
         if (ev.type.startsWith('camera.')) {
@@ -289,16 +325,18 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
 
         const camera = { id: 'cam-event-1', name: 'Main Gate', ip: '192.168.1.10', port: 554, mediaMtxPath: 'cam-event-1' };
 
-        // Poll 1: ONLINE (initial state is already ONLINE, no transition)
+        // Poll 1: Initial observation transitions UNKNOWN -> ONLINE; isBootOnline avoids boot alert noise
         await service.checkCamera(camera);
         expect(emittedEvents.length).toBe(0);
 
         // Poll 2: Degrade latency to 600ms (1st failure, candidate)
+        now += 15_000;
         vi.spyOn(service, 'pingTcp').mockResolvedValue({ reachable: true, latencyMs: 600 });
         await service.checkCamera(camera);
         expect(emittedEvents.length).toBe(0); // Candidate state, no event yet
 
         // Poll 3: Degrade latency again (2nd failure -> transition ONLINE -> DEGRADED)
+        now += 15_000;
         await service.checkCamera(camera);
         expect(emittedEvents.length).toBe(1);
         const degradedEvent = emittedEvents[0];
@@ -311,11 +349,18 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
         expect(degradedEvent.metadata.latencyMs).toBe(600);
 
         // Poll 4: Latency remains 600ms (still DEGRADED, no transition -> NO new event)
+        now += 15_000;
         await service.checkCamera(camera);
         expect(emittedEvents.length).toBe(1);
 
-        // Poll 5: Camera goes OFFLINE (transition DEGRADED -> OFFLINE)
+        // Poll 5: Camera goes offline (first unreachable sample at t=60s)
+        now += 15_000;
         vi.spyOn(service, 'pingTcp').mockResolvedValue({ reachable: false, latencyMs: null, error: 'Connection refused' });
+        await service.checkCamera(camera);
+        expect(emittedEvents.length).toBe(1); // Still within 30s downtime window
+
+        // Poll 6: After 35s continuous downtime -> transition DEGRADED -> OFFLINE
+        now += 35_000;
         await service.checkCamera(camera);
         expect(emittedEvents.length).toBe(2);
         const offlineEvent = emittedEvents[1];
@@ -323,7 +368,8 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
         expect(offlineEvent.severity).toBe('critical');
         expect(offlineEvent.metadata.previousStatus).toBe('DEGRADED');
 
-        // Poll 6: Recovers to ONLINE (transition OFFLINE -> ONLINE)
+        // Poll 7: Recovers to ONLINE (transition OFFLINE -> ONLINE with outageDurationMs)
+        now += 15_000;
         vi.spyOn(service, 'pingTcp').mockResolvedValue({ reachable: true, latencyMs: 20 });
         (mockMediaMtx.getPathRuntime as any).mockResolvedValue({ ready: true, bytesReceived: 200_000 });
         await service.checkCamera(camera);
@@ -332,6 +378,7 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
         expect(onlineEvent.type).toBe('camera.online');
         expect(onlineEvent.severity).toBe('info');
         expect(onlineEvent.metadata.previousStatus).toBe('OFFLINE');
+        expect(onlineEvent.metadata.outageDurationMs).toBeGreaterThan(0);
       } finally {
         unsubscribe();
       }
@@ -479,6 +526,10 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
 
       // Populate telemetry in singleton
       vi.spyOn(cameraHealthService, 'pingTcp').mockResolvedValue({ reachable: true, latencyMs: 24 });
+      vi.spyOn((cameraHealthService as any).mediaMtxClient, 'getPathRuntime').mockResolvedValue({
+        ready: true,
+        bytesReceived: 100_000,
+      });
       await cameraHealthService.checkCamera({
         id: 'test-cam-live-1',
         name: 'Front Lobby',
@@ -501,7 +552,110 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
       // Strictly verify IP addresses and credentials never enter the public telemetry DTO (T-12-02)
       expect(body).not.toHaveProperty('ip');
       expect(body).not.toHaveProperty('password');
-      expect(body).not.toHaveProperty('username');
+    });
+  });
+
+  describe('8. Edge Cases, UNKNOWN State, No-IP Cameras & Stale Entry Pruning', () => {
+    it('initializes unobserved camera state as UNKNOWN with null metrics', () => {
+      const service = new CameraHealthService();
+      // When camera has not been checked yet
+      const telemetry = service.getTelemetry('unpolled-cam-1');
+      expect(telemetry).toBeNull();
+    });
+
+    it('handles camera with no IP by setting networkCheck to NOT_APPLICABLE and latencyMs to null', async () => {
+      const mockMediaMtx: IMediaMtxRuntimeAdapter = {
+        getPathRuntime: vi.fn().mockResolvedValue({ ready: true, bytesReceived: 500_000 }),
+      };
+
+      const service = new CameraHealthService({ mediaMtxClient: mockMediaMtx });
+      const pingSpy = vi.spyOn(service, 'pingTcp');
+
+      const noIpCamera = {
+        id: 'cam-no-ip-1',
+        name: 'Cloud Stream',
+        ip: null, // No IP address configured
+        port: null,
+        mediaMtxPath: 'cam-no-ip-1',
+      };
+
+      const result = await service.checkCamera(noIpCamera);
+
+      // TCP ping must NOT be invoked
+      expect(pingSpy).not.toHaveBeenCalled();
+
+      // Telemetry must have NOT_APPLICABLE network check and null latency (NOT synthetic 15ms)
+      expect(result.networkCheck).toBe('NOT_APPLICABLE');
+      expect(result.latencyMs).toBeNull();
+      expect(result.status).toBe('ONLINE');
+    });
+
+    it('prunes stale cameras from cache when removed from database during polling', async () => {
+      let cameraList = [
+        { id: 'cam-keep-1', name: 'Keep Camera', mediaMtxPath: 'cam-keep-1' },
+        { id: 'cam-stale-2', name: 'Deleted Camera', mediaMtxPath: 'cam-stale-2' },
+      ];
+
+      const mockCameraService = {
+        listCameras: vi.fn().mockImplementation(async () => cameraList),
+      } as unknown as CameraService;
+
+      const mockMediaMtx: IMediaMtxRuntimeAdapter = {
+        getPathRuntime: vi.fn().mockResolvedValue({ ready: true, bytesReceived: 10_000 }),
+      };
+
+      const service = new CameraHealthService({
+        cameraService: mockCameraService,
+        mediaMtxClient: mockMediaMtx,
+      });
+
+      // Poll 1: Both cameras checked and cached
+      await service.pollAllCameras();
+      expect(service.getAllTelemetry().totalCameras).toBe(2);
+      expect(service.getTelemetry('cam-stale-2')).not.toBeNull();
+
+      // Camera 2 is deleted from database
+      cameraList = [{ id: 'cam-keep-1', name: 'Keep Camera', mediaMtxPath: 'cam-keep-1' }];
+
+      // Poll 2: Automatic sweep prunes stale camera
+      await service.pollAllCameras();
+      expect(service.getAllTelemetry().totalCameras).toBe(1);
+      expect(service.getTelemetry('cam-stale-2')).toBeNull();
+      expect(service.getTelemetry('cam-keep-1')).not.toBeNull();
+    });
+
+    it('evicts deleted camera from cache immediately on camera.deleted event', async () => {
+      const mockMediaMtx: IMediaMtxRuntimeAdapter = {
+        getPathRuntime: vi.fn().mockResolvedValue({ ready: true, bytesReceived: 10_000 }),
+      };
+
+      const testBus = new EventBus();
+      const service = new CameraHealthService({
+        mediaMtxClient: mockMediaMtx,
+        eventBus: testBus,
+      });
+
+      service.start();
+
+      // Check camera into cache
+      await service.checkCamera({
+        id: 'cam-to-delete-9',
+        name: 'Temporary Cam',
+        mediaMtxPath: 'cam-temp',
+      });
+      expect(service.getTelemetry('cam-to-delete-9')).not.toBeNull();
+
+      // Emit camera.deleted event
+      await testBus.emitEvent({
+        type: 'camera.deleted',
+        cameraId: 'cam-to-delete-9',
+        source: 'camera.service',
+      });
+
+      // Verify immediate eviction
+      expect(service.getTelemetry('cam-to-delete-9')).toBeNull();
+
+      service.stop();
     });
   });
 });

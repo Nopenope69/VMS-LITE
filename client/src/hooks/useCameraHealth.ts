@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-export type CameraHealthStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE';
+export type CameraHealthStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN';
+
+export type NetworkCheckResult = 'PASSED' | 'FAILED' | 'NOT_APPLICABLE';
 
 export interface CameraHealthTelemetry {
   cameraId: string;
@@ -8,9 +10,10 @@ export interface CameraHealthTelemetry {
   latencyMs: number | null;
   bitrateKbps: number | null;
   bytesReceived: number;
-  lastChecked: string;
+  lastChecked: string | null;
   consecutiveFailures: number;
   unhealthySince: string | null;
+  networkCheck?: NetworkCheckResult;
   reason?: string;
 }
 
@@ -19,6 +22,7 @@ export interface CameraHealthSummaryResponse {
   onlineCount: number;
   degradedCount: number;
   offlineCount: number;
+  unknownCount?: number;
   cameras: Record<string, CameraHealthTelemetry>;
   checkedAt: string;
 }

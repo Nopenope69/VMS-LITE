@@ -98,3 +98,27 @@ Entitlements are cleanly segregated:
 - **Capability Registry**: Licensing resolves at boot to a capabilities set (`capabilities.has(...)`). Plan checks are never scattered in route handlers or domain services.
 - **Offline Cryptographic Validation**: Licenses are verified using `@noble/ed25519` offline digital signatures, supporting air-gapped commercial deployments.
 - **100% Permissive Dependency Tree**: The codebase uses only MIT, Apache-2.0, and BSD-3-Clause dependencies, validated automatically in CI using Syft.
+
+---
+
+## 5. Operational Telemetry, Alerting & Single-Worker Invariant
+
+### A. Dual-Plane Camera Health Monitoring (`EXT-06`)
+- **Separation of Concerns**: Health monitoring is strictly an operational observation subsystem, fully decoupled from `RecordingEngine`.
+- **Dual Planes**: Probes network reachability via TCP socket ping (default 554/80, 2.5s timeout) and media plane status via MediaMTX runtime API (`ready`, `bytesReceived`).
+- **No Synthetic Metrics**: When cameras have no configured IP address (e.g. simulated streams or cloud feeds), `networkCheck` evaluates as `NOT_APPLICABLE` and `latencyMs` is `null`, rather than fabricating synthetic latency values.
+- **Tri-State Lifecycle**: Cameras initialize in an `UNKNOWN` state before observation. Initial observation transitions to `ONLINE` without generating spurious startup alerts.
+- **Strict 30-Second Continuous Downtime Rule**: To prevent flapping from intermittent packet loss, transitioning to `OFFLINE` strictly requires continuous disconnection >= 30 seconds (`now - offlineSince >= 30_000`) AND at least 2 consecutive failure samples. Unreachable states under 30s are held in candidate or `DEGRADED` status.
+- **Durable Incident History**: Transient 15-second telemetry resides in RAM, while state transition events (`camera.offline`, `camera.degraded`, `camera.online`) are permanently written to PostgreSQL via the `EventBus`, preserving `outageDurationMs` across reboots.
+- **Stale Entry Eviction**: Deleted or retired cameras are immediately purged from the telemetry cache via `camera.deleted` event bus subscriptions and periodic active-ID sweeps.
+
+### B. Decoupled Notifications & Signed Webhooks (`EXT-07`, `EXT-08`)
+- **Event-Driven Subscriptions**: Neither the notification service nor the webhook dispatcher directly couples to camera health code. Both consume standardized events from the `EventBus`.
+- **Token-Bucket Rate Limiter**: Suppresses notification storms with a mandatory 60s cooldown per `(cameraId, eventType)` key and a 3-token burst bucket (refilling 1/min).
+- **Outbound Webhooks**: Delivered asynchronously via a bounded queue (depth 500, concurrency 5). Signed with `HMAC-SHA256(secret, `${timestamp}.${rawBody}`)`. Re-uses `X-VMS-Delivery` UUID across retries for receiver idempotency.
+- **SSRF Defense-in-Depth**: Dispatch-time DNS pre-resolution blocks private, loopback, link-local, and cloud metadata IPs (IPv4 and IPv6), accompanied by `redirect: 'manual'` to prevent redirect bounce bypasses.
+
+### C. Single-Active-Worker Appliance Invariant
+VMS-Lite operates as a **single active worker instance per appliance**:
+- Health polling cycles, in-memory telemetry caches, and rate-limiting token buckets are intentionally process-local.
+- This design decision explicitly avoids dragging heavyweight external distributed coordination dependencies (Redis, distributed locks) onto budget edge NVR hardware. All durable multi-node recovery or audit needs rely on PostgreSQL event logs.
