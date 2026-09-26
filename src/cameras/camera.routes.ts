@@ -65,6 +65,22 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
             details: err.errors,
           });
         }
+        if (
+          err.code === 'DATABASE_UNAVAILABLE' ||
+          err.code === 'P1001' ||
+          err.code === 'P1002' ||
+          err.name === 'PrismaClientInitializationError' ||
+          err.name === 'PrismaClientRustPanicError' ||
+          (typeof err.message === 'string' &&
+            (err.message.includes('Database unavailable') ||
+             err.message.includes('Can\'t reach database server')))
+        ) {
+          return reply.status(503).send({
+            error: 'DatabaseUnavailable',
+            code: 'DATABASE_UNAVAILABLE',
+            message: 'Database is currently unreachable. Please check PostgreSQL connection.',
+          });
+        }
         return reply.status(400).send({
           error: 'OnboardingFailed',
           message: err.message || 'Failed to onboard camera',

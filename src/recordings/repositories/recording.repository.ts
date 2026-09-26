@@ -46,8 +46,6 @@ export interface IRecordingRepository {
 }
 
 export class PrismaRecordingRepository implements IRecordingRepository {
-  private readonly memoryFallback = new InMemoryRecordingRepository();
-
   constructor(private readonly prisma: PrismaClient = defaultPrisma) {}
 
   async createRecording(data: {
@@ -61,83 +59,63 @@ export class PrismaRecordingRepository implements IRecordingRepository {
     sizeBytes: bigint | number;
     format?: string;
   }): Promise<RecordingDto> {
-    try {
-      const record = await this.prisma.recording.create({
-        data: {
-          cameraId: data.cameraId,
-          mediaMtxPath: data.mediaMtxPath,
-          filePath: data.filePath,
-          fileName: data.fileName,
-          startTime: data.startTime,
-          endTime: data.endTime,
-          duration: data.duration,
-          sizeBytes: BigInt(data.sizeBytes),
-          format: data.format || 'fmp4',
-        },
-      });
+    const record = await this.prisma.recording.create({
+      data: {
+        cameraId: data.cameraId,
+        mediaMtxPath: data.mediaMtxPath,
+        filePath: data.filePath,
+        fileName: data.fileName,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        duration: data.duration,
+        sizeBytes: BigInt(data.sizeBytes),
+        format: data.format || 'fmp4',
+      },
+    });
 
-      return this.toDto(record);
-    } catch {
-      return this.memoryFallback.createRecording(data);
-    }
+    return this.toDto(record);
   }
 
   async findRecordingById(id: string): Promise<RecordingDto | null> {
-    try {
-      const record = await this.prisma.recording.findUnique({
-        where: { id },
-      });
-      return record ? this.toDto(record) : this.memoryFallback.findRecordingById(id);
-    } catch {
-      return this.memoryFallback.findRecordingById(id);
-    }
+    const record = await this.prisma.recording.findUnique({
+      where: { id },
+    });
+    return record ? this.toDto(record) : null;
   }
 
   async queryRecordings(params: RecordingQueryParams): Promise<RecordingDto[]> {
-    try {
-      const where: any = {};
-      if (params.cameraId) {
-        where.cameraId = params.cameraId;
-      }
-      if (params.startTime || params.endTime) {
-        where.startTime = {};
-        if (params.startTime) where.startTime.gte = new Date(params.startTime);
-        if (params.endTime) where.startTime.lte = new Date(params.endTime);
-      }
-
-      const records = await this.prisma.recording.findMany({
-        where,
-        orderBy: { startTime: 'desc' },
-        take: params.limit || 100,
-      });
-
-      return records.map((r) => this.toDto(r));
-    } catch {
-      return this.memoryFallback.queryRecordings(params);
+    const where: any = {};
+    if (params.cameraId) {
+      where.cameraId = params.cameraId;
     }
+    if (params.startTime || params.endTime) {
+      where.startTime = {};
+      if (params.startTime) where.startTime.gte = new Date(params.startTime);
+      if (params.endTime) where.startTime.lte = new Date(params.endTime);
+    }
+
+    const records = await this.prisma.recording.findMany({
+      where,
+      orderBy: { startTime: 'desc' },
+      take: params.limit || 100,
+    });
+
+    return records.map((r) => this.toDto(r));
   }
 
   async findOldestRecordings(limit: number): Promise<RecordingDto[]> {
-    try {
-      const records = await this.prisma.recording.findMany({
-        orderBy: { startTime: 'asc' },
-        take: limit,
-      });
-      return records.map((r) => this.toDto(r));
-    } catch {
-      return this.memoryFallback.findOldestRecordings(limit);
-    }
+    const records = await this.prisma.recording.findMany({
+      orderBy: { startTime: 'asc' },
+      take: limit,
+    });
+    return records.map((r) => this.toDto(r));
   }
 
   async deleteRecording(id: string): Promise<boolean> {
-    try {
-      await this.prisma.recording.delete({
-        where: { id },
-      });
-      return true;
-    } catch {
-      return this.memoryFallback.deleteRecording(id);
-    }
+    await this.prisma.recording.delete({
+      where: { id },
+    });
+    return true;
   }
 
   async getCameraSchedule(cameraId: string): Promise<CameraScheduleConfig> {
@@ -204,45 +182,27 @@ export class PrismaRecordingRepository implements IRecordingRepository {
   }
 
   async listAllCameras(): Promise<CameraRecordSummary[]> {
-    try {
-      const cameras = await this.prisma.camera.findMany({
-        select: { id: true, name: true, mediaMtxPath: true },
-      });
-      if (cameras.length > 0) return cameras;
-      return this.memoryFallback.listAllCameras();
-    } catch {
-      return this.memoryFallback.listAllCameras();
-    }
+    return this.prisma.camera.findMany({
+      select: { id: true, name: true, mediaMtxPath: true },
+    });
   }
 
   async getCameraByMediaMtxPath(mediaMtxPath: string): Promise<CameraRecordSummary | null> {
-    try {
-      const camera = await this.prisma.camera.findUnique({
-        where: { mediaMtxPath },
-        select: { id: true, name: true, mediaMtxPath: true },
-      });
-      if (camera) return camera;
-      return this.memoryFallback.getCameraByMediaMtxPath(mediaMtxPath);
-    } catch {
-      return this.memoryFallback.getCameraByMediaMtxPath(mediaMtxPath);
-    }
+    return this.prisma.camera.findUnique({
+      where: { mediaMtxPath },
+      select: { id: true, name: true, mediaMtxPath: true },
+    });
   }
 
   async getCameraById(cameraId: string): Promise<CameraRecordSummary | null> {
-    try {
-      const camera = await this.prisma.camera.findUnique({
-        where: { id: cameraId },
-        select: { id: true, name: true, mediaMtxPath: true },
-      });
-      if (camera) return camera;
-      return this.memoryFallback.getCameraById(cameraId);
-    } catch {
-      return this.memoryFallback.getCameraById(cameraId);
-    }
+    return this.prisma.camera.findUnique({
+      where: { id: cameraId },
+      select: { id: true, name: true, mediaMtxPath: true },
+    });
   }
 
-  registerCamera(camera: CameraRecordSummary): void {
-    this.memoryFallback.registerCamera(camera);
+  registerCamera(_camera: CameraRecordSummary): void {
+    // No-op in Prisma repository: cameras are managed via CameraService
   }
 
   private toDto(record: any): RecordingDto {

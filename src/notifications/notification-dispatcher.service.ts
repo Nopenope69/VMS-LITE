@@ -280,25 +280,13 @@ export class NotificationService {
     }
   }
 
-  private memoryConfig: any = null;
-
   /**
    * Retrieves active notification configuration.
    */
   async getConfig(): Promise<NotificationConfigDto> {
-    let record: any = null;
-
-    if (this.memoryConfig) {
-      record = this.memoryConfig;
-    } else {
-      try {
-        record = await this.prisma.notificationConfig.findFirst({
-          orderBy: { createdAt: 'desc' },
-        });
-      } catch {
-        record = null;
-      }
-    }
+    let record = await this.prisma.notificationConfig.findFirst({
+      orderBy: { createdAt: 'desc' },
+    });
 
     if (!record) {
       // Default initial configuration
@@ -314,7 +302,6 @@ export class NotificationService {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-      this.memoryConfig = record;
     }
 
     this.activeConfigCache = record;
@@ -370,29 +357,18 @@ export class NotificationService {
 
     let updatedRecord: any = null;
 
-    try {
-      const first = await this.prisma.notificationConfig.findFirst();
-      if (first) {
-        updatedRecord = await this.prisma.notificationConfig.update({
-          where: { id: first.id },
-          data: dataToSave as any,
-        });
-      } else {
-        updatedRecord = await this.prisma.notificationConfig.create({
-          data: dataToSave as any,
-        });
-      }
-    } catch {
-      // In-memory fallback
-      updatedRecord = {
-        id: existing.id,
-        ...dataToSave,
-        createdAt: new Date(existing.createdAt),
-        updatedAt: new Date(),
-      };
+    const first = await this.prisma.notificationConfig.findFirst();
+    if (first) {
+      updatedRecord = await this.prisma.notificationConfig.update({
+        where: { id: first.id },
+        data: dataToSave as any,
+      });
+    } else {
+      updatedRecord = await this.prisma.notificationConfig.create({
+        data: dataToSave as any,
+      });
     }
 
-    this.memoryConfig = updatedRecord;
     this.activeConfigCache = updatedRecord;
 
     return {
@@ -490,7 +466,7 @@ export class NotificationService {
     const cameraId = event.cameraId || 'system';
     const rateLimitKey = `${cameraId}:${event.type}`;
 
-    // Token-bucket rate limiting & cooldown
+    const dispatcher = this.getDispatcher(config.provider);
     const rateResult = this.rateLimiter.tryAcquire(rateLimitKey, config.cooldownSeconds);
     if (!rateResult.allowed) {
       return;
@@ -504,8 +480,6 @@ export class NotificationService {
     const timestamp = this.formatIstTimestamp(new Date(event.timestamp || Date.now()));
     const snapshotUrl = cameraId !== 'system' ? this.generateSignedSnapshotUrl(cameraId) : undefined;
     const messageText = this.formatAlertMessage(event.type, cameraName, timestamp, snapshotUrl);
-
-    const dispatcher = this.getDispatcher(config.provider);
 
     for (const phone of config.recipientPhones) {
       try {

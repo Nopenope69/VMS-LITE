@@ -50,9 +50,6 @@ export class WebhookDispatcherService {
   public readonly MAX_CONCURRENT_DELIVERIES = 5;
   public readonly REQUEST_TIMEOUT_MS = 5000;
 
-  // In-memory fallback endpoints for test isolation without PostgreSQL
-  private memoryEndpoints: Map<string, any> = new Map();
-
   private queue: QueuedWebhookJob[] = [];
   private activeDeliveries = 0;
   private queueTimer: NodeJS.Timeout | null = null;
@@ -165,37 +162,18 @@ export class WebhookDispatcherService {
    * Lists all configured webhook endpoints with masked secrets.
    */
   async listEndpoints(): Promise<WebhookEndpointDto[]> {
-    let records: any[] = [];
-
-    if (this.memoryEndpoints.size > 0) {
-      records = Array.from(this.memoryEndpoints.values());
-    } else {
-      try {
-        records = await this.prisma.webhookEndpoint.findMany({
-          orderBy: { createdAt: 'desc' },
-        });
-      } catch {
-        records = [];
-      }
-    }
-
-    return records.map((r) => this.toDto(r));
+    const records = await this.prisma.webhookEndpoint.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return records.map((r: any) => this.toDto(r));
   }
 
   /**
    * Retrieves single endpoint by ID.
    */
   async getEndpointById(id: string): Promise<WebhookEndpointDto | null> {
-    if (this.memoryEndpoints.has(id)) {
-      return this.toDto(this.memoryEndpoints.get(id));
-    }
-
-    try {
-      const record = await this.prisma.webhookEndpoint.findUnique({ where: { id } });
-      return record ? this.toDto(record) : null;
-    } catch {
-      return null;
-    }
+    const record = await this.prisma.webhookEndpoint.findUnique({ where: { id } });
+    return record ? this.toDto(record) : null;
   }
 
   /**
@@ -218,22 +196,10 @@ export class WebhookDispatcherService {
       enabled: input.enabled ?? true,
     };
 
-    let created: any = null;
+    const created = await this.prisma.webhookEndpoint.create({
+      data: data as any,
+    });
 
-    try {
-      created = await this.prisma.webhookEndpoint.create({
-        data: data as any,
-      });
-    } catch {
-      created = {
-        id: `wh-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        ...data,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-    }
-
-    this.memoryEndpoints.set(created.id, created);
     return this.toDto(created);
   }
 
@@ -242,16 +208,7 @@ export class WebhookDispatcherService {
    * If secret submitted is masked or empty, preserves the stored secret.
    */
   async updateEndpoint(id: string, input: UpdateWebhookInput): Promise<WebhookEndpointDto | null> {
-    let existing: any = this.memoryEndpoints.get(id);
-
-    if (!existing) {
-      try {
-        existing = await this.prisma.webhookEndpoint.findUnique({ where: { id } });
-      } catch {
-        existing = null;
-      }
-    }
-
+    const existing = await this.prisma.webhookEndpoint.findUnique({ where: { id } });
     if (!existing) return null;
 
     if (input.url) {
@@ -274,22 +231,11 @@ export class WebhookDispatcherService {
       enabled: input.enabled !== undefined ? input.enabled : existing.enabled,
     };
 
-    let updated: any = null;
+    const updated = await this.prisma.webhookEndpoint.update({
+      where: { id },
+      data: updateData as any,
+    });
 
-    try {
-      updated = await this.prisma.webhookEndpoint.update({
-        where: { id },
-        data: updateData as any,
-      });
-    } catch {
-      updated = {
-        ...existing,
-        ...updateData,
-        updatedAt: new Date(),
-      };
-    }
-
-    this.memoryEndpoints.set(id, updated);
     return this.toDto(updated);
   }
 
@@ -297,13 +243,12 @@ export class WebhookDispatcherService {
    * Deletes a webhook endpoint.
    */
   async deleteEndpoint(id: string): Promise<boolean> {
-    const existedInMemory = this.memoryEndpoints.has(id);
-    this.memoryEndpoints.delete(id);
     try {
       await this.prisma.webhookEndpoint.delete({ where: { id } });
       return true;
-    } catch {
-      return existedInMemory;
+    } catch (err: any) {
+      if (err?.code === 'P2025') return false;
+      throw err;
     }
   }
 
@@ -311,16 +256,7 @@ export class WebhookDispatcherService {
    * Dispatches a test ping event to a specific webhook endpoint.
    */
   async sendTestPing(id: string): Promise<{ success: boolean; deliveryId: string; status?: number; error?: string }> {
-    let endpoint: any = this.memoryEndpoints.get(id);
-
-    if (!endpoint) {
-      try {
-        endpoint = await this.prisma.webhookEndpoint.findUnique({ where: { id } });
-      } catch {
-        endpoint = null;
-      }
-    }
-
+    const endpoint = await this.prisma.webhookEndpoint.findUnique({ where: { id } });
     if (!endpoint) {
       return { success: false, deliveryId: '', error: `Webhook endpoint '${id}' not found` };
     }
@@ -527,19 +463,9 @@ export class WebhookDispatcherService {
    * Resolves endpoints interested in an event and queues deliveries.
    */
   private async handleEvent(event: any): Promise<void> {
-    let endpoints: any[] = [];
-
-    if (this.memoryEndpoints.size > 0) {
-      endpoints = Array.from(this.memoryEndpoints.values()).filter((e) => e.enabled);
-    } else {
-      try {
-        endpoints = await this.prisma.webhookEndpoint.findMany({
-          where: { enabled: true },
-        });
-      } catch {
-        endpoints = [];
-      }
-    }
+    const endpoints = await this.prisma.webhookEndpoint.findMany({
+      where: { enabled: true },
+    });
 
     for (const ep of endpoints) {
       const rawEvents: string[] = Array.isArray(ep.events)
@@ -579,12 +505,11 @@ export class WebhookDispatcherService {
   }
 
   /**
-   * Clears queue and memory (used in tests).
+   * Clears queue and active deliveries (used in tests).
    */
   reset(): void {
     this.queue = [];
     this.activeDeliveries = 0;
-    this.memoryEndpoints.clear();
   }
 }
 

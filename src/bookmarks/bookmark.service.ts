@@ -12,7 +12,6 @@ export interface BookmarkServiceOptions {
 
 export class BookmarkService {
   private readonly prisma: any;
-  private readonly memoryBookmarks = new Map<string, BookmarkDto>();
 
   constructor(opts: BookmarkServiceOptions = {}) {
     this.prisma = opts.prisma || defaultPrisma;
@@ -25,41 +24,22 @@ export class BookmarkService {
     const fromDate = query.from ? new Date(query.from) : undefined;
     const toDate = query.to ? new Date(query.to) : undefined;
 
-    try {
-      const where: any = { cameraId };
-      if (fromDate || toDate) {
-        where.timestamp = {};
-        if (fromDate) where.timestamp.gte = fromDate;
-        if (toDate) where.timestamp.lte = toDate;
-      }
-      if (query.category) {
-        where.category = query.category;
-      }
-
-      const results = await this.prisma.bookmark.findMany({
-        where,
-        orderBy: { timestamp: 'asc' },
-      });
-
-      return results.map((b: any) => this.mapPrismaBookmark(b));
-    } catch {
-      // In-memory fallback
-      let list = Array.from(this.memoryBookmarks.values()).filter(
-        (b) => b.cameraId === cameraId
-      );
-      if (fromDate) {
-        list = list.filter((b) => new Date(b.timestamp) >= fromDate);
-      }
-      if (toDate) {
-        list = list.filter((b) => new Date(b.timestamp) <= toDate);
-      }
-      if (query.category) {
-        list = list.filter((b) => b.category === query.category);
-      }
-      return list.sort(
-        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
+    const where: any = { cameraId };
+    if (fromDate || toDate) {
+      where.timestamp = {};
+      if (fromDate) where.timestamp.gte = fromDate;
+      if (toDate) where.timestamp.lte = toDate;
     }
+    if (query.category) {
+      where.category = query.category;
+    }
+
+    const results = await this.prisma.bookmark.findMany({
+      where,
+      orderBy: { timestamp: 'asc' },
+    });
+
+    return results.map((b: any) => this.mapPrismaBookmark(b));
   }
 
   async createBookmark(
@@ -91,50 +71,38 @@ export class BookmarkService {
       updatedAt: now.toISOString(),
     };
 
-    this.memoryBookmarks.set(id, bookmark);
-
-    try {
-      const created = await this.prisma.bookmark.create({
-        data: {
-          id,
-          cameraId,
-          userId: userId || null,
-          timestamp,
-          title: bookmark.title,
-          description: bookmark.description,
-          category: bookmark.category,
-          createdAt: now,
-          updatedAt: now,
-        },
-      });
-      return this.mapPrismaBookmark(created);
-    } catch {
-      // Prisma write failed, memory serves as return
-      return bookmark;
-    }
+    const created = await this.prisma.bookmark.create({
+      data: {
+        id,
+        cameraId,
+        userId: userId || null,
+        timestamp,
+        title: bookmark.title,
+        description: bookmark.description,
+        category: bookmark.category,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    return this.mapPrismaBookmark(created);
   }
 
   async getBookmark(id: string): Promise<BookmarkDto | null> {
-    const mem = this.memoryBookmarks.get(id);
-    if (mem) return mem;
-
-    try {
-      const b = await this.prisma.bookmark.findUnique({ where: { id } });
-      if (!b) return null;
-      return this.mapPrismaBookmark(b);
-    } catch {
-      return null;
-    }
+    const b = await this.prisma.bookmark.findUnique({ where: { id } });
+    if (!b) return null;
+    return this.mapPrismaBookmark(b);
   }
 
   async deleteBookmark(id: string): Promise<boolean> {
-    const hadMem = this.memoryBookmarks.delete(id);
-
     try {
       await this.prisma.bookmark.delete({ where: { id } });
       return true;
-    } catch {
-      return hadMem;
+    } catch (err: any) {
+      if (err?.code === 'P2025') {
+        // Record not found in Prisma
+        return false;
+      }
+      throw err;
     }
   }
 

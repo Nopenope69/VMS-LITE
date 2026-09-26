@@ -160,6 +160,8 @@ describe('WhatsApp Alerts & Outbound Webhooks (Phase 12 - Plan 02 - EXT-07, EXT-
         metadata: { cameraName: 'Backyard 2' },
       });
 
+      await new Promise((r) => setTimeout(r, 50));
+
       expect(mockDispatcher.dispatches.length).toBe(1);
       expect(mockDispatcher.dispatches[0].eventType).toBe('camera.degraded');
 

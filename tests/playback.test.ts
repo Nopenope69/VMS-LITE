@@ -36,10 +36,11 @@ describe('Playback API (/api/playback) (PLAY-01, PLAY-03)', () => {
     );
     testCameraId = camera.id;
 
-    // Ingest dummy recorded segment for this camera
+    // Ingest dummy recorded segment for this camera using today's date
+    const todayStr = new Date().toISOString().split('T')[0];
     await recordingEngine.ingestSegment({
       mediaMtxPath: camera.mediaMtxPath,
-      segmentPath: `/var/recordings/${camera.mediaMtxPath}/2026-09-24_10-00-00.mp4`,
+      segmentPath: `/var/recordings/${camera.mediaMtxPath}/${todayStr}_10-00-00.mp4`,
       duration: 120,
     });
   });

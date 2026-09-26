@@ -68,6 +68,42 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
     };
   });
 
+  // Global Error Handler for Fail-Loud Architecture (503 on database unavailability)
+  app.setErrorHandler((error: any, request, reply) => {
+    if (
+      error.code === 'DATABASE_UNAVAILABLE' ||
+      error.code === 'P1001' ||
+      error.code === 'P1002' ||
+      error.code === 'P1003' ||
+      error.name === 'PrismaClientInitializationError' ||
+      error.name === 'PrismaClientRustPanicError' ||
+      (typeof error.message === 'string' &&
+        (error.message.includes("Can't reach database server") ||
+         error.message.includes('Connection terminated unexpectedly') ||
+         error.message.includes('Database is currently unreachable') ||
+         error.message.includes('Database unavailable') ||
+         error.message.includes('database is unreachable')))
+    ) {
+      return reply.status(503).send({
+        error: 'DatabaseUnavailable',
+        code: 'DATABASE_UNAVAILABLE',
+        message: 'The database service is currently unavailable. Please check PostgreSQL connection.',
+      });
+    }
+
+    if (error.statusCode) {
+      return reply.status(error.statusCode).send({
+        error: error.name || 'Error',
+        message: error.message,
+      });
+    }
+
+    return reply.status(500).send({
+      error: 'InternalServerError',
+      message: error.message || 'An unexpected error occurred',
+    });
+  });
+
   // Domain route registration
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(eventRoutes, { prefix: '/api' });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as ed from '@noble/ed25519';
 import fastify, { FastifyInstance } from 'fastify';
 import {

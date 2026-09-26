@@ -45,9 +45,6 @@ export class ExportService {
     cameraId: string
   ) => Promise<{ id: string; name: string } | null>;
 
-  // Fallback in-memory store for isolated unit tests / environments without live Postgres
-  private readonly memoryJobs = new Map<string, ExportJobDto>();
-
   constructor(opts: ExportServiceOptions = {}) {
     this.prisma = opts.prisma || defaultPrisma;
     this.validator = opts.validator || defaultValidator;
@@ -255,7 +252,7 @@ export class ExportService {
     }
   }
 
-  private async runFfmpeg(args: string[], fallbackOutputFile: string): Promise<void> {
+  private async runFfmpeg(args: string[], _outputFile?: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const child = spawn('ffmpeg', args);
       let stderr = '';
@@ -264,27 +261,15 @@ export class ExportService {
         stderr += chunk.toString();
       });
 
-      child.on('error', async (err) => {
-        // If ffmpeg binary is not found, fallback to creating mock file for graceful test resilience
-        if ((err as any).code === 'ENOENT') {
-          await fs.writeFile(fallbackOutputFile, 'MOCK_VIDEO_STREAM_DATA', 'utf8');
-          resolve();
-          return;
-        }
-        reject(err);
+      child.on('error', (err) => {
+        reject(new Error(`FFmpeg process failed to spawn: ${err.message}`));
       });
 
-      child.on('close', async (code) => {
+      child.on('close', (code) => {
         if (code === 0) {
           resolve();
         } else {
-          // If ffmpeg failed due to input formats in test environment, mock output
-          if (process.env.NODE_ENV === 'test') {
-            await fs.writeFile(fallbackOutputFile, 'MOCK_VIDEO_STREAM_DATA', 'utf8');
-            resolve();
-          } else {
-            reject(new Error(`FFmpeg exited with code ${code}: ${stderr}`));
-          }
+          reject(new Error(`FFmpeg exited with code ${code}: ${stderr}`));
         }
       });
     });
@@ -309,69 +294,45 @@ export class ExportService {
       return await this.recordingLookup(cameraId, startTime, endTime);
     }
 
-    try {
-      const recordings = await this.prisma.recording.findMany({
-        where: {
-          cameraId,
-          startTime: { lte: endTime },
-          endTime: { gte: startTime },
-        },
-        orderBy: { startTime: 'asc' },
-      });
+    const recordings = await this.prisma.recording.findMany({
+      where: {
+        cameraId,
+        startTime: { lte: endTime },
+        endTime: { gte: startTime },
+      },
+      orderBy: { startTime: 'asc' },
+    });
 
-      return recordings.map((r: any) => ({
-        filePath: r.filePath,
-        format: r.format,
-      }));
-    } catch {
-      // In-memory fallback
-      return [];
-    }
+    return recordings.map((r: any) => ({
+      filePath: r.filePath,
+      format: r.format,
+    }));
   }
 
   private async getCamera(cameraId: string): Promise<{ id: string; name: string } | null> {
     if (this.cameraLookup) {
       return await this.cameraLookup(cameraId);
     }
-    try {
-      const cam = await this.prisma.camera.findUnique({
-        where: { id: cameraId },
-        select: { id: true, name: true },
-      });
-      return cam;
-    } catch {
-      return null;
-    }
+    return await this.prisma.camera.findUnique({
+      where: { id: cameraId },
+      select: { id: true, name: true },
+    });
   }
 
   async getExportJob(id: string): Promise<ExportJobDto | null> {
-    // Check in-memory store
-    const memJob = this.memoryJobs.get(id);
-    if (memJob) return memJob;
-
-    try {
-      const job = await this.prisma.exportJob.findUnique({
-        where: { id },
-      });
-      if (!job) return null;
-      return this.mapPrismaJob(job);
-    } catch {
-      return null;
-    }
+    const job = await this.prisma.exportJob.findUnique({
+      where: { id },
+    });
+    if (!job) return null;
+    return this.mapPrismaJob(job);
   }
 
   async listExportJobs(cameraId?: string): Promise<ExportJobDto[]> {
-    try {
-      const jobs = await this.prisma.exportJob.findMany({
-        where: cameraId ? { cameraId } : undefined,
-        orderBy: { createdAt: 'desc' },
-      });
-      return jobs.map((j: any) => this.mapPrismaJob(j));
-    } catch {
-      const memList = Array.from(this.memoryJobs.values());
-      if (cameraId) return memList.filter((j) => j.cameraId === cameraId);
-      return memList;
-    }
+    const jobs = await this.prisma.exportJob.findMany({
+      where: cameraId ? { cameraId } : undefined,
+      orderBy: { createdAt: 'desc' },
+    });
+    return jobs.map((j: any) => this.mapPrismaJob(j));
   }
 
   async getExportFileDetails(id: string): Promise<{
@@ -396,45 +357,40 @@ export class ExportService {
   }
 
   private async persistJob(job: ExportJobDto): Promise<void> {
-    this.memoryJobs.set(job.id, job);
-
-    try {
-      const fileSize = (job.fileSize !== null && job.fileSize !== undefined) ? BigInt(job.fileSize) : null;
-      await this.prisma.exportJob.upsert({
-        where: { id: job.id },
-        create: {
-          id: job.id,
-          cameraId: job.cameraId,
-          userId: job.userId ?? null,
-          startTime: new Date(job.startTime),
-          endTime: new Date(job.endTime),
-          exportMode: job.exportMode,
-          status: job.status,
-          filePath: job.filePath ?? null,
-          fileSize,
-          sha256: job.sha256 ?? null,
-          includeOsd: job.includeOsd,
-          errorCode: job.errorCode ?? null,
-          errorMessage: job.errorMessage ?? null,
-          createdAt: new Date(job.createdAt),
-          startedAt: job.startedAt ? new Date(job.startedAt) : null,
-          completedAt: job.completedAt ? new Date(job.completedAt) : null,
-          expiresAt: new Date(job.expiresAt),
-        },
-        update: {
-          status: job.status,
-          filePath: job.filePath ?? null,
-          fileSize,
-          sha256: job.sha256 ?? null,
-          errorCode: job.errorCode ?? null,
-          errorMessage: job.errorMessage ?? null,
-          startedAt: job.startedAt ? new Date(job.startedAt) : null,
-          completedAt: job.completedAt ? new Date(job.completedAt) : null,
-        },
-      });
-    } catch {
-      // Prisma write failed, memory map serves as fallback
-    }
+    const fileSize = (job.fileSize !== null && job.fileSize !== undefined) ? BigInt(job.fileSize) : null;
+    await this.prisma.exportJob.upsert({
+      where: { id: job.id },
+      create: {
+        id: job.id,
+        cameraId: job.cameraId,
+        userId: job.userId ?? null,
+        startTime: new Date(job.startTime),
+        endTime: new Date(job.endTime),
+        exportMode: job.exportMode,
+        status: job.status,
+        filePath: job.filePath ?? null,
+        fileSize,
+        sha256: job.sha256 ?? null,
+        includeOsd: job.includeOsd,
+        errorCode: job.errorCode ?? null,
+        errorMessage: job.errorMessage ?? null,
+        createdAt: new Date(job.createdAt),
+        startedAt: job.startedAt ? new Date(job.startedAt) : null,
+        completedAt: job.completedAt ? new Date(job.completedAt) : null,
+        expiresAt: new Date(job.expiresAt),
+      },
+      update: {
+        status: job.status,
+        filePath: job.filePath ?? null,
+        fileSize,
+        sha256: job.sha256 ?? null,
+        errorCode: job.errorCode ?? null,
+        errorMessage: job.errorMessage ?? null,
+        startedAt: job.startedAt ? new Date(job.startedAt) : null,
+        completedAt: job.completedAt ? new Date(job.completedAt) : null,
+        expiresAt: new Date(job.expiresAt),
+      },
+    });
   }
 
   private mapPrismaJob(j: any): ExportJobDto {

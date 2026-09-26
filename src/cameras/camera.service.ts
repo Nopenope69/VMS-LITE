@@ -39,9 +39,6 @@ export class CameraService {
   private readonly eventBus: EventBus;
   private readonly prisma: PrismaClient;
 
-  // In-memory fallback cache when PostgreSQL is not running in test/sandbox
-  private readonly memoryCameras: Map<string, any> = new Map();
-
   constructor(deps: CameraServiceDependencies = {}) {
     this.provider = deps.provider || defaultProvider;
     this.mediaMtx = deps.mediaMtx || defaultMediaMtx;
@@ -169,50 +166,32 @@ export class CameraService {
    * Retrieves all onboarded cameras.
    */
   async listCameras(): Promise<CameraResponseDto[]> {
-    try {
-      const records = await this.prisma.camera.findMany({
-        orderBy: { createdAt: 'desc' },
-      });
-      return records.map((r) => this.toDto(r));
-    } catch {
-      return Array.from(this.memoryCameras.values()).map((r) => this.toDto(r));
-    }
+    const records = await this.prisma.camera.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return records.map((r) => this.toDto(r));
   }
 
   /**
    * Retrieves a single camera by ID.
    */
   async getCameraById(id: string): Promise<CameraResponseDto | null> {
-    try {
-      const record = await this.prisma.camera.findUnique({
-        where: { id },
-      });
-      return record ? this.toDto(record) : null;
-    } catch {
-      const rec = this.memoryCameras.get(id);
-      return rec ? this.toDto(rec) : null;
-    }
+    const record = await this.prisma.camera.findUnique({
+      where: { id },
+    });
+    return record ? this.toDto(record) : null;
   }
 
   /**
    * Removes a camera and tears down its streaming path in MediaMTX.
    */
   async removeCamera(id: string): Promise<boolean> {
-    let existingCamera: any = null;
-
-    try {
-      existingCamera = await this.prisma.camera.findUnique({ where: { id } });
-      if (existingCamera) {
-        await this.prisma.camera.delete({ where: { id } });
-      }
-    } catch {
-      existingCamera = this.memoryCameras.get(id);
-      this.memoryCameras.delete(id);
-    }
-
+    const existingCamera = await this.prisma.camera.findUnique({ where: { id } });
     if (!existingCamera) {
       return false;
     }
+
+    await this.prisma.camera.delete({ where: { id } });
 
     // Teardown MediaMTX stream path
     await this.mediaMtx.removePath(existingCamera.mediaMtxPath);
@@ -245,11 +224,7 @@ export class CameraService {
    * Counts currently installed cameras.
    */
   async getCameraCount(): Promise<number> {
-    try {
-      return await this.prisma.camera.count();
-    } catch {
-      return this.memoryCameras.size;
-    }
+    return await this.prisma.camera.count();
   }
 
   /**
@@ -279,23 +254,10 @@ export class CameraService {
   }
 
   /**
-   * Persists camera to PostgreSQL with fallback to in-memory store if DB is offline.
+   * Persists camera to PostgreSQL.
    */
   private async persistCamera(data: any): Promise<any> {
-    try {
-      return await this.prisma.camera.create({ data });
-    } catch {
-      const id = crypto.randomUUID();
-      const now = new Date();
-      const record = {
-        id,
-        ...data,
-        createdAt: now,
-        updatedAt: now,
-      };
-      this.memoryCameras.set(id, record);
-      return record;
-    }
+    return await this.prisma.camera.create({ data });
   }
 
   /**

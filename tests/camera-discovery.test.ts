@@ -16,6 +16,8 @@ describe('CameraService (CAM-01, CAM-02, CAM-03, CAM-05)', () => {
   let eventBus: EventBus;
 
   beforeEach(() => {
+    (globalThis as any).prismaGlobal?.camera?.clear();
+
     provider = new OnvifCameraProvider({
       mockMode: true,
       mockCameras: MOCK_DISCOVERED_CAMERAS,

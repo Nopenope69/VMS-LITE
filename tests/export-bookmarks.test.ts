@@ -356,7 +356,14 @@ describe('Server-Side Clip Export & Timeline Bookmarks (Phase 10 - EXT-04, EXT-0
 
   describe('5. Two-Tier Storage Cleanup Priority Hierarchy', () => {
     it('prunes expired exports (>48h TTL) at 85% capacity without deleting unexpired exports', async () => {
-      const service = new ExportService({ exportsDir: testExportsDir });
+      const service = new ExportService({
+        exportsDir: testExportsDir,
+        spawnFfmpegFn: async (args) => {
+          const outPath = args[args.length - 1];
+          await fs.writeFile(outPath, 'TEST_VIDEO_BYTES');
+          return { exitCode: 0, stderr: '' };
+        },
+      });
       const unlinkedFiles: string[] = [];
       const pruneService = new ExportPruneService({
         exportService: service,
@@ -401,7 +408,14 @@ describe('Server-Side Clip Export & Timeline Bookmarks (Phase 10 - EXT-04, EXT-0
     });
 
     it('emergency purges unexpired exports FIFO at 90% capacity while preserving continuous recordings', async () => {
-      const service = new ExportService({ exportsDir: testExportsDir });
+      const service = new ExportService({
+        exportsDir: testExportsDir,
+        spawnFfmpegFn: async (args) => {
+          const outPath = args[args.length - 1];
+          await fs.writeFile(outPath, 'TEST_VIDEO_BYTES');
+          return { exitCode: 0, stderr: '' };
+        },
+      });
       const unlinkedFiles: string[] = [];
       const pruneService = new ExportPruneService({
         exportService: service,

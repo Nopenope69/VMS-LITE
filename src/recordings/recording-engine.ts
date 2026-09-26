@@ -66,11 +66,7 @@ export class RecordingEngine implements IRecordingEngine {
   private isCheckingStorage = false;
 
   constructor(opts: RecordingEngineOptions = {}) {
-    const repository =
-      opts.repository ||
-      (process.env.NODE_ENV === 'test' || !process.env.DATABASE_URL
-        ? new InMemoryRecordingRepository()
-        : new PrismaRecordingRepository());
+    const repository = opts.repository || new PrismaRecordingRepository();
     const mediaMtx = opts.mediaMtx || defaultMediaMtx;
     const eventBus = opts.eventBus || defaultEventBus;
     this.clock = opts.clock || systemClock;

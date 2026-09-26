@@ -629,8 +629,15 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
         getPathRuntime: vi.fn().mockResolvedValue({ ready: true, bytesReceived: 10_000 }),
       };
 
+      const mockCameraService = {
+        listCameras: vi.fn().mockResolvedValue([
+          { id: 'cam-to-delete-9', name: 'Temporary Cam', mediaMtxPath: 'cam-temp' },
+        ]),
+      } as unknown as CameraService;
+
       const testBus = new EventBus();
       const service = new CameraHealthService({
+        cameraService: mockCameraService,
         mediaMtxClient: mockMediaMtx,
         eventBus: testBus,
       });

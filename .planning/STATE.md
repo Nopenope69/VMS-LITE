@@ -1,36 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: "Package 2 (Extended)"
-status: complete
-stopped_at: "Phase 12 completed and verified. Milestone v2.0 Package 2 (Extended) complete."
-last_updated: "2026-09-25T08:26:00.000Z"
-last_activity: "2026-09-25 -- Phase 12 executed and verified (Dual-plane health telemetry, token-bucket WhatsApp alerts with 60s cooldown, HMAC-SHA256 signed webhooks)"
+milestone: v3.0
+milestone_name: "Deployable MVP (Days 45 → 75)"
+status: in_progress
+stopped_at: "Phase 13: Live Infrastructure & Mock Elimination completed. Ready for Phase 14: Vite App Shell & Production Serving."
+last_updated: "2026-09-27T02:35:00.000Z"
+last_activity: "2026-09-27 -- Completed Phase 13 (Plans 13-01 and 13-02) with 231/231 passing tests and zero mock fallbacks"
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
-  percent: 100
+  total_phases: 9
+  completed_phases: 1
+  total_plans: 17
+  completed_plans: 2
+  percent: 11
 ---
 
 # Project State
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-09-24)
+See: `.planning/MVP-ROADMAP.md` and `.planning/PROJECT.md`
 
 **Core value:** Sub-30-minute installer deployment with reliable CP Plus parity (live view, scheduled recording, 24h timeline playback, native ONVIF motion alerts) built on permissively licensed infrastructure (MediaMTX) with zero VigilOne domain entanglement.  
-**Current focus:** Milestone v2.0: Package 2 (Extended) — Commercial Operator Controls, PTZ, Motion Zones, Watermarked Clip Export, Bookmarks, Diagnostics, WhatsApp Alerts & Webhooks
+**Current focus:** Milestone v3.0: Deployable MVP (Days 45 → 75) — Live Infrastructure, Mock Elimination, Vite App Shell, Camera Onboarding Wizard, Operational Settings & Motion Ring Buffer
 
 ## Current Position
 
-Phase: Phase 12 (Camera Health Telemetry, WhatsApp Alerts & Webhooks)
-Plan: Completed (12-01, 12-02)
-Status: Complete
-Last activity: 2026-09-25 -- Phase 12 executed and verified (Dual-plane health telemetry, token-bucket WhatsApp alerts with 60s cooldown, HMAC-SHA256 signed webhooks)
+Phase: Phase 14 (Vite App Shell & Production Serving)
+Plan: Ready to plan and execute
+Status: Ready
+Last activity: 2026-09-27 -- Phase 13 completed with 100% mock elimination in production code and 231/231 passing tests
 
-Progress: [██████████] 100%
+Progress: [█░░░░░░░░░] 11%
 
 ## Performance Metrics
 

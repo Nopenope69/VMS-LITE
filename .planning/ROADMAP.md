@@ -18,9 +18,20 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 ### Milestone v2.0: Package 2 (Extended)
 - [x] **Phase 8: Operator Role & Granular RBAC** - 3-tier user role hierarchy, camera permission ACLs, route authorization hooks, and operator workstation UI (completed 2026-09-24)
 - [x] **Phase 9: ONVIF PTZ Controls & Camera Presets** - Profile S PTZ integration, virtual joystick overlay, preset tours, and 1.5s safety watchdog (completed 2026-09-24)
-- [ ] **Phase 10: Server-Side Clip Export & Timeline Bookmarks** - FFmpeg packet-copy MP4 cutting, burned-in timestamp OSD/watermark, 48h TTL cleanup, and timeline incident bookmarks
-- [ ] **Phase 11: Motion Zones & Spatial Exclusion Masking** - Interactive SVG polygon drawing, normalized ray-casting coordinate containment, and alert suppression
-- [ ] **Phase 12: Camera Health Telemetry, WhatsApp Alerts & Webhooks** - 30s ping/stream health monitoring, rate-limited WhatsApp incident alerting, and signed integration webhooks
+- [x] **Phase 10: Server-Side Clip Export & Timeline Bookmarks** - FFmpeg packet-copy MP4 cutting, burned-in timestamp OSD/watermark, 48h TTL cleanup, and timeline incident bookmarks (completed 2026-09-24)
+- [x] **Phase 11: Motion Zones & Spatial Exclusion Masking** - Interactive SVG polygon drawing, normalized ray-casting coordinate containment, and alert suppression (completed 2026-09-24)
+- [x] **Phase 12: Camera Health Telemetry, WhatsApp Alerts & Webhooks** - 30s ping/stream health monitoring, rate-limited WhatsApp incident alerting, and signed integration webhooks (completed 2026-09-25)
+
+### Milestone v3.0: Deployable MVP (Days 45 → 75)
+- [ ] **Phase 13: Live Infrastructure & Mock Elimination** - Fail explicitly on database/network error, remove in-memory fallback branching from production runtime, and prove full suite against live PostgreSQL & MediaMTX
+- [ ] **Phase 14: Vite App Shell & Production Serving** - Top-level App.tsx router, persistent header/sidebar navigation, Vite production build, Caddyfile reverse proxy, and Fastify static fallback
+- [ ] **Phase 15: 6-Step Robust Camera Onboarding Wizard** - Discovery, auth & dual-stream probe, TCP port check, MediaMTX path sync, WebRTC visual preview, and atomic DB commit
+- [ ] **Phase 16: Operational Settings & Core Health Licensing Realignment** - Move camera health into Core capability baseline, continuous/motion/scheduled recording policies, visual 7-day schedule grid, and storage FIFO auto-purge
+- [ ] **Phase 17: Motion Recording with Rolling Ring Buffer** - 2-second short fMP4 segments, FIFO queue auto-discard, and 10s pre-buffer / 30s post-buffer promotion engine
+- [ ] **Phase 18: Operator Controls & System Dashboard** - Instant canvas snapshot download, multi-grid kiosk fullscreen, 1x-4x CSS digital zoom, and fleet health/storage overview dashboard
+- [ ] **Phase 19: Built-in SMTP Email Alerting** - Zero-cloud in-process SMTP dispatcher, HTML alert templates with IST timestamps, and token-bucket rate limiting
+- [ ] **Phase 20: Self-Verifying Evidence Export Package** - Standalone signed ZIP bundle with video.mp4, cryptographic manifest.json, audit.json, and portable verify.js script
+- [ ] **Phase 21: Field Validation & 72-Hour Acceptance Gate** - Automated 72-hour unattended soak test, network cable disconnect/reconnect simulation, and installer litmus test verification
 
 ---
 
@@ -293,10 +304,31 @@ Plans:
 
 ---
 
+### Phase 13: Live Infrastructure & Mock Elimination
+
+**Goal**: Eradicate artificial mock-fallback fake-success branches across camera, database, export, and webhook services. Enforce explicit HTTP 4xx/5xx failure contracts when dependencies are unreachable, and verify the full test suite against live PostgreSQL and MediaMTX.
+**Mode**: mvp
+**Depends on**: Phase 12
+**Requirements**: [MVP-01, MVP-02]
+**Success Criteria**:
+
+1. All production services (`CameraService`, `BookmarkService`, `ExportService`, `WebhookDispatcherService`, `NotificationDispatcherService`) fail explicitly with HTTP 4xx/5xx when database or media services are unreachable, with 0 in-memory silent fallback mutations.
+2. In-memory maps and test fakes are completely sequestered in test suites and never referenced in production runtime catch blocks.
+3. Automated integration test verifies the Golden Installer Path against real PostgreSQL and MediaMTX.
+
+**Plans**: 2 plans
+
+Plans:
+
+- [x] 13-01: Audit and purge mock-fallback catch blocks in domain services, returning explicit HTTP status codes and error payloads.
+- [x] 13-02: Build automated Golden Installer Path integration test harness validating real PostgreSQL and MediaMTX lifecycle.
+
+---
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -312,3 +344,12 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. Server-Side Clip Export & Timeline Bookmarks | 2/2 | Complete    | 2026-09-24 |
 | 11. Motion Zones & Spatial Exclusion Masking | 2/2 | Complete    | 2026-09-24 |
 | 12. Camera Health Telemetry, WhatsApp Alerts & Webhooks | 2/2 | Complete    | 2026-09-25 |
+| 13. Live Infrastructure & Mock Elimination | 2/2 | Complete    | 2026-09-27 |
+| 14. Vite App Shell & Production Serving | 0/2 | Planned     | - |
+| 15. 6-Step Robust Camera Onboarding Wizard | 0/2 | Planned     | - |
+| 16. Operational Settings & Core Health Licensing | 0/2 | Planned     | - |
+| 17. Motion Recording with Rolling Ring Buffer | 0/2 | Planned     | - |
+| 18. Operator Controls & System Dashboard | 0/2 | Planned     | - |
+| 19. Built-in SMTP Email Alerting | 0/2 | Planned     | - |
+| 20. Self-Verifying Evidence Export Package | 0/2 | Planned     | - |
+| 21. Field Validation & 72-Hour Acceptance Gate | 0/1 | Planned     | - |
