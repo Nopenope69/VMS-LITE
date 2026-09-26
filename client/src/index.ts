@@ -20,4 +20,5 @@ export * from './components/BookmarkModal.js';
 export * from './components/MotionZoneEditorModal.js';
 export * from './hooks/useCameraHealth.js';
 export * from './components/NotificationSettingsModal.js';
+export * from './components/CameraOnboardingWizardModal.js';
 export * from './App.js';

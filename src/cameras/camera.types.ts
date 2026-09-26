@@ -45,3 +45,46 @@ export interface CameraResponseDto {
   createdAt: Date | string;
   updatedAt: Date | string;
 }
+
+export const ProbeNetworkSchema = z.object({
+  ip: z.string().min(1, 'IP address is required'),
+  port: z.number().int().positive().default(554),
+  timeoutMs: z.number().int().positive().default(2500),
+});
+export type ProbeNetworkInput = z.infer<typeof ProbeNetworkSchema>;
+
+export const ProbeAuthSchema = z.object({
+  ip: z.string().min(1, 'Camera IP is required'),
+  port: z.number().int().positive().default(80),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  xaddr: z.string().optional(),
+});
+export type ProbeAuthInput = z.infer<typeof ProbeAuthSchema>;
+
+export const ProvisionPreviewSchema = z.object({
+  rtspUrl: z.string().refine((url) => url.startsWith('rtsp://') || url.startsWith('rtsps://'), {
+    message: 'RTSP URL must start with rtsp:// or rtsps://',
+  }),
+});
+export type ProvisionPreviewInput = z.infer<typeof ProvisionPreviewSchema>;
+
+export const CommitCameraSchema = z.object({
+  name: z.string().min(1, 'Camera name is required'),
+  ip: z.string().optional(),
+  port: z.number().int().positive().optional(),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  rtspUrl: z.string().refine((url) => url.startsWith('rtsp://') || url.startsWith('rtsps://'), {
+    message: 'RTSP URL must start with rtsp:// or rtsps://',
+  }),
+  subStreamUrl: z.string().optional().nullable(),
+  onvifUrl: z.string().optional().nullable(),
+  profileToken: z.string().optional().nullable(),
+  manufacturer: z.string().optional().nullable(),
+  model: z.string().optional().nullable(),
+  serialNumber: z.string().optional().nullable(),
+  previewPath: z.string().optional().nullable(),
+});
+export type CommitCameraInput = z.infer<typeof CommitCameraSchema>;
+

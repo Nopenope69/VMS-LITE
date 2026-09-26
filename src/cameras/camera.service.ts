@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import net from 'node:net';
 import { PrismaClient } from '@prisma/client';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
@@ -13,6 +14,7 @@ import {
   CameraResponseDto,
   ManualCameraInput,
   OnboardCameraInput,
+  CommitCameraInput,
 } from './camera.types.js';
 
 export class LicenseLimitExceededError extends Error {
@@ -44,6 +46,194 @@ export class CameraService {
     this.mediaMtx = deps.mediaMtx || defaultMediaMtx;
     this.eventBus = deps.eventBus || defaultEventBus;
     this.prisma = deps.prisma || defaultPrisma;
+  }
+
+  /**
+   * Probe camera network reachability and measure round-trip TCP handshake latency (Step 3).
+   */
+  async probeNetwork(
+    ip: string,
+    port = 554,
+    timeoutMs = 2500
+  ): Promise<{ reachable: boolean; latencyMs: number | null; error?: string }> {
+    return new Promise((resolve) => {
+      const start = Date.now();
+      const socket = net.createConnection({ host: ip, port });
+      let resolved = false;
+
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          socket.destroy();
+          resolve({ reachable: false, latencyMs: null, error: `Connection timed out after ${timeoutMs}ms` });
+        }
+      }, timeoutMs);
+
+      socket.on('connect', () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          const latencyMs = Date.now() - start;
+          socket.destroy();
+          resolve({ reachable: true, latencyMs });
+        }
+      });
+
+      socket.on('error', (err) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          socket.destroy();
+          resolve({ reachable: false, latencyMs: null, error: err.message });
+        }
+      });
+    });
+  }
+
+  /**
+   * Probe ONVIF camera credentials and resolve video stream profiles (Step 2).
+   */
+  async probeAuthAndProfiles(params: {
+    ip: string;
+    port?: number;
+    username?: string;
+    password?: string;
+    xaddr?: string;
+  }): Promise<{
+    authenticated: boolean;
+    device: Partial<CameraDeviceDetails>;
+    profiles: any[];
+  }> {
+    const connectionParams = {
+      ip: params.ip,
+      port: params.port ?? 80,
+      username: params.username,
+      password: params.password,
+      xaddr: params.xaddr,
+    };
+
+    const device = await this.provider.getDeviceInformation(connectionParams).catch(() => ({}));
+    const profiles = await this.provider.getProfiles(connectionParams);
+    if (!profiles || profiles.length === 0) {
+      throw new Error(`Authentication succeeded but no stream profiles found on camera at ${params.ip}`);
+    }
+
+    return {
+      authenticated: true,
+      device,
+      profiles,
+    };
+  }
+
+  /**
+   * Provisions a temporary preview path in MediaMTX and polls for readiness (Step 4 & 5).
+   */
+  async provisionPreviewPath(
+    rtspUrl: string,
+    pathPrefix = 'preview'
+  ): Promise<{
+    pathName: string;
+    ready: boolean;
+    whepUrl: string;
+    warning?: string;
+  }> {
+    const randomSuffix = crypto.randomBytes(4).toString('hex');
+    const pathName = `${pathPrefix}_${randomSuffix}`;
+
+    await this.mediaMtx.addPath(pathName, rtspUrl);
+
+    // Poll MediaMTX for up to 5 seconds to verify stream readiness
+    let ready = false;
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const state = await this.mediaMtx.getPath(pathName).catch(() => null);
+      if (state && state.ready) {
+        ready = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 400));
+    }
+
+    const whepUrl = `/whep/${pathName}/whep`;
+
+    return {
+      pathName,
+      ready,
+      whepUrl,
+      warning: ready
+        ? undefined
+        : 'Stream source configured in media plane, waiting for first keyframe.',
+    };
+  }
+
+  /**
+   * Cleans up a temporary preview path from MediaMTX.
+   */
+  async teardownPreviewPath(pathName: string): Promise<void> {
+    if (!pathName || !pathName.startsWith('preview_')) return;
+    await this.mediaMtx.removePath(pathName).catch(() => {});
+  }
+
+  /**
+   * Atomically commits a verified camera to PostgreSQL and locks in the permanent stream path (Step 6).
+   */
+  async commitVerifiedCamera(
+    input: CommitCameraInput,
+    cameraLimit: number
+  ): Promise<CameraResponseDto> {
+    await this.assertWithinLimit(cameraLimit);
+
+    const mediaMtxPath = this.generatePathName(input.name);
+
+    // Save camera to PostgreSQL
+    const cameraRecord = await this.persistCamera({
+      name: input.name,
+      ip: input.ip || null,
+      port: input.port || null,
+      username: input.username || null,
+      password: input.password || null,
+      rtspUrl: input.rtspUrl,
+      subStreamUrl: input.subStreamUrl || null,
+      onvifUrl: input.onvifUrl || null,
+      profileToken: input.profileToken || null,
+      manufacturer: input.manufacturer || null,
+      model: input.model || null,
+      serialNumber: input.serialNumber || null,
+      status: 'online',
+      mediaMtxPath,
+    });
+
+    try {
+      // Configure permanent path in MediaMTX
+      await this.mediaMtx.addPath(mediaMtxPath, input.rtspUrl);
+    } catch (err: any) {
+      // Transactional rollback: purge from database if media plane provisioning fails
+      await this.prisma.camera.delete({ where: { id: cameraRecord.id } }).catch(() => {});
+      throw new Error(`Media plane provisioning failed: ${err.message}. Database rollback completed.`);
+    }
+
+    // Clean up temporary preview path if provided
+    if (input.previewPath) {
+      await this.teardownPreviewPath(input.previewPath).catch(() => {});
+    }
+
+    // Emit lifecycle event
+    await this.eventBus.emitEvent({
+      type: 'camera.online',
+      source: 'camera.service',
+      cameraId: cameraRecord.id,
+      metadata: {
+        name: cameraRecord.name,
+        ip: cameraRecord.ip,
+        port: cameraRecord.port,
+        onvifXAddr: cameraRecord.onvifUrl,
+        username: cameraRecord.username,
+        mediaMtxPath: cameraRecord.mediaMtxPath,
+        manufacturer: cameraRecord.manufacturer,
+      },
+    });
+
+    return this.toDto(cameraRecord);
   }
 
   /**

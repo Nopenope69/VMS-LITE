@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: "Deployable MVP (Days 45 → 75)"
 status: in_progress
-stopped_at: "Phase 14: Vite App Shell & Production Serving completed. Ready for Phase 15: 6-Step Robust Camera Onboarding Wizard."
-last_updated: "2026-09-27T02:44:00.000Z"
-last_activity: "2026-09-27 -- Completed Phase 14 (Plans 14-01 and 14-02) with standalone browser app, Vite build, App.tsx shell, Fastify static serving, and Caddyfile"
+stopped_at: "Completed Phase 15: 6-Step Robust Camera Onboarding Wizard. Ready for Phase 16: Operational Settings & Core Health Licensing Realignment."
+last_updated: "2026-09-27T02:51:00.000Z"
+last_activity: "2026-09-27 -- Completed Phase 15 (Backend probe endpoints, transactional onboarding, 6-step UI wizard, and WebRTC preview)"
 progress:
   total_phases: 9
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 17
-  completed_plans: 4
-  percent: 23
+  completed_plans: 6
+  percent: 35
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: `.planning/MVP-ROADMAP.md` and `.planning/PROJECT.md`
 
 ## Current Position
 
-Phase: Phase 14 (Vite App Shell & Production Serving)
-Plan: Complete (14-01, 14-02)
-Status: Complete
-Last activity: 2026-09-27 -- Phase 14 verified and completed; next is Phase 15 (6-Step Robust Camera Onboarding Wizard)
+Phase: Phase 16 (Operational Settings & Core Health Licensing Realignment)
+Plan: Ready to plan
+Status: In Progress
+Last activity: 2026-09-27 -- Phase 15 completed (2/2 plans). Starting Phase 16.
 
-Progress: [██░░░░░░░░] 23%
+Progress: [███░░░░░░░] 35%
 
 ## Performance Metrics
 

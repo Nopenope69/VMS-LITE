@@ -36,6 +36,7 @@ import { UserManagementModal, CameraItem } from './components/UserManagementModa
 import { NotificationSettingsModal } from './components/NotificationSettingsModal.js';
 import { MotionZoneEditorModal } from './components/MotionZoneEditorModal.js';
 import { EventNotificationDrawer } from './components/EventNotificationDrawer.js';
+import { CameraOnboardingWizardModal } from './components/CameraOnboardingWizardModal.js';
 import { EventsWsClient, EventPayload } from './utils/events-ws-client.js';
 
 export type ViewType = 'dashboard' | 'live' | 'playback' | 'cameras' | 'events' | 'settings';
@@ -66,16 +67,8 @@ export const App: React.FC = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [selectedCameraForZones, setSelectedCameraForZones] = useState<CameraRecord | null>(null);
 
-  // Quick Add Camera dialog state
+  // Camera Onboarding Wizard modal state
   const [isAddCameraModalOpen, setIsAddCameraModalOpen] = useState<boolean>(false);
-  const [newCamName, setNewCamName] = useState('');
-  const [newCamIp, setNewCamIp] = useState('');
-  const [newCamPort, setNewCamPort] = useState('554');
-  const [newCamPath, setNewCamPath] = useState('');
-  const [newCamUser, setNewCamUser] = useState('admin');
-  const [newCamPass, setNewCamPass] = useState('');
-  const [addCamError, setAddCamError] = useState<string | null>(null);
-  const [isSubmittingCam, setIsSubmittingCam] = useState<boolean>(false);
 
   // Data states
   const [cameras, setCameras] = useState<CameraRecord[]>([]);
@@ -198,48 +191,6 @@ export const App: React.FC = () => {
       setLoginError(err.message || 'Login failed. Please check backend connection.');
     } finally {
       setIsLoggingIn(false);
-    }
-  };
-
-  // Handle Quick Add Camera submission
-  const handleAddCameraSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAddCamError(null);
-    setIsSubmittingCam(true);
-    try {
-      const payload = {
-        name: newCamName.trim(),
-        ipAddress: newCamIp.trim(),
-        rtspPort: parseInt(newCamPort, 10) || 554,
-        streamPath: newCamPath.trim() || `cam-${Date.now()}`,
-        username: newCamUser,
-        password: newCamPass,
-      };
-
-      const res = await fetch('/api/cameras', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => null);
-        throw new Error(errData?.message || 'Failed to add camera');
-      }
-
-      setIsAddCameraModalOpen(false);
-      setNewCamName('');
-      setNewCamIp('');
-      setNewCamPath('');
-      await fetchCameras();
-      await refreshHealth();
-    } catch (err: any) {
-      setAddCamError(err.message || 'Error onboarding camera');
-    } finally {
-      setIsSubmittingCam(false);
     }
   };
 
@@ -1288,100 +1239,15 @@ export const App: React.FC = () => {
         }}
       />
 
-      {/* Quick Add Camera Modal */}
-      {isAddCameraModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '16px' }}>
-          <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', maxWidth: '460px', width: '100%', padding: '24px' }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: 600, color: '#f8fafc' }}>Add New Camera</h3>
-            {addCamError && (
-              <div style={{ padding: '8px 12px', backgroundColor: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', borderRadius: '4px', color: '#fca5a5', fontSize: '12px', marginBottom: '14px' }}>
-                {addCamError}
-              </div>
-            )}
-            <form onSubmit={handleAddCameraSubmit}>
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#cbd5e1', marginBottom: '4px' }}>Camera Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Front Gate"
-                  value={newCamName}
-                  onChange={(e) => setNewCamName(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '4px', color: '#f8fafc', fontSize: '13px' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
-                <div style={{ flex: 2 }}>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#cbd5e1', marginBottom: '4px' }}>IP Address</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="192.168.1.100"
-                    value={newCamIp}
-                    onChange={(e) => setNewCamIp(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '4px', color: '#f8fafc', fontSize: '13px' }}
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#cbd5e1', marginBottom: '4px' }}>RTSP Port</label>
-                  <input
-                    type="number"
-                    value={newCamPort}
-                    onChange={(e) => setNewCamPort(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '4px', color: '#f8fafc', fontSize: '13px' }}
-                  />
-                </div>
-              </div>
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#cbd5e1', marginBottom: '4px' }}>MediaMTX Stream Path</label>
-                <input
-                  type="text"
-                  placeholder="cam-front-gate"
-                  value={newCamPath}
-                  onChange={(e) => setNewCamPath(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '4px', color: '#f8fafc', fontSize: '13px' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#cbd5e1', marginBottom: '4px' }}>Username</label>
-                  <input
-                    type="text"
-                    value={newCamUser}
-                    onChange={(e) => setNewCamUser(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '4px', color: '#f8fafc', fontSize: '13px' }}
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#cbd5e1', marginBottom: '4px' }}>Password</label>
-                  <input
-                    type="password"
-                    value={newCamPass}
-                    onChange={(e) => setNewCamPass(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '4px', color: '#f8fafc', fontSize: '13px' }}
-                  />
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsAddCameraModalOpen(false)}
-                  style={{ padding: '8px 14px', backgroundColor: '#334155', border: 'none', borderRadius: '4px', color: '#cbd5e1', fontSize: '13px', cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingCam}
-                  style={{ padding: '8px 16px', backgroundColor: '#0284c7', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-                >
-                  {isSubmittingCam ? 'Adding...' : 'Save Camera'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* 6-Step Robust Camera Onboarding Wizard */}
+      <CameraOnboardingWizardModal
+        isOpen={isAddCameraModalOpen}
+        onClose={() => setIsAddCameraModalOpen(false)}
+        onSuccess={() => {
+          fetchCameras();
+          refreshHealth();
+        }}
+      />
     </div>
   );
 };

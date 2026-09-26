@@ -25,7 +25,7 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 ### Milestone v3.0: Deployable MVP (Days 45 → 75)
 - [x] **Phase 13: Live Infrastructure & Mock Elimination** - Fail explicitly on database/network error, remove in-memory fallback branching from production runtime, and prove full suite against live PostgreSQL & MediaMTX
 - [x] **Phase 14: Vite App Shell & Production Serving** - Top-level App.tsx router, persistent header/sidebar navigation, Vite production build, Caddyfile reverse proxy, and Fastify static fallback
-- [ ] **Phase 15: 6-Step Robust Camera Onboarding Wizard** - Discovery, auth & dual-stream probe, TCP port check, MediaMTX path sync, WebRTC visual preview, and atomic DB commit
+- [x] **Phase 15: 6-Step Robust Camera Onboarding Wizard** - Discovery, auth & dual-stream probe, TCP port check, MediaMTX path sync, WebRTC visual preview, and atomic DB commit (completed 2026-09-27)
 - [ ] **Phase 16: Operational Settings & Core Health Licensing Realignment** - Move camera health into Core capability baseline, continuous/motion/scheduled recording policies, visual 7-day schedule grid, and storage FIFO auto-purge
 - [ ] **Phase 17: Motion Recording with Rolling Ring Buffer** - 2-second short fMP4 segments, FIFO queue auto-discard, and 10s pre-buffer / 30s post-buffer promotion engine
 - [ ] **Phase 18: Operator Controls & System Dashboard** - Instant canvas snapshot download, multi-grid kiosk fullscreen, 1x-4x CSS digital zoom, and fleet health/storage overview dashboard
@@ -347,6 +347,28 @@ Plans:
 
 ---
 
+### Phase 15: 6-Step Robust Camera Onboarding Wizard
+
+**Goal**: Transform camera onboarding into an active 6-step transactional verification wizard (Discovery, Auth & Profiles, Network Check, Stream Provisioning, WebRTC Visual Preview, Atomic Commit) ensuring no unstreamable cameras enter the database.
+**Mode**: mvp
+**Depends on**: Phase 14
+**Requirements**: [MVP-05, MVP-06]
+**Success Criteria**:
+
+1. Backend exposes verification endpoints (`probe-network`, `probe-auth`, `provision-preview`, `teardown-preview`, `commit`).
+2. `CameraOnboardingWizardModal` provides complete 6-step UI workflow with real-time feedback and live WebRTC preview before saving.
+3. MediaMTX streaming path verified as `ready: true` before database commit, with automatic teardown/rollback on cancellation or failure.
+4. Comprehensive integration test coverage validating all probe endpoints and transactional commit.
+
+**Plans**: 2 plans
+
+Plans:
+
+- [x] 15-01: Implement backend probe endpoints and transactional onboarding pipeline (`probe-network`, `probe-auth`, `provision-preview`, `commit`).
+- [x] 15-02: Build frontend 6-step camera onboarding wizard modal with live WebRTC preview and integrate into `App.tsx`.
+
+---
+
 ## Progress
 
 **Execution Order:**
@@ -364,11 +386,11 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Operator Role & Granular RBAC | 2/2 | Complete    | 2026-09-24 |
 | 9. ONVIF PTZ Controls & Camera Presets | 2/2 | Complete    | 2026-09-24 |
 | 10. Server-Side Clip Export & Timeline Bookmarks | 2/2 | Complete    | 2026-09-24 |
-| 11. Motion Zones & Spatial Exclusion Masking | 2/2 | Complete    | 2026-09-24 |
+| 11. Motion Zones & Spatial Exclusion Masking | 2/2 | Complete    | 2026-09-25 |
 | 12. Camera Health Telemetry, WhatsApp Alerts & Webhooks | 2/2 | Complete    | 2026-09-25 |
 | 13. Live Infrastructure & Mock Elimination | 2/2 | Complete    | 2026-09-27 |
 | 14. Vite App Shell & Production Serving | 2/2 | Complete    | 2026-09-27 |
-| 15. 6-Step Robust Camera Onboarding Wizard | 0/2 | Next        | - |
+| 15. 6-Step Robust Camera Onboarding Wizard | 2/2 | Complete    | 2026-09-27 |
 | 16. Operational Settings & Core Health Licensing | 0/2 | Planned     | - |
 | 17. Motion Recording with Rolling Ring Buffer | 0/2 | Planned     | - |
 | 18. Operator Controls & System Dashboard | 0/2 | Planned     | - |
