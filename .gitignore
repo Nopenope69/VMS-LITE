@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.DS_Store
+.env
+.env.*
+!.env.example
+coverage/
+*.log
+data/
+
+# Large media & binaries (>100MB exceeds GitHub hard limit)
+media/*.mp4
+media/*.webm
+media/*.m4v
+!media/.gitkeep
+cctv-simulator.exe
+mediamtx_bin/
+mediamtx_windows.zip

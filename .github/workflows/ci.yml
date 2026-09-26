@@ -1,0 +1,51 @@
+name: Basic VMS CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-verify:
+    name: Test, Audit Licenses & Generate SBOM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run automated test suite
+        run: npm test
+
+      - name: Verify TypeScript build
+        run: |
+          npm run build
+          npx tsc -p client/tsconfig.json --noEmit
+
+      - name: Verify 100% Permissive Licensing Compliance (DEP-04)
+        run: npm run audit:licenses
+
+      - name: Generate Release CycloneDX SBOM (DEP-03)
+        run: npm run generate:sbom
+
+      - name: Archive SBOM and License Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: basic-vms-release-bom-and-notices
+          path: |
+            sbom.json
+            third_party/notices/THIRD_PARTY_NOTICES.md
+            third_party/licenses/

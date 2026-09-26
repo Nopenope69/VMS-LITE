@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CCTV Virtual Testbed & NVR Simulator</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Top Application Bar -->
+  <header>
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 7l-7 5 7 5V7z"></path>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+          </svg>
+        </div>
+        <div>
+          <div style="font-weight: 800; font-size: 15px; color: #f8fafc; letter-spacing: 0.5px;">
+            UNIVERSAL CCTV & NVR SIMULATOR
+          </div>
+          <div style="font-size: 11px; color: #94a3b8;">
+            Hardware-Free Testbed for Basic VMS, CP Plus, Hikvision, Dahua & Milestone
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <span class="badge badge-amber" style="font-size: 11px; padding: 4px 10px; border: 1px solid #fb923c;" title="Default login credentials for all simulated cameras">
+          🔑 AUTH: admin / admin123
+        </span>
+        <span class="badge badge-cyan">ONVIF PROFILE S (:3702 / :8000+)</span>
+        <span class="badge badge-green">RTSP ENGINE (:8554)</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Interactive Control Strip -->
+  <div class="control-bar">
+    <div class="slider-container">
+      <span style="font-size: 12px; font-weight: 700; color: #4fc3f7; font-family: monospace;">
+        SIMULATED CAMERAS:
+      </span>
+      <input 
+        type="range" 
+        id="cameraCountSlider" 
+        min="1" 
+        max="64" 
+        value="16" 
+        oninput="setCameraCount(this.value)"
+      >
+      <span id="cameraCountLabel" class="badge badge-cyan" style="font-size: 12px; min-width: 90px; text-align: center;">
+        16 Cameras
+      </span>
+
+      <div style="display: flex; gap: 4px; margin-left: 8px;">
+        <button class="btn" onclick="setCameraCount(4)">4 Cams</button>
+        <button class="btn" onclick="setCameraCount(8)">8 Cams</button>
+        <button class="btn" onclick="setCameraCount(16)">16 Cams</button>
+        <button class="btn" onclick="setCameraCount(32)">32 Cams</button>
+        <button class="btn" onclick="setCameraCount(64)">64 Cams</button>
+      </div>
+    </div>
+
+    <!-- Universal Export and Sync Buttons -->
+      <button class="btn btn-amber" onclick="document.getElementById('clipFileInput').click()" title="Upload a custom .mp4 surveillance video clip to loop on any camera">
+        📁 Add MP4 Video File
+      </button>
+      <input type="file" id="clipFileInput" accept="video/mp4,video/webm" style="display: none;" onchange="handleClipFileUpload(event)">
+
+      <button class="btn btn-cyan" onclick="syncToBasicVms()" title="Push virtual cameras to Basic VMS">
+        ⚡ Auto-Sync to Basic VMS
+      </button>
+
+      <button class="btn" onclick="exportCpPlus()" title="Export Batch CSV for CP Plus NVR Web Interface">
+        📄 CP Plus NVR CSV
+      </button>
+
+      <button class="btn" onclick="exportHikvision()" title="Export Batch CSV for Hikvision iVMS-4200 / NVR">
+        📄 Hikvision CSV
+      </button>
+
+      <button class="btn" onclick="exportDahua()" title="Export Batch CSV for Dahua SmartPSS / NVR">
+        📄 Dahua CSV
+      </button>
+
+      <button class="btn" onclick="exportM3u()" title="Download RTSP M3U Playlist for VLC / Media Players">
+        📋 VLC M3U
+      </button>
+    </div>
+  </div>
+
+  <!-- Camera Cards Grid -->
+  <main>
+    <div class="camera-grid" id="cameraGrid">
+      <!-- Injected via app.js -->
+    </div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

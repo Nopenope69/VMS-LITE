@@ -1,0 +1,5 @@
+﻿{
+  "main": "tools/cctv-simulator/dist/server.bundle.js",
+  "output": "tools/cctv-simulator/dist/sea-prep.blob",
+  "disableExperimentalSEAWarning": true
+}

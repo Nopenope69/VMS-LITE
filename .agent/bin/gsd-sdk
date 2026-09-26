@@ -1,0 +1,48 @@
+#!/usr/bin/env node
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { spawnSync } = require('child_process');
+
+const candidates = [
+  path.resolve(__dirname, '..', 'sdk', 'dist', 'cli.js'),
+  path.resolve(__dirname, '..', 'get-shit-done', 'bin', 'gsd-tools.cjs'),
+  path.join(process.cwd(), '.agent', 'get-shit-done', 'bin', 'gsd-tools.cjs'),
+  path.join(os.homedir(), '.gemini', 'config', 'get-shit-done', 'bin', 'gsd-tools.cjs'),
+  path.join(os.homedir(), '.gemini', 'antigravity', 'get-shit-done', 'bin', 'gsd-tools.cjs')
+];
+
+let targetBin = null;
+let isCli = false;
+
+for (const candidate of candidates) {
+  if (fs.existsSync(candidate)) {
+    targetBin = candidate;
+    if (candidate.endsWith('cli.js')) isCli = true;
+    break;
+  }
+}
+
+if (!targetBin) {
+  console.error('Error: Could not locate gsd-tools.cjs or sdk/dist/cli.js');
+  process.exit(1);
+}
+
+const args = process.argv.slice(2);
+let toolArgs = args;
+
+if (!isCli && args[0] === 'query') {
+  const queryName = args[1] || '';
+  const rest = args.slice(2);
+  const parts = queryName.split('.');
+  toolArgs = [...parts, ...rest];
+}
+
+const result = spawnSync(process.execPath, [targetBin, ...toolArgs], {
+  stdio: 'inherit',
+  env: process.env,
+});
+
+process.exit(result.status ?? 1);
