@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: "Deployable MVP (Days 45 → 75)"
 status: in_progress
-stopped_at: "Completed Phase 17: Motion Recording with Rolling Ring Buffer. Ready for Phase 18: Operator Controls & System Dashboard."
-last_updated: "2026-09-27T03:13:00.000Z"
-last_activity: "2026-09-27 -- Completed Phase 17 (Zero-transcode rolling ring buffer engine, pre/post buffer promotion, REST diagnostics, settings & live view badge)"
+stopped_at: "Completed Phase 18: Operator Controls & System Dashboard. Ready for Phase 19: Built-in SMTP Email Alerting."
+last_updated: "2026-09-27T03:22:00.000Z"
+last_activity: "2026-09-27 -- Completed Phase 18 (HTML5 canvas snapshot download, kiosk fullscreen, 1x-4x CSS digital zoom, system landing dashboard)"
 progress:
   total_phases: 9
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 17
-  completed_plans: 10
-  percent: 59
+  completed_plans: 12
+  percent: 71
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: `.planning/MVP-ROADMAP.md` and `.planning/PROJECT.md`
 
 **Core value:** Sub-30-minute installer deployment with reliable CP Plus parity (live view, scheduled recording, 24h timeline playback, native ONVIF motion alerts) built on permissively licensed infrastructure (MediaMTX) with zero VigilOne domain entanglement.  
-**Current focus:** Milestone v3.0: Deployable MVP (Days 45 → 75) — Live Infrastructure, Mock Elimination, Vite App Shell, Camera Onboarding Wizard, Operational Settings, Motion Ring Buffer & Operator Controls
+**Current focus:** Milestone v3.0: Deployable MVP (Days 45 → 75) — Phase 19: Built-in SMTP Email Alerting
 
 ## Current Position
 
-Phase: Phase 18 (Operator Controls & System Dashboard)
+Phase: Phase 19 (Built-in SMTP Email Alerting)
 Plan: Ready to plan
 Status: In Progress
-Last activity: 2026-09-27 -- Phase 17 completed (2/2 plans). Starting Phase 18.
+Last activity: 2026-09-27 -- Phase 18 completed (2/2 plans). Ready for Phase 19.
 
-Progress: [██████░░░░] 59%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 

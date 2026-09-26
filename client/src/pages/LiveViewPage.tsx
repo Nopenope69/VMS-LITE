@@ -7,6 +7,7 @@ import {
   Video,
   Shield,
   Maximize,
+  Minimize,
   AlertCircle,
   Film,
   Volume2,
@@ -206,6 +207,16 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
     });
   };
 
+  const [isKioskFullscreen, setIsKioskFullscreen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsKioskFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
@@ -350,14 +361,18 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-[#4fc3f7]' : ''}`} />
           </button>
 
-          {/* Fullscreen for Guard Monitors */}
+          {/* Kiosk Multi-Grid Fullscreen for Guard Monitors */}
           <button
             type="button"
             onClick={toggleFullScreen}
-            title="Toggle Monitor Fullscreen"
-            className="p-2 min-w-[38px] min-h-[38px] flex items-center justify-center text-slate-300 hover:text-white rounded-md bg-[#090d16] border border-[#1f2937] hover:border-[#4fc3f7]/50 transition-colors"
+            title={isKioskFullscreen ? 'Exit Kiosk Fullscreen (ESC)' : 'Enter Kiosk Multi-Grid Fullscreen'}
+            className={`p-2 min-w-[38px] min-h-[38px] flex items-center justify-center rounded-md border transition-colors ${
+              isKioskFullscreen
+                ? 'bg-[#4fc3f7] text-[#090d16] border-[#4fc3f7] shadow-md'
+                : 'text-slate-300 hover:text-white bg-[#090d16] border-[#1f2937] hover:border-[#4fc3f7]/50'
+            }`}
           >
-            <Maximize className="w-4 h-4" />
+            {isKioskFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
           </button>
         </div>
       </header>

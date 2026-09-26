@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { Maximize2, Minimize2, Video, X, Layers, Compass, ShieldAlert } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Maximize2, Minimize2, Video, X, Layers, Compass, ShieldAlert, Camera } from 'lucide-react';
 import { WhepHlsPlayer } from './WhepHlsPlayer.js';
 import { PtzControlsOverlay } from './PtzControlsOverlay.js';
 import { MotionZoneEditorModal } from './MotionZoneEditorModal.js';
 import { useAuth } from '../context/AuthContext.js';
 import { CameraHealthTelemetry } from '../hooks/useCameraHealth.js';
+import { captureVideoSnapshot } from '../utils/snapshot.js';
 
 export interface CameraStreamInfo {
   cameraId: string;
@@ -55,6 +56,7 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
   const [streamQuality, setStreamQuality] = useState<'main' | 'sub'>('main');
   const [showPtzOverlay, setShowPtzOverlay] = useState(false);
   const [showZoneModal, setShowZoneModal] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // If grid forces sub-stream (2x2, 3x3) and sub-stream is available, use it (T-04-03)
   const activeQuality =
@@ -202,6 +204,21 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
               </button>
             )}
 
+            {/* Instant Snapshot Header Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (videoRef.current) {
+                  captureVideoSnapshot(videoRef.current, camera.name);
+                }
+              }}
+              title="Capture Instant JPEG Snapshot"
+              className="p-1.5 text-slate-400 hover:text-[#38bdf8] rounded hover:bg-[#1f2937] transition-colors"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
+
             {/* Maximize / Solo Button (CP Plus Double-Click / 1-Click Parity) */}
             {onMaximizeSlot && (
               <button
@@ -248,6 +265,7 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
         {camera ? (
           <>
             <WhepHlsPlayer
+              ref={videoRef}
               key={`${camera.cameraId}-${activeQuality}`}
               whepUrl={whepUrl}
               hlsUrl={hlsUrl}
