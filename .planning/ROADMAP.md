@@ -31,7 +31,7 @@ Basic VMS delivers a reliable, lightweight video management core (Package 1) tar
 - [x] **Phase 18: Operator Controls & System Dashboard** - Instant canvas snapshot download, multi-grid kiosk fullscreen, 1x-4x CSS digital zoom, and fleet health/storage overview dashboard (completed 2026-09-27)
 - [x] **Phase 19: Built-in SMTP Email Alerting** - Zero-cloud in-process SMTP dispatcher, HTML alert templates with IST timestamps, and token-bucket rate limiting (completed 2026-09-27)
 - [x] **Phase 20: Self-Verifying Evidence Export Package** - Standalone signed ZIP bundle with video.mp4, cryptographic manifest.json, audit.json, and portable verify.js script (completed 2026-09-27)
-- [ ] **Phase 21: Field Validation & 72-Hour Acceptance Gate** - Automated 72-hour unattended soak test, network cable disconnect/reconnect simulation, and installer litmus test verification
+- [x] **Phase 21: Field Validation & 72-Hour Acceptance Gate** - Automated 72-hour unattended soak test, network cable disconnect/reconnect simulation, and installer litmus test verification (completed 2026-09-27)
 
 ---
 
@@ -428,10 +428,54 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 12. Camera Health Telemetry, WhatsApp Alerts & Webhooks | 2/2 | Complete    | 2026-09-25 |
 | 13. Live Infrastructure & Mock Elimination | 2/2 | Complete    | 2026-09-27 |
 | 14. Vite App Shell & Production Serving | 2/2 | Complete    | 2026-09-27 |
+### Phase 21: Field Validation & 72-Hour Acceptance Gate
+
+**Goal**: Execute automated 72-hour unattended soak simulation, network glitch resilience harness, rolling motion buffer promotion, and installer litmus deployment verification for Day 75 MVP scope freeze.
+**Mode**: mvp
+**Depends on**: Phase 20
+**Requirements**: [MVP-14]
+**Success Criteria**:
+
+1. Automated soak test simulates 16 cameras (8 Continuous, 8 Motion) over 72 virtual hours, generating hundreds of segment records without memory leaks.
+2. Storage FIFO threshold triggers segment purge at critical capacity while shielding incident bookmarks from deletion.
+3. Network cable pull simulation on Camera 3 verifies 2-stage degradation to `OFFLINE` at 30s hysteresis and dispatches SMTP alert.
+4. Cable reconnect recovers to `ONLINE` with exact logged downtime.
+5. Evidence export bundle passes standalone `verify.js` cryptographic check and catches bit-flip tampering.
+6. Installer litmus script (`scripts/installer-litmus-test.sh`) passes all 6 deployment gates.
+
+**Plans**: 1 plan
+
+Plans:
+
+- [x] 21-01: Field Validation & 72-Hour Acceptance Gate (automated soak suite, network glitch harness, and installer litmus script).
+
+---
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Foundation, Licensing & Event Bus | 3/3 | Complete    | 2026-09-23 |
+| 2. Media Plane & Camera Onboarding | 2/2 | Complete    | 2026-09-24 |
+| 3. Recording Engine & Storage Management | 2/2 | Complete    | 2026-09-24 |
+| 4. Live View Grid & Mobile Streaming | 2/2 | Complete    | 2026-09-24 |
+| 5. 24-Hour Playback & Timeline Scrubbing | 2/2 | Complete    | 2026-09-24 |
+| 6. ONVIF Motion Alerts & Real-Time Event Feed | 2/2 | Complete    | 2026-09-24 |
+| 7. Packaging, CI/SBOM & Single-Command Deployment | 2/2 | Complete    | 2026-09-24 |
+| 8. Operator Role & Granular RBAC | 2/2 | Complete    | 2026-09-24 |
+| 9. ONVIF PTZ Controls & Camera Presets | 2/2 | Complete    | 2026-09-24 |
+| 10. Server-Side Clip Export & Timeline Bookmarks | 2/2 | Complete    | 2026-09-24 |
+| 11. Motion Zones & Spatial Exclusion Masking | 2/2 | Complete    | 2026-09-25 |
+| 12. Camera Health Telemetry, WhatsApp Alerts & Webhooks | 2/2 | Complete    | 2026-09-25 |
+| 13. Live Infrastructure & Mock Elimination | 2/2 | Complete    | 2026-09-27 |
+| 14. Vite App Shell & Production Serving | 2/2 | Complete    | 2026-09-27 |
 | 15. 6-Step Robust Camera Onboarding Wizard | 2/2 | Complete    | 2026-09-27 |
 | 16. Operational Settings & Core Health Licensing | 2/2 | Complete    | 2026-09-27 |
 | 17. Motion Recording with Rolling Ring Buffer | 2/2 | Complete    | 2026-09-27 |
-| 18. Operator Controls & System Dashboard | 0/2 | Planned     | - |
-| 19. Built-in SMTP Email Alerting | 0/2 | Planned     | - |
-| 20. Self-Verifying Evidence Export Package | 0/2 | Planned     | - |
-| 21. Field Validation & 72-Hour Acceptance Gate | 0/1 | Planned     | - |
+| 18. Operator Controls & System Dashboard | 2/2 | Complete    | 2026-09-27 |
+| 19. Built-in SMTP Email Alerting | 2/2 | Complete    | 2026-09-27 |
+| 20. Self-Verifying Evidence Export Package | 1/1 | Complete    | 2026-09-27 |
+| 21. Field Validation & 72-Hour Acceptance Gate | 1/1 | Complete    | 2026-09-27 |

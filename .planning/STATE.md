@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: "Deployable MVP (Days 45 → 75)"
-status: in_progress
-stopped_at: "Completed Phase 20: Self-Verifying Evidence Export Package. Ready for Phase 21: Field Validation & 72-Hour Acceptance Gate."
-last_updated: "2026-09-27T12:18:00.000Z"
-last_activity: "2026-09-27 -- Completed Phase 20 (Self-verifying signed ZIP evidence package, manifest.json, audit.json, standalone verify.js, REST route & UI)"
+status: completed
+stopped_at: "Completed Milestone v3.0 (Phases 13 through 21). Day 75 Scope Freeze & Field Acceptance Gate Passed."
+last_updated: "2026-09-27T12:34:00.000Z"
+last_activity: "2026-09-27 -- Completed Phase 21 (Accelerated 72-Hour Soak Acceptance Suite, Network Glitch Simulation, Ring Buffer Promotion, Tamper-Evident Evidence Verification, and Installer Litmus CLI)"
 progress:
   total_phases: 9
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 17
-  completed_plans: 15
-  percent: 88
+  completed_plans: 17
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: `.planning/MVP-ROADMAP.md` and `.planning/PROJECT.md`
 
 **Core value:** Sub-30-minute installer deployment with reliable CP Plus parity (live view, scheduled recording, 24h timeline playback, native ONVIF motion alerts) built on permissively licensed infrastructure (MediaMTX) with zero VigilOne domain entanglement.  
-**Current focus:** Milestone v3.0: Deployable MVP (Days 45 → 75) — Phase 21: Field Validation & 72-Hour Acceptance Gate
+**Current focus:** Production release readiness & deployment.
 
 ## Current Position
 
-Phase: Phase 21 (Field Validation & 72-Hour Acceptance Gate)
-Plan: Ready to plan
-Status: In Progress
-Last activity: 2026-09-27 -- Phase 20 completed (1/1 plan). Ready for Phase 21.
+Phase: Phase 21 (Field Validation & 72-Hour Acceptance Gate) — COMPLETED
+Plan: 1/1 Plan Complete
+Status: Milestone v3.0 Complete
+Last activity: 2026-09-27 -- Phase 21 completed. All 21 phases across Milestones v1.0, v2.0, and v3.0 are 100% complete.
 
-Progress: [█████████░] 88%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
