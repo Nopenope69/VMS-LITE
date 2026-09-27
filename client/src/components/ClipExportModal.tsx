@@ -12,6 +12,7 @@ import {
   Layers,
   Sparkles,
   ShieldCheck,
+  FileArchive,
 } from 'lucide-react';
 
 export type ExportMode = 'STREAM_COPY' | 'TRANSCODED_OSD';
@@ -435,22 +436,42 @@ export const ClipExportModal: React.FC<ClipExportModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Download Action */}
-                  <div className="pt-3 flex gap-2">
+                  {/* Evidence Package & Download Actions */}
+                  <div className="pt-2 space-y-2">
                     <a
-                      href={`${apiBaseUrl}/api/recordings/export/${activeJob.id}/download`}
+                      href={`${apiBaseUrl}/api/recordings/export/${activeJob.id}/bundle`}
                       download
-                      className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs rounded-lg text-center flex items-center justify-center gap-1.5 transition-colors"
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg text-center flex items-center justify-center gap-2 transition-colors shadow-lg"
                     >
-                      <Download className="w-4 h-4" /> Download MP4 Clip
+                      <FileArchive className="w-4 h-4" /> Download Evidence Package (.ZIP)
                     </a>
-                    <button
-                      type="button"
-                      onClick={() => setActiveJob(null)}
-                      className="px-4 py-2.5 bg-[#090d16] border border-[#1f2937] text-xs text-slate-300 hover:text-slate-100 rounded-lg"
-                    >
-                      New Export
-                    </button>
+
+                    <div className="p-2.5 bg-[#090d16] rounded-lg border border-blue-900/40 text-[11px] text-blue-200/90 flex items-start gap-2">
+                      <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold text-blue-300">Self-Verifying Defensible Bundle</span>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          Contains <code className="text-blue-300">video.mp4</code>, cryptographic <code className="text-blue-300">manifest.json</code>, chain-of-custody <code className="text-blue-300">audit.json</code>, and standalone <code className="text-blue-300">verify.js</code> script.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <a
+                        href={`${apiBaseUrl}/api/recordings/export/${activeJob.id}/download`}
+                        download
+                        className="flex-1 py-2 bg-[#1f2937] hover:bg-[#374151] text-slate-200 font-semibold text-xs rounded-lg text-center flex items-center justify-center gap-1.5 transition-colors border border-[#334155]"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Raw MP4 Only
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setActiveJob(null)}
+                        className="px-4 py-2 bg-[#090d16] border border-[#1f2937] text-xs text-slate-300 hover:text-slate-100 rounded-lg"
+                      >
+                        New Export
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (

@@ -4,6 +4,7 @@ import { createReadStream } from 'node:fs';
 import { authenticate, requireCameraPermission } from '../users/rbac.guard.js';
 import { requireCapability } from '../licensing/plugin.js';
 import { exportService } from './export.service.js';
+import { evidenceBundleService } from './evidence-bundle.service.js';
 
 const CreateExportBodySchema = z.object({
   cameraId: z.string().uuid(),
@@ -131,6 +132,39 @@ export const exportRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
       const stream = createReadStream(details.filePath);
       return reply.send(stream);
+    }
+  );
+
+  /**
+   * GET /api/recordings/export/:id/bundle
+   * Streams the self-verifying evidence bundle (.zip) with manifest.json, audit.json, verify.js, and video.mp4
+   */
+  app.get<{ Params: { id: string } }>(
+    '/export/:id/bundle',
+    {
+      preHandler: [
+        authenticate,
+        requireCapability('extended.clip_export'),
+      ],
+    },
+    async (request, reply) => {
+      const { id } = request.params;
+      const clientIp = request.ip || '127.0.0.1';
+
+      try {
+        const bundle = await evidenceBundleService.buildEvidenceBundle(id, clientIp);
+
+        reply.header('Content-Type', 'application/zip');
+        reply.header('Content-Disposition', `attachment; filename="${bundle.filename}"`);
+        reply.header('X-Checksum-SHA256', bundle.sha256);
+
+        return reply.send(bundle.buffer);
+      } catch (err: any) {
+        return reply.status(404).send({
+          error: 'NotFound',
+          message: err.message || `Evidence bundle for job ${id} is not available`,
+        });
+      }
     }
   );
 };

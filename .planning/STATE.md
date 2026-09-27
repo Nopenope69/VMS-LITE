@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: "Deployable MVP (Days 45 → 75)"
 status: in_progress
-stopped_at: "Completed Phase 19: Built-in SMTP Email Alerting. Ready for Phase 20: Self-Verifying Evidence Export Package."
-last_updated: "2026-09-27T03:28:00.000Z"
-last_activity: "2026-09-27 -- Completed Phase 19 (Zero-dependency RFC 5321 SMTP client, IST HTML template, rate limiting, REST routes & UI)"
+stopped_at: "Completed Phase 20: Self-Verifying Evidence Export Package. Ready for Phase 21: Field Validation & 72-Hour Acceptance Gate."
+last_updated: "2026-09-27T12:18:00.000Z"
+last_activity: "2026-09-27 -- Completed Phase 20 (Self-verifying signed ZIP evidence package, manifest.json, audit.json, standalone verify.js, REST route & UI)"
 progress:
   total_phases: 9
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 17
-  completed_plans: 14
-  percent: 82
+  completed_plans: 15
+  percent: 88
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: `.planning/MVP-ROADMAP.md` and `.planning/PROJECT.md`
 
 **Core value:** Sub-30-minute installer deployment with reliable CP Plus parity (live view, scheduled recording, 24h timeline playback, native ONVIF motion alerts) built on permissively licensed infrastructure (MediaMTX) with zero VigilOne domain entanglement.  
-**Current focus:** Milestone v3.0: Deployable MVP (Days 45 → 75) — Phase 20: Self-Verifying Evidence Export Package
+**Current focus:** Milestone v3.0: Deployable MVP (Days 45 → 75) — Phase 21: Field Validation & 72-Hour Acceptance Gate
 
 ## Current Position
 
-Phase: Phase 20 (Self-Verifying Evidence Export Package)
+Phase: Phase 21 (Field Validation & 72-Hour Acceptance Gate)
 Plan: Ready to plan
 Status: In Progress
-Last activity: 2026-09-27 -- Phase 19 completed (2/2 plans). Ready for Phase 20.
+Last activity: 2026-09-27 -- Phase 20 completed (1/1 plan). Ready for Phase 21.
 
-Progress: [████████░░] 82%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
