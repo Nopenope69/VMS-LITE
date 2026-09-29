@@ -51,6 +51,7 @@ export interface PlayerState {
 
 export interface PlaybackSyncContextType {
   targetTimestampMs: number;
+  targetTimestampUtc: number;
   isPlaying: boolean;
   playbackRate: number;
   isBuffering: boolean;
@@ -251,6 +252,7 @@ export const PlaybackSyncProvider: React.FC<PlaybackSyncProviderProps> = ({
   const value: PlaybackSyncContextType = useMemo(
     () => ({
       targetTimestampMs,
+      targetTimestampUtc: targetTimestampMs,
       isPlaying,
       playbackRate,
       isBuffering,

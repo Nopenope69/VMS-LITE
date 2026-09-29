@@ -59,7 +59,8 @@ interface SynchronizedCameraTileProps {
 /**
  * Individual synchronized playback tile for a camera.
  * Displays "No Recording" gap card if footage is absent at the playhead,
- * otherwise renders the fMP4 stream synchronized to the master clock.
+ * otherwise renders the fMP4 stream synchronized to the master clock using
+ * gentle rate convergence for minor drift and hard seeking only for major drift.
  */
 const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
   camera,
@@ -79,7 +80,14 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
   const [streamStartTimeMs, setStreamStartTimeMs] = useState<number | null>(null);
   const [isBufferingLocal, setIsBufferingLocal] = useState<boolean>(false);
   const [streamError, setStreamError] = useState<string | null>(null);
-  const lastReseekTimeRef = useRef<number>(0);
+
+  const activeStreamRef = useRef<{ url: string; startTimeMs: number; durationSec: number } | null>(
+    null
+  );
+  const loadedSpanIdRef = useRef<string | null>(null);
+  const isFetchingRef = useRef<boolean>(false);
+  const fetchSeqRef = useRef<number>(0);
+  const lastHardSeekTimeRef = useRef<number>(0);
 
   // Check if camera has recording footage at target timestamp
   const currentSpan = useMemo(() => {
@@ -90,35 +98,45 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
     });
   }, [spans, targetTimestampMs]);
 
+  const currentSpanId = currentSpan
+    ? currentSpan.recordingId || `${currentSpan.startTime}_${currentSpan.endTime}`
+    : null;
+
   const hasFootage = Boolean(currentSpan);
 
-  // Fetch fMP4 stream URL from MediaMTX when playhead enters a recording segment
+  // Fetch fMP4 stream URL from MediaMTX anchored to span transitions / chunk boundaries
+  // (Prevents in-flight abort race condition on 16ms animation frame ticks)
   useEffect(() => {
-    if (!hasFootage) {
+    if (!hasFootage || !currentSpanId) {
       setStreamUrl(null);
       setStreamStartTimeMs(null);
       setStreamError(null);
+      activeStreamRef.current = null;
+      loadedSpanIdRef.current = null;
       onBuffering(camera.id, false);
       return;
     }
 
-    // If existing stream already covers targetTimestampMs, reuse it
+    // Check if currently active stream already covers targetTimestampMs within current span
+    const active = activeStreamRef.current;
     if (
-      streamUrl &&
-      streamStartTimeMs !== null &&
-      targetTimestampMs >= streamStartTimeMs &&
-      targetTimestampMs <= streamStartTimeMs + 300 * 1000
+      active &&
+      loadedSpanIdRef.current === currentSpanId &&
+      targetTimestampMs >= active.startTimeMs &&
+      targetTimestampMs <= active.startTimeMs + active.durationSec * 1000
     ) {
       return;
     }
 
-    let isCancelled = false;
+    // New stream fetch needed
+    const thisFetchSeq = ++fetchSeqRef.current;
+    isFetchingRef.current = true;
+    setIsBufferingLocal(true);
+    onBuffering(camera.id, true);
+    setStreamError(null);
+
     const fetchStream = async () => {
       try {
-        setStreamError(null);
-        setIsBufferingLocal(true);
-        onBuffering(camera.id, true);
-
         const isoTimestamp = new Date(targetTimestampMs).toISOString();
         const headers: Record<string, string> = {};
         if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
@@ -135,25 +153,30 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
         }
 
         const data = await res.json();
-        if (!isCancelled) {
+        // Ignore response if superseded by a newer seek request
+        if (fetchSeqRef.current === thisFetchSeq) {
+          activeStreamRef.current = {
+            url: data.fmp4StreamUrl,
+            startTimeMs: targetTimestampMs,
+            durationSec: 300,
+          };
+          loadedSpanIdRef.current = currentSpanId;
           setStreamUrl(data.fmp4StreamUrl);
           setStreamStartTimeMs(targetTimestampMs);
+          isFetchingRef.current = false;
         }
       } catch (err: any) {
-        if (!isCancelled) {
+        if (fetchSeqRef.current === thisFetchSeq) {
           setStreamError(err.message || 'Stream retrieval failed');
           setIsBufferingLocal(false);
           onBuffering(camera.id, false);
+          isFetchingRef.current = false;
         }
       }
     };
 
     fetchStream();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [hasFootage, camera.id, targetTimestampMs, streamUrl, streamStartTimeMs, apiBaseUrl, authToken, onBuffering]);
+  }, [hasFootage, currentSpanId, targetTimestampMs, camera.id, apiBaseUrl, authToken, onBuffering]);
 
   // Synchronize play/pause and stall lock
   useEffect(() => {
@@ -163,7 +186,7 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
     if (isPlaying && !isStallLocked) {
       const playPromise = video.play();
       if (playPromise !== undefined) {
-        playPromise.catch((err) => {
+        playPromise.catch(() => {
           // Play interrupted or autoplay policy
         });
       }
@@ -172,21 +195,11 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
     }
   }, [isPlaying, isStallLocked, streamUrl]);
 
-  // Synchronize playback speed
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.playbackRate = playbackRate;
-    }
-  }, [playbackRate]);
-
-  // Check and enforce player time alignment with master target clock
+  // Check and enforce player time alignment with rate convergence
+  // (Prevents GOP seek keyframe thrashing / continuous stuttering loops)
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !streamUrl || streamStartTimeMs === null) return;
-
-    const now = Date.now();
-    // Allow cooldown between reseeks to avoid oscillation
-    if (now - lastReseekTimeRef.current < 300) return;
 
     const alignment = calculatePlayerAlignment({
       segmentStartMs: streamStartTimeMs,
@@ -195,11 +208,36 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
       toleranceMs: 200,
     });
 
-    if (alignment.needsReseek) {
-      lastReseekTimeRef.current = now;
-      video.currentTime = alignment.suggestedSeekSec;
+    const now = Date.now();
+
+    // 1. Large drift (> 1000ms): Hard seek with cooldown to align with user jump or stall recovery
+    if (alignment.skewMs > 1000) {
+      if (now - lastHardSeekTimeRef.current > 600) {
+        lastHardSeekTimeRef.current = now;
+        video.currentTime = alignment.suggestedSeekSec;
+        video.playbackRate = playbackRate;
+      }
+      return;
     }
-  }, [targetTimestampMs, streamUrl, streamStartTimeMs]);
+
+    // 2. Minor drift (200ms - 1000ms): Smooth rate convergence without seek freezing
+    if (alignment.skewMs > 200) {
+      const playerIsBehind = alignment.playerAbsoluteMs < targetTimestampMs;
+      if (playerIsBehind) {
+        // Slightly speed up to catch up
+        video.playbackRate = playbackRate * 1.05;
+      } else {
+        // Slightly slow down to let master clock catch up
+        video.playbackRate = Math.max(0.25, playbackRate * 0.95);
+      }
+      return;
+    }
+
+    // 3. In sync (skew <= 200ms): Restore nominal playback rate
+    if (video.playbackRate !== playbackRate) {
+      video.playbackRate = playbackRate;
+    }
+  }, [targetTimestampMs, streamUrl, streamStartTimeMs, playbackRate]);
 
   // Cleanup buffering state on unmount
   useEffect(() => {
@@ -256,7 +294,7 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
           <p className="text-xs text-slate-400 mt-1 max-w-xs font-sans">
             No footage captured for {camera.name} at{' '}
             <span className="font-mono text-slate-300">
-              {new Date(targetTimestampMs).toLocaleTimeString()}
+              {new Date(targetTimestampMs).toISOString().substring(11, 19)} UTC
             </span>
           </p>
         </div>
@@ -351,6 +389,8 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [isBookmarkModalOpen, setIsBookmarkModalOpen] = useState<boolean>(false);
 
+  const hasInitializedCamerasRef = useRef<boolean>(false);
+
   const todayStr = getTodayString();
   const yesterdayStr = getTodayString(new Date(Date.now() - 86400000));
   const dayBeforeStr = getTodayString(new Date(Date.now() - 2 * 86400000));
@@ -362,7 +402,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
       user?.cameraPermissions?.find((p: CameraPermissionDto) => p.cameraId === primaryCameraId)
         ?.canExportClips !== false);
 
-  // Fetch camera roster on mount
+  // Fetch camera roster on mount (does not refetch when selectedCameraIds changes)
   useEffect(() => {
     let isCancelled = false;
     const fetchCameras = async () => {
@@ -389,7 +429,8 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
 
         if (!isCancelled) {
           setCameras(list);
-          if (list.length > 0 && selectedCameraIds.length === 0) {
+          if (list.length > 0 && !hasInitializedCamerasRef.current) {
+            hasInitializedCamerasRef.current = true;
             setSelectedCameraIds([list[0].id]);
             setPrimaryCameraId(list[0].id);
           }
@@ -405,7 +446,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [apiBaseUrl, effectiveToken, selectedCameraIds.length, setSelectedCameraIds]);
+  }, [apiBaseUrl, effectiveToken, setSelectedCameraIds]);
 
   // Keep primaryCameraId valid when selected cameras change
   useEffect(() => {
@@ -515,7 +556,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Quick incident jump helper (-5m, -15m, -1h)
+  // Quick incident jump helper (-5m, -15m, -1h) - preserves user play/pause state
   const handleQuickJump = (minutesAgo: number) => {
     const target = new Date(Date.now() - minutesAgo * 60 * 1000);
     const targetDateStr = getTodayString(target);
@@ -523,20 +564,18 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
       setSelectedDate(targetDateStr);
     }
     seekToTimestamp(target.getTime());
-    setIsPlaying(true);
   };
 
-  // Jump to yesterday at same time
+  // Jump to yesterday at same time - preserves user play/pause state
   const handleJumpYesterdaySameTime = () => {
     const targetMs = targetTimestampMs - 24 * 60 * 60 * 1000;
     setSelectedDate(yesterdayStr);
     seekToTimestamp(targetMs);
   };
 
-  // Timeline seek handler
+  // Timeline seek handler - preserves user play/pause state
   const handleSeek = (seekTime: Date) => {
     seekToTimestamp(seekTime.getTime());
-    setIsPlaying(true);
   };
 
   // Step -5s / +5s handler
@@ -549,13 +588,13 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
     setIsPlaying((prev) => !prev);
   };
 
-  // Date selection handler
+  // Canonical UTC Date selection handler (PLAY-01, Canonical Time Domain)
   const handleDateChange = (newDateStr: string) => {
     setSelectedDate(newDateStr);
     const parts = newDateStr.split('-').map(Number);
     if (parts.length === 3) {
-      const d = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
-      seekToTimestamp(d.getTime());
+      const utcMs = Date.UTC(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+      seekToTimestamp(utcMs);
     }
   };
 

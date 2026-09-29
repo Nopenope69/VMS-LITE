@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { calculatePlayerAlignment } from '../client/src/context/PlaybackSyncContext.js';
+import {
+  calculatePlayerAlignment,
+  PlaybackSyncContext,
+  PlaybackSyncProvider,
+  usePlaybackSync,
+} from '../client/src/context/PlaybackSyncContext.js';
 
 describe('Synchronized Playback Engine Time Alignment', () => {
   const segmentStart = new Date('2026-10-01T12:00:00.000Z').getTime();
@@ -84,5 +89,11 @@ describe('Synchronized Playback Engine Time Alignment', () => {
 
     expect(alignment.suggestedSeekSec).toBe(0);
     expect(alignment.needsReseek).toBe(true);
+  });
+
+  it('exports PlaybackSyncContext, PlaybackSyncProvider, and usePlaybackSync', () => {
+    expect(PlaybackSyncContext).toBeDefined();
+    expect(PlaybackSyncProvider).toBeDefined();
+    expect(typeof usePlaybackSync).toBe('function');
   });
 });

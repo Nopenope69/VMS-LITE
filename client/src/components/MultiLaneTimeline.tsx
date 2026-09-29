@@ -40,15 +40,14 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
   } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
-  // Compute start of current date in local milliseconds
+  // Compute canonical UTC start of current date in milliseconds (PLAY-01, Canonical Time Domain)
   const getDayStartMs = useCallback((): number => {
     const parts = currentDate.split('-').map(Number);
     if (parts.length === 3) {
-      return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0).getTime();
+      return Date.UTC(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
     }
     const d = new Date(currentDate);
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0);
   }, [currentDate]);
 
   const dayStartMs = getDayStartMs();
@@ -59,7 +58,7 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
   const currentOffsetMs = Math.max(0, Math.min(DAY_MS, currentMs - dayStartMs));
   const playheadPercent = (currentOffsetMs / DAY_MS) * 100;
 
-  // Format milliseconds into HH:MM:SS
+  // Format milliseconds offset from UTC day start into HH:MM:SS
   const formatTimeFromOffset = (offsetMs: number): string => {
     const totalSeconds = Math.floor(Math.max(0, Math.min(DAY_MS, offsetMs)) / 1000);
     const h = Math.floor(totalSeconds / 3600);
@@ -96,7 +95,7 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
     const hoverMs = fraction * DAY_MS;
     setHoverPosition({
       xPercent: fraction * 100,
-      timeStr: formatTimeFromOffset(hoverMs),
+      timeStr: `${formatTimeFromOffset(hoverMs)} UTC`,
     });
 
     if (isDragging) {
@@ -130,6 +129,78 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
   // 24-hour markers every 2 hours: 00:00, 02:00, ..., 24:00
   const hourTicks = useMemo(() => Array.from({ length: 13 }, (_, i) => i * 2), []);
 
+  // Memoize rendered spans, motion events, and bookmarks per lane
+  // Prevents re-parsing ISO date strings on every 16ms animation frame
+  const precomputedLanes = useMemo(() => {
+    return lanes.map((lane, laneIdx) => {
+      const renderedSpans = lane.spans
+        .map((span, sIdx) => {
+          const sStart = new Date(span.startTime).getTime();
+          const sEnd = new Date(span.endTime).getTime();
+          const clampedStart = Math.max(dayStartMs, sStart);
+          const clampedEnd = Math.min(dayStartMs + DAY_MS, sEnd);
+
+          if (clampedStart >= clampedEnd) return null;
+
+          const left = ((clampedStart - dayStartMs) / DAY_MS) * 100;
+          const width = Math.max(0.2, ((clampedEnd - clampedStart) / DAY_MS) * 100);
+
+          const isMotion =
+            (span as any).type === 'motion' ||
+            span.recordingId?.toLowerCase().includes('motion');
+
+          return {
+            key: span.recordingId || `span-${laneIdx}-${sIdx}`,
+            left: `${left}%`,
+            width: `${width}%`,
+            isMotion,
+          };
+        })
+        .filter(Boolean) as Array<{ key: string; left: string; width: string; isMotion: boolean }>;
+
+      const renderedMotionEvents = (lane.motionEvents || [])
+        .map((evt, mIdx) => {
+          const mStart = new Date(evt.startTime).getTime();
+          const mEnd = new Date(evt.endTime).getTime();
+          const clampedStart = Math.max(dayStartMs, mStart);
+          const clampedEnd = Math.min(dayStartMs + DAY_MS, mEnd);
+
+          if (clampedStart >= clampedEnd) return null;
+
+          const left = ((clampedStart - dayStartMs) / DAY_MS) * 100;
+          const width = Math.max(0.3, ((clampedEnd - clampedStart) / DAY_MS) * 100);
+
+          return {
+            key: `motion-${laneIdx}-${mIdx}`,
+            left: `${left}%`,
+            width: `${width}%`,
+          };
+        })
+        .filter(Boolean) as Array<{ key: string; left: string; width: string }>;
+
+      const renderedBookmarks = (lane.bookmarks || [])
+        .map((bm) => {
+          const bmTime = new Date(bm.timestamp).getTime();
+          const offset = bmTime - dayStartMs;
+          if (offset < 0 || offset > DAY_MS) return null;
+          const percent = (offset / DAY_MS) * 100;
+          return {
+            bookmark: bm,
+            percent,
+          };
+        })
+        .filter(Boolean) as Array<{ bookmark: BookmarkItem; percent: number }>;
+
+      return {
+        cameraId: lane.cameraId,
+        cameraName: lane.cameraName,
+        renderedSpans,
+        renderedMotionEvents,
+        renderedBookmarks,
+      };
+    });
+  }, [lanes, dayStartMs, DAY_MS]);
+
   return (
     <div className={`w-full select-none flex flex-col gap-2 font-sans ${className}`}>
       {/* Multi-Lane Container */}
@@ -142,12 +213,12 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
           </div>
 
           {/* Lane Labels */}
-          {lanes.length === 0 ? (
+          {precomputedLanes.length === 0 ? (
             <div className="h-10 px-3 flex items-center text-xs text-slate-500 italic">
               No cameras selected
             </div>
           ) : (
-            lanes.map((lane, idx) => (
+            precomputedLanes.map((lane, idx) => (
               <div
                 key={lane.cameraId || `lane-${idx}`}
                 className="h-9 px-3 flex items-center gap-2 border-b border-[#1f2937]/60 text-xs font-semibold text-slate-200 truncate"
@@ -200,131 +271,59 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
             />
           ))}
 
-          {/* Camera Track Lanes */}
-          {lanes.map((lane, laneIdx) => {
-            // Render continuous recording spans
-            const renderedSpans = lane.spans
-              .map((span, sIdx) => {
-                const sStart = new Date(span.startTime).getTime();
-                const sEnd = new Date(span.endTime).getTime();
-                const clampedStart = Math.max(dayStartMs, sStart);
-                const clampedEnd = Math.min(dayStartMs + DAY_MS, sEnd);
+          {/* Precomputed Camera Track Lanes */}
+          {precomputedLanes.map((lane, laneIdx) => (
+            <div
+              key={lane.cameraId || `track-${laneIdx}`}
+              className="h-9 relative w-full border-b border-[#1f2937]/50 flex items-center"
+            >
+              {/* Continuous recording segments: Emerald Green (#10b981) */}
+              {lane.renderedSpans.map((rendered) => (
+                <div
+                  key={rendered.key}
+                  className={`absolute top-1.5 bottom-1.5 rounded-sm pointer-events-none shadow-sm ${
+                    rendered.isMotion
+                      ? 'bg-[#f59e0b] shadow-[0_0_6px_rgba(245,158,11,0.5)]'
+                      : 'bg-[#10b981] shadow-[0_0_6px_rgba(16,185,129,0.4)]'
+                  }`}
+                  style={{ left: rendered.left, width: rendered.width }}
+                />
+              ))}
 
-                if (clampedStart >= clampedEnd) return null;
+              {/* Motion events overlay: Amber / Orange (#f59e0b) */}
+              {lane.renderedMotionEvents.map((m) => (
+                <div
+                  key={m.key}
+                  className="absolute top-1 bottom-1 bg-[#f59e0b] rounded-sm pointer-events-none shadow-[0_0_6px_rgba(245,158,11,0.7)] z-10"
+                  style={{ left: m.left, width: m.width }}
+                />
+              ))}
 
-                const left = ((clampedStart - dayStartMs) / DAY_MS) * 100;
-                const width = Math.max(0.2, ((clampedEnd - clampedStart) / DAY_MS) * 100);
-
-                const isMotion =
-                  (span as any).type === 'motion' ||
-                  span.recordingId?.toLowerCase().includes('motion');
-
-                return {
-                  key: span.recordingId || `span-${laneIdx}-${sIdx}`,
-                  left: `${left}%`,
-                  width: `${width}%`,
-                  isMotion,
-                };
-              })
-              .filter(Boolean);
-
-            // Render discrete motion events (amber #f59e0b)
-            const renderedMotionEvents = (lane.motionEvents || [])
-              .map((evt, mIdx) => {
-                const mStart = new Date(evt.startTime).getTime();
-                const mEnd = new Date(evt.endTime).getTime();
-                const clampedStart = Math.max(dayStartMs, mStart);
-                const clampedEnd = Math.min(dayStartMs + DAY_MS, mEnd);
-
-                if (clampedStart >= clampedEnd) return null;
-
-                const left = ((clampedStart - dayStartMs) / DAY_MS) * 100;
-                const width = Math.max(0.3, ((clampedEnd - clampedStart) / DAY_MS) * 100);
-
-                return {
-                  key: `motion-${laneIdx}-${mIdx}`,
-                  left: `${left}%`,
-                  width: `${width}%`,
-                };
-              })
-              .filter(Boolean);
-
-            // Render incident bookmarks (blue/cyan #38bdf8)
-            const renderedBookmarks = (lane.bookmarks || [])
-              .map((bm) => {
-                const bmTime = new Date(bm.timestamp).getTime();
-                const offset = bmTime - dayStartMs;
-                if (offset < 0 || offset > DAY_MS) return null;
-                const percent = (offset / DAY_MS) * 100;
-                return {
-                  bookmark: bm,
-                  percent,
-                };
-              })
-              .filter(Boolean);
-
-            return (
-              <div
-                key={lane.cameraId || `track-${laneIdx}`}
-                className="h-9 relative w-full border-b border-[#1f2937]/50 flex items-center"
-              >
-                {/* Continuous recording segments: Emerald Green (#10b981) */}
-                {renderedSpans.map(
-                  (rendered) =>
-                    rendered && (
-                      <div
-                        key={rendered.key}
-                        className={`absolute top-1.5 bottom-1.5 rounded-sm pointer-events-none shadow-sm ${
-                          rendered.isMotion
-                            ? 'bg-[#f59e0b] shadow-[0_0_6px_rgba(245,158,11,0.5)]'
-                            : 'bg-[#10b981] shadow-[0_0_6px_rgba(16,185,129,0.4)]'
-                        }`}
-                        style={{ left: rendered.left, width: rendered.width }}
-                      />
-                    )
-                )}
-
-                {/* Motion events overlay: Amber / Orange (#f59e0b) */}
-                {renderedMotionEvents.map(
-                  (m) =>
-                    m && (
-                      <div
-                        key={m.key}
-                        className="absolute top-1 bottom-1 bg-[#f59e0b] rounded-sm pointer-events-none shadow-[0_0_6px_rgba(245,158,11,0.7)] z-10"
-                        style={{ left: m.left, width: m.width }}
-                      />
-                    )
-                )}
-
-                {/* Bookmarks overlay: Blue / Cyan (#38bdf8) */}
-                {renderedBookmarks.map(
-                  (b) =>
-                    b && (
-                      <div
-                        key={b.bookmark.id}
-                        onPointerDown={(e) => {
-                          e.stopPropagation();
-                          onSeek(new Date(b.bookmark.timestamp));
-                        }}
-                        onMouseEnter={() =>
-                          setActiveBookmarkTooltip({
-                            bookmark: b.bookmark,
-                            xPercent: b.percent,
-                            cameraName: lane.cameraName,
-                          })
-                        }
-                        onMouseLeave={() => setActiveBookmarkTooltip(null)}
-                        className="absolute top-0 bottom-0 w-3 -ml-1.5 z-20 flex flex-col items-center justify-start cursor-pointer group"
-                        style={{ left: `${b.percent}%` }}
-                      >
-                        <div className="w-2.5 h-3.5 rounded-b-sm bg-[#38bdf8] border border-[#0284c7] shadow-md transform group-hover:scale-125 transition-transform" />
-                        <div className="w-[1px] flex-1 bg-[#38bdf8]/70" />
-                      </div>
-                    )
-                )}
-              </div>
-            );
-          })}
+              {/* Bookmarks overlay: Blue / Cyan (#38bdf8) */}
+              {lane.renderedBookmarks.map((b) => (
+                <div
+                  key={b.bookmark.id}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    onSeek(new Date(b.bookmark.timestamp));
+                  }}
+                  onMouseEnter={() =>
+                    setActiveBookmarkTooltip({
+                      bookmark: b.bookmark,
+                      xPercent: b.percent,
+                      cameraName: lane.cameraName,
+                    })
+                  }
+                  onMouseLeave={() => setActiveBookmarkTooltip(null)}
+                  className="absolute top-0 bottom-0 w-3 -ml-1.5 z-20 flex flex-col items-center justify-start cursor-pointer group"
+                  style={{ left: `${b.percent}%` }}
+                >
+                  <div className="w-2.5 h-3.5 rounded-b-sm bg-[#38bdf8] border border-[#0284c7] shadow-md transform group-hover:scale-125 transition-transform" />
+                  <div className="w-[1px] flex-1 bg-[#38bdf8]/70" />
+                </div>
+              ))}
+            </div>
+          ))}
 
           {/* Unified Hover Tooltip and Hover Line across all lanes */}
           {hoverPosition && (
@@ -366,7 +365,7 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
                 </span>
                 <span>•</span>
                 <span>
-                  {new Date(activeBookmarkTooltip.bookmark.timestamp).toLocaleTimeString()}
+                  {new Date(activeBookmarkTooltip.bookmark.timestamp).toISOString().substring(11, 19)} UTC
                 </span>
               </div>
             </div>
@@ -400,7 +399,7 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
         <div className="text-slate-100 font-bold flex items-center gap-2 bg-[#111827] px-3 py-1 rounded-md border border-[#1f2937]">
           <span className="w-2 h-2 rounded-full bg-[#4fc3f7] inline-block shadow-[0_0_6px_#4fc3f7] animate-pulse" />
           <span className="text-[#4fc3f7]">
-            MASTER PLAYHEAD: {formatTimeFromOffset(currentOffsetMs)}
+            MASTER PLAYHEAD: {formatTimeFromOffset(currentOffsetMs)} UTC
           </span>
         </div>
       </div>
