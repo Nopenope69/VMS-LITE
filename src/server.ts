@@ -24,6 +24,7 @@ import { smtpDispatcherService } from './notifications/smtp-dispatcher.service.j
 import { webhookRoutes } from './webhooks/webhook.routes.js';
 import { settingsRoutes } from './settings/settings.routes.js';
 import { systemRoutes } from './system/system.routes.js';
+import { auditRoutes } from './audit/audit.routes.js';
 import { webhookDispatcherService } from './webhooks/webhook-dispatcher.service.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
 import { onvifEventListenerService as defaultOnvifEvents, OnvifEventListenerService } from './events/onvif-events.service.js';
@@ -126,6 +127,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(playbackRoutes, { prefix: '/api/playback' });
   await app.register(settingsRoutes, { prefix: '/api/settings' });
   await app.register(systemRoutes, { prefix: '/api/system' });
+  await app.register(auditRoutes, { prefix: '/api/audit' });
 
   // Register static file serving & SPA fallback if client/dist exists
   const clientDist = path.resolve(process.cwd(), 'client/dist');

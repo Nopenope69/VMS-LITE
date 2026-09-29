@@ -240,3 +240,24 @@ model NotificationConfig {
   @@map("notification_configs")
 }
 
+model AuditLog {
+  id                 String   @id @default(uuid())
+  userId             String   @map("user_id")
+  username           String
+  action             String
+  cameraId           String?  @map("camera_id")
+  timestampUtc       DateTime @map("timestamp_utc")
+  streamProfile      String?  @map("stream_profile")
+  resolution         String?
+  playbackSegmentId  String?  @map("playback_segment_id")
+  mediaOffsetSeconds Float?   @map("media_offset_seconds")
+  sha256             String
+  filePath           String   @map("file_path")
+  clientIp           String   @map("client_ip")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([cameraId])
+  @@index([timestampUtc])
+  @@map("audit_logs")
+}
+
