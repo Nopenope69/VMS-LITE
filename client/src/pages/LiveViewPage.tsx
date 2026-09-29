@@ -22,6 +22,11 @@ import { EventsWsClient, EventPayload } from '../utils/events-ws-client.js';
 import { useAuth } from '../context/AuthContext.js';
 import { OperatorBanner } from '../components/OperatorBanner.js';
 import { UserManagementModal } from '../components/UserManagementModal.js';
+import { useCctvHotkeys } from '../hooks/useCctvHotkeys.js';
+import { FloatingHudBadge } from '../components/FloatingHudBadge.js';
+import { ChannelSwitcherModal } from '../components/ChannelSwitcherModal.js';
+import { KeyboardShortcutsModal } from '../components/KeyboardShortcutsModal.js';
+import { Keyboard } from 'lucide-react';
 
 export interface LiveViewPageProps {
   apiBaseUrl?: string;
@@ -225,6 +230,57 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
     }
   };
 
+  const [previousMultiLayout, setPreviousMultiLayout] = useState<GridLayoutMode>('2x2');
+
+  const {
+    isChannelSwitcherOpen,
+    setIsChannelSwitcherOpen,
+    isShortcutsOpen,
+    setIsShortcutsOpen,
+    hudBadgeText,
+    triggerHud,
+  } = useCctvHotkeys({
+    mode: 'LIVE',
+    onFocusChannel: (channelNumber) => {
+      const idx = channelNumber - 1;
+      if (cameras[idx]) {
+        if (layout !== '1x1') {
+          setPreviousMultiLayout(layout);
+        }
+        setLayout('1x1');
+        setAssignedSlots([cameras[idx]]);
+      }
+    },
+    onReturnToGrid: () => {
+      setLayout(previousMultiLayout || '2x2');
+      setAssignedSlots(cameras.slice(0, 9));
+    },
+    onToggleChannelSwitcher: () => {
+      setIsChannelSwitcherOpen((prev) => !prev);
+    },
+    onToggleFullscreen: () => {
+      toggleFullScreen();
+    },
+    onToggleShortcutsModal: () => {
+      setIsShortcutsOpen((prev) => !prev);
+    },
+  });
+
+  const handleSelectChannelFromModal = (cam: any, channelIndex: number) => {
+    if (layout !== '1x1') {
+      setPreviousMultiLayout(layout);
+    }
+    const targetCam = cameras.find((c) => c.cameraId === cam.id) || {
+      cameraId: cam.id,
+      name: cam.name,
+      streamPath: '',
+      rtspUrl: '',
+    };
+    setLayout('1x1');
+    setAssignedSlots([targetCam]);
+    triggerHud(`[ Switched: CH ${channelIndex + 1} - ${cam.name} ]`);
+  };
+
   const handleOpenDrawer = () => {
     setIsDrawerOpen(true);
     setUnreadAlertCount(0);
@@ -351,6 +407,16 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
             </button>
           )}
 
+          {/* Keyboard Shortcuts Cheat Sheet Button */}
+          <button
+            type="button"
+            onClick={() => setIsShortcutsOpen(true)}
+            title="Keyboard Shortcuts & Jog-Shuttle (?)"
+            className="p-2 min-w-[38px] min-h-[38px] flex items-center justify-center text-slate-300 hover:text-[#4fc3f7] rounded-md bg-[#090d16] border border-[#1f2937] hover:border-[#4fc3f7]/50 transition-colors"
+          >
+            <Keyboard className="w-4 h-4" />
+          </button>
+
           {/* Refresh Feeds */}
           <button
             type="button"
@@ -428,6 +494,36 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
           name: c.name,
           status: 'online',
         }))}
+      />
+
+      {/* Accessible Floating HUD Badge Overlay */}
+      <FloatingHudBadge text={hudBadgeText} />
+
+      {/* Quick Channel Switcher Modal (Hotkey: G) */}
+      <ChannelSwitcherModal
+        isOpen={isChannelSwitcherOpen}
+        onClose={() => setIsChannelSwitcherOpen(false)}
+        cameras={cameras.map((c, i) => {
+          let ipAddress: string | undefined;
+          try {
+            if (c.rtspUrl) ipAddress = new URL(c.rtspUrl).hostname;
+          } catch {}
+          return {
+            id: c.cameraId,
+            name: c.name,
+            channelNumber: i + 1,
+            ipAddress,
+            status: 'online',
+          };
+        })}
+        onSelectCamera={handleSelectChannelFromModal}
+        activeCameraId={assignedSlots[0]?.cameraId}
+      />
+
+      {/* Keyboard Shortcuts Cheat Sheet Modal (Hotkey: ?) */}
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsOpen}
+        onClose={() => setIsShortcutsOpen(false)}
       />
     </div>
   );

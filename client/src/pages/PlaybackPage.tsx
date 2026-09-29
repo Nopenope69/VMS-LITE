@@ -15,12 +15,16 @@ import {
   ChevronDown,
   Check,
   Layers,
+  Keyboard,
 } from 'lucide-react';
 import { BookmarkItem } from '../components/TimelineScrubber.js';
 import { MultiLaneTimeline, LaneCameraData } from '../components/MultiLaneTimeline.js';
 import { PlaybackControls } from '../components/PlaybackControls.js';
 import { ClipExportModal } from '../components/ClipExportModal.js';
 import { BookmarkModal } from '../components/BookmarkModal.js';
+import { useCctvHotkeys } from '../hooks/useCctvHotkeys.js';
+import { FloatingHudBadge } from '../components/FloatingHudBadge.js';
+import { KeyboardShortcutsModal } from '../components/KeyboardShortcutsModal.js';
 import {
   getTodayString,
   CameraOption,
@@ -540,21 +544,55 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
     fetchAllTimelinesAndBookmarks();
   }, [fetchAllTimelinesAndBookmarks]);
 
-  // Keyboard shortcut: 'b' or 'B' to add bookmark at current playback time
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
-        return;
-      }
-      if (e.key === 'b' || e.key === 'B') {
-        e.preventDefault();
-        setIsBookmarkModalOpen(true);
-      }
-    };
+  // Two-Context CCTV Keyboard Hotkeys Engine integration for Playback mode
+  const currentShuttleSpeed = useMemo(() => {
+    if (!isPlaying) return 0;
+    return playbackRate;
+  }, [isPlaying, playbackRate]);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  const {
+    isShortcutsOpen,
+    setIsShortcutsOpen,
+    hudBadgeText,
+    triggerHud,
+  } = useCctvHotkeys({
+    mode: 'PLAYBACK',
+    currentShuttleSpeed,
+    onTogglePlayPause: () => {
+      setIsPlaying((prev) => {
+        const next = !prev;
+        triggerHud(next ? '[ Playing ]' : '[ Paused ]');
+        return next;
+      });
+    },
+    onShuttleChange: (newSpeed) => {
+      if (newSpeed === 0) {
+        setIsPlaying(false);
+      } else {
+        setPlaybackRate(newSpeed);
+        setIsPlaying(true);
+      }
+    },
+    onSeekRelativeMs: (deltaMs) => {
+      seekToTimestamp(targetTimestampMs + deltaMs);
+    },
+    onStepFrame: (dir) => {
+      const frameDeltaMs = Math.round((1000 / 30) * dir);
+      seekToTimestamp(targetTimestampMs + frameDeltaMs);
+    },
+    onFocusPlaybackSlot: (slotNum) => {
+      const idx = slotNum - 1;
+      if (selectedCameraIds[idx]) {
+        setPrimaryCameraId(selectedCameraIds[idx]);
+      }
+    },
+    onAddBookmark: () => {
+      setIsBookmarkModalOpen(true);
+    },
+    onToggleShortcutsModal: () => {
+      setIsShortcutsOpen((prev) => !prev);
+    },
+  });
 
   // Quick incident jump helper (-5m, -15m, -1h) - preserves user play/pause state
   const handleQuickJump = (minutesAgo: number) => {
@@ -758,6 +796,16 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
               className="bg-transparent text-slate-200 focus:outline-none cursor-pointer text-xs font-semibold"
             />
           </div>
+
+          {/* Keyboard Shortcuts Cheat Sheet Button */}
+          <button
+            type="button"
+            onClick={() => setIsShortcutsOpen(true)}
+            title="Keyboard Shortcuts & Jog-Shuttle (?)"
+            className="p-2 text-slate-300 hover:text-[#4fc3f7] rounded-md bg-[#090d16] border border-[#1f2937] hover:border-[#4fc3f7]/50 transition-colors"
+          >
+            <Keyboard className="w-3.5 h-3.5" />
+          </button>
 
           {/* Refresh Button */}
           <button
@@ -991,6 +1039,15 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
         timestamp={new Date(targetTimestampMs)}
         apiBaseUrl={apiBaseUrl}
         authToken={effectiveToken}
+      />
+
+      {/* Accessible Floating HUD Badge Overlay */}
+      <FloatingHudBadge text={hudBadgeText} />
+
+      {/* Keyboard Shortcuts Cheat Sheet Modal (Hotkey: ?) */}
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsOpen}
+        onClose={() => setIsShortcutsOpen(false)}
       />
     </div>
   );
