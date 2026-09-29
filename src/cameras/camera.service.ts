@@ -196,51 +196,66 @@ export class CameraService {
     const mediaMtxPath = this.generatePathName(dto.name);
     const subMediaMtxPath = dto.subRtspUrl ? `${mediaMtxPath}_sub` : null;
 
-    // Provision main stream in MediaMTX
-    await this.mediaMtx.setPath(mediaMtxPath, {
-      source: dto.rtspUrl,
-      sourceOnDemand: false,
-    });
-
-    // Provision on-demand sub-stream if provided
-    if (dto.subRtspUrl && subMediaMtxPath) {
-      await this.mediaMtx.setPath(subMediaMtxPath, {
-        source: dto.subRtspUrl,
-        sourceOnDemand: true,
+    try {
+      // Provision main stream in MediaMTX with sourceOnDemand: false
+      const mainOk = await this.mediaMtx.setPath(mediaMtxPath, {
+        source: dto.rtspUrl,
+        sourceOnDemand: false,
       });
-    }
+      if (!mainOk) {
+        throw new Error(`Failed to configure main stream path in media plane: ${mediaMtxPath}`);
+      }
 
-    const record = await this.prisma.camera.create({
-      data: {
-        name: dto.name,
-        ip: dto.ip || null,
-        port: dto.port ?? 554,
-        username: dto.username || null,
-        password: dto.password || null,
-        rtspUrl: dto.rtspUrl,
-        subRtspUrl: dto.subRtspUrl || null,
-        subStreamUrl: dto.subRtspUrl || null,
-        mediaMtxPath,
-        subMediaMtxPath,
-        status: 'online',
-        recordingMode: 'CONTINUOUS',
-      },
-    });
+      // Provision on-demand sub-stream if provided
+      if (dto.subRtspUrl && subMediaMtxPath) {
+        const subOk = await this.mediaMtx.setPath(subMediaMtxPath, {
+          source: dto.subRtspUrl,
+          sourceOnDemand: true,
+        });
+        if (!subOk) {
+          throw new Error(`Failed to configure sub-stream path in media plane: ${subMediaMtxPath}`);
+        }
+      }
 
-    if (this.eventBus) {
-      await this.eventBus.emitEvent({
-        type: 'camera.online',
-        source: 'camera.service',
-        cameraId: record.id,
-        metadata: {
-          name: record.name,
-          mediaMtxPath: record.mediaMtxPath,
-          subMediaMtxPath: record.subMediaMtxPath,
+      const record = await this.prisma.camera.create({
+        data: {
+          name: dto.name,
+          ip: dto.ip || null,
+          port: dto.port ?? 554,
+          username: dto.username || null,
+          password: dto.password || null,
+          rtspUrl: dto.rtspUrl,
+          subRtspUrl: dto.subRtspUrl || null,
+          subStreamUrl: dto.subRtspUrl || null,
+          mediaMtxPath,
+          subMediaMtxPath,
+          status: 'online',
+          recordingMode: 'CONTINUOUS',
         },
-      }).catch(() => {});
-    }
+      });
 
-    return this.toDto(record);
+      if (this.eventBus) {
+        await this.eventBus.emitEvent({
+          type: 'camera.online',
+          source: 'camera.service',
+          cameraId: record.id,
+          metadata: {
+            name: record.name,
+            mediaMtxPath: record.mediaMtxPath,
+            subMediaMtxPath: record.subMediaMtxPath,
+          },
+        }).catch(() => {});
+      }
+
+      return this.toDto(record);
+    } catch (err) {
+      // Compensating teardown on failure: cleanly remove MediaMTX paths if attempted/provisioned
+      if (subMediaMtxPath) {
+        await this.mediaMtx.removePath(subMediaMtxPath).catch(() => {});
+      }
+      await this.mediaMtx.removePath(mediaMtxPath).catch(() => {});
+      throw err;
+    }
   }
 
   /**

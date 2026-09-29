@@ -11,6 +11,7 @@ describe('Dual-Stream Model & On-Demand Path Provisioning', () => {
   beforeEach(() => {
     mockMediaMtx = new MediaMtxClient({ mockMode: true });
     vi.spyOn(mockMediaMtx, 'setPath').mockResolvedValue(true);
+    vi.spyOn(mockMediaMtx, 'removePath').mockResolvedValue(true);
 
     const cameras: any[] = [];
     mockPrisma = {
@@ -39,11 +40,12 @@ describe('Dual-Stream Model & On-Demand Path Provisioning', () => {
     expect(camera.subMediaMtxPath).toBeDefined();
     expect(camera.subMediaMtxPath).toContain('_sub');
 
-    // Verify main stream provisioned in MediaMTX
+    // Verify main stream provisioned in MediaMTX with sourceOnDemand: false (recording invariant)
     expect(mockMediaMtx.setPath).toHaveBeenCalledWith(
       camera.mediaMtxPath,
       expect.objectContaining({
         source: 'rtsp://admin:pass@192.168.1.50:554/stream1',
+        sourceOnDemand: false,
       })
     );
 
@@ -70,6 +72,7 @@ describe('Dual-Stream Model & On-Demand Path Provisioning', () => {
       camera.mediaMtxPath,
       expect.objectContaining({
         source: 'rtsp://admin:pass@192.168.1.50:554/stream1',
+        sourceOnDemand: false,
       })
     );
 
@@ -77,5 +80,38 @@ describe('Dual-Stream Model & On-Demand Path Provisioning', () => {
       expect.stringContaining('_sub'),
       expect.anything()
     );
+  });
+
+  it('throws an error and rolls back provisioned paths when media plane setPath fails', async () => {
+    vi.spyOn(mockMediaMtx, 'setPath')
+      .mockResolvedValueOnce(true) // main stream succeeds
+      .mockResolvedValueOnce(false); // sub stream fails
+
+    await expect(
+      cameraService.createCamera({
+        name: 'Failing Sub Camera',
+        rtspUrl: 'rtsp://admin:pass@192.168.1.50:554/stream1',
+        subRtspUrl: 'rtsp://admin:pass@192.168.1.50:554/stream2',
+      })
+    ).rejects.toThrow(/Failed to configure sub-stream path in media plane/);
+
+    expect(mockMediaMtx.removePath).toHaveBeenCalledWith(expect.stringMatching(/failing_sub_camera.*_sub/));
+    expect(mockMediaMtx.removePath).toHaveBeenCalledWith(expect.stringMatching(/failing_sub_camera/));
+    expect(mockPrisma.camera.create).not.toHaveBeenCalled();
+  });
+
+  it('cleanly tears down provisioned MediaMTX paths if database persistence fails', async () => {
+    mockPrisma.camera.create.mockRejectedValueOnce(new Error('Database disk full'));
+
+    await expect(
+      cameraService.createCamera({
+        name: 'Database Failure Camera',
+        rtspUrl: 'rtsp://admin:pass@192.168.1.50:554/stream1',
+        subRtspUrl: 'rtsp://admin:pass@192.168.1.50:554/stream2',
+      })
+    ).rejects.toThrow('Database disk full');
+
+    expect(mockMediaMtx.removePath).toHaveBeenCalledWith(expect.stringMatching(/database_failure_camera.*_sub/));
+    expect(mockMediaMtx.removePath).toHaveBeenCalledWith(expect.stringMatching(/database_failure_camera/));
   });
 });
