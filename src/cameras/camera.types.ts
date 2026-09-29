@@ -26,6 +26,43 @@ export const ManualCameraSchema = z.object({
 
 export type ManualCameraInput = z.infer<typeof ManualCameraSchema>;
 
+export interface CreateCameraDto {
+  name: string;
+  rtspUrl: string;
+  subRtspUrl?: string;
+  ip?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+}
+
+export interface CameraDto {
+  id: string;
+  name: string;
+  ip?: string | null;
+  port?: number | null;
+  rtspUrl: string;
+  subRtspUrl?: string | null;
+  mediaMtxPath: string;
+  subMediaMtxPath?: string | null;
+  status: string;
+  recordingMode: string;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+}
+
+export interface CameraStreamProfile {
+  rtspUrl: string;
+  mediaMtxPath: string;
+}
+
+export interface CameraProfiles {
+  main: CameraStreamProfile;
+  sub?: CameraStreamProfile | null;
+  mainStream?: CameraStreamProfile;
+  subStream?: CameraStreamProfile | null;
+}
+
 export interface CameraResponseDto {
   id: string;
   name: string;
@@ -34,14 +71,17 @@ export interface CameraResponseDto {
   username?: string | null;
   // NOTE: password is intentionally excluded to prevent credential leakage (T-02-06)
   rtspUrl: string;
+  subRtspUrl?: string | null;
   subStreamUrl?: string | null;
+  mediaMtxPath: string;
+  subMediaMtxPath?: string | null;
   onvifUrl?: string | null;
   profileToken?: string | null;
   manufacturer?: string | null;
   model?: string | null;
   serialNumber?: string | null;
   status: string;
-  mediaMtxPath: string;
+  recordingMode: string;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
