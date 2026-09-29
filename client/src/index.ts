@@ -22,4 +22,6 @@ export * from './hooks/useCameraHealth.js';
 export * from './components/NotificationSettingsModal.js';
 export * from './components/CameraOnboardingWizardModal.js';
 export * from './components/OperationalSettingsModal.js';
+export * from './components/MultiLaneTimeline.js';
+export * from './context/PlaybackSyncContext.js';
 export * from './App.js';
