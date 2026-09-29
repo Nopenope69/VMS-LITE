@@ -345,6 +345,20 @@ export function useCctvHotkeys(options: UseCctvHotkeysOptions): UseCctvHotkeysRe
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
 
+      // Modal guard: suspend all hotkeys while a modal is open.
+      // Only allow Escape to close the frontmost modal.
+      if (isShortcutsOpen || isChannelSwitcherOpen) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          if (isShortcutsOpen) {
+            setIsShortcutsOpen(false);
+          } else {
+            setIsChannelSwitcherOpen(false);
+          }
+        }
+        return;
+      }
+
       const evalResult = evaluateCctvKeyEvent({
         mode,
         key: e.key,
@@ -452,13 +466,7 @@ export function useCctvHotkeys(options: UseCctvHotkeysOptions): UseCctvHotkeysRe
           break;
 
         case 'ESCAPE':
-          if (isChannelSwitcherOpen) {
-            setIsChannelSwitcherOpen(false);
-          } else if (isShortcutsOpen) {
-            setIsShortcutsOpen(false);
-          } else {
-            optionsRef.current.onEscape?.();
-          }
+          optionsRef.current.onEscape?.();
           break;
 
         case 'IGNORED':
