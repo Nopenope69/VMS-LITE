@@ -70,10 +70,11 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
   const [showZoneModal, setShowZoneModal] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Derive effective ViewMode for adaptive stream profile resolution
+  // Derive effective ViewMode for adaptive stream profile resolution.
+  // If viewMode is not explicitly provided, honor forceSubStream by staying in GRID mode.
   const effectiveViewMode: ViewMode = viewMode
     ? viewMode
-    : isMaximized
+    : isMaximized && !forceSubStream
     ? 'FULLSCREEN'
     : 'GRID';
 
@@ -91,18 +92,35 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
       })
     : null;
 
-  // Resolve WHEP and HLS stream URLs based on streamProfile
+  // Resolve WHEP and HLS stream URLs based on streamProfile safely without unescaped RegExp
   let whepUrl = '';
   let hlsUrl = '';
 
   if (camera && streamProfile) {
     if (streamProfile.selectedStream === 'SUB') {
-      whepUrl =
-        camera.subStreamWhepUrl ||
-        camera.whepUrl.replace(new RegExp(`/${camera.mediaMtxPath}/whep$`), `/${streamProfile.path}/whep`);
-      hlsUrl =
-        camera.subStreamHlsUrl ||
-        camera.hlsUrl.replace(new RegExp(`/${camera.mediaMtxPath}/index\\.m3u8$`), `/${streamProfile.path}/index.m3u8`);
+      if (camera.subStreamWhepUrl) {
+        whepUrl = camera.subStreamWhepUrl;
+      } else {
+        const mainWhepSuffix = `/${camera.mediaMtxPath}/whep`;
+        if (camera.whepUrl.endsWith(mainWhepSuffix)) {
+          const base = camera.whepUrl.slice(0, -mainWhepSuffix.length);
+          whepUrl = `${base}/${streamProfile.path}/whep`;
+        } else {
+          whepUrl = camera.whepUrl;
+        }
+      }
+
+      if (camera.subStreamHlsUrl) {
+        hlsUrl = camera.subStreamHlsUrl;
+      } else {
+        const mainHlsSuffix = `/${camera.mediaMtxPath}/index.m3u8`;
+        if (camera.hlsUrl.endsWith(mainHlsSuffix)) {
+          const base = camera.hlsUrl.slice(0, -mainHlsSuffix.length);
+          hlsUrl = `${base}/${streamProfile.path}/index.m3u8`;
+        } else {
+          hlsUrl = camera.hlsUrl;
+        }
+      }
     } else {
       whepUrl = camera.whepUrl;
       hlsUrl = camera.hlsUrl;

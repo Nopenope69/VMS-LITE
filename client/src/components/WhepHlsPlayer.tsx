@@ -45,6 +45,16 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
     const activeLayerRef = useRef<0 | 1>(0);
     activeLayerRef.current = activeLayer;
 
+    // Component lifecycle and load sequence tracking (prevents async WebRTC leaks)
+    const isMountedRef = useRef<boolean>(true);
+    const loadSequenceRef = useRef<number>(0);
+    const layerLoadIdRef = useRef<{ 0: number; 1: number }>({ 0: 0, 1: 0 });
+    const isTearingDownRef = useRef<{ 0: boolean; 1: boolean }>({ 0: false, 1: false });
+    const layerModeRef = useRef<{ 0: 'webrtc' | 'hls'; 1: 'webrtc' | 'hls' }>({
+      0: 'webrtc',
+      1: 'webrtc',
+    });
+
     const videoRef0 = useRef<HTMLVideoElement | null>(null);
     const videoRef1 = useRef<HTMLVideoElement | null>(null);
     const sessionRef0 = useRef<WhepSession | null>(null);
@@ -79,6 +89,9 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
     );
 
     const cleanSession = useCallback((layer: 0 | 1) => {
+      isTearingDownRef.current[layer] = true;
+      layerLoadIdRef.current[layer] = ++loadSequenceRef.current;
+
       if (layer === 0) {
         if (sessionRef0.current) {
           sessionRef0.current.close();
@@ -101,8 +114,38 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
     }, []);
 
     const loadHlsIntoLayer = useCallback(
-      (layer: 0 | 1, targetHlsUrl: string, isInitial: boolean) => {
-        cleanSession(layer);
+      (layer: 0 | 1, targetHlsUrl: string, isInitial: boolean, expectedLoadId?: number) => {
+        const currentLoadId = expectedLoadId ?? ++loadSequenceRef.current;
+        if (expectedLoadId === undefined) {
+          layerLoadIdRef.current[layer] = currentLoadId;
+        }
+
+        if (!isMountedRef.current || layerLoadIdRef.current[layer] !== currentLoadId) {
+          return;
+        }
+
+        isTearingDownRef.current[layer] = false;
+        layerModeRef.current[layer] = 'hls';
+
+        // Close any existing session on this layer
+        if (layer === 0) {
+          if (sessionRef0.current) {
+            sessionRef0.current.close();
+            sessionRef0.current = null;
+          }
+          if (videoRef0.current) {
+            videoRef0.current.srcObject = null;
+          }
+        } else {
+          if (sessionRef1.current) {
+            sessionRef1.current.close();
+            sessionRef1.current = null;
+          }
+          if (videoRef1.current) {
+            videoRef1.current.srcObject = null;
+          }
+        }
+
         const videoEl = layer === 0 ? videoRef0.current : videoRef1.current;
         if (!videoEl) return;
 
@@ -110,6 +153,8 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
         onModeChange?.('hls');
 
         const onHlsPlaying = () => {
+          if (!isMountedRef.current || layerLoadIdRef.current[layer] !== currentLoadId) return;
+
           hasHadPlaybackRef.current = true;
           currentActiveUrlRef.current = { whepUrl: '', hlsUrl: targetHlsUrl };
           setStatus('connected');
@@ -148,7 +193,31 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
 
     const loadStreamIntoLayer = useCallback(
       async (layer: 0 | 1, targetWhepUrl: string, targetHlsUrl: string, isInitial: boolean) => {
-        cleanSession(layer);
+        const loadId = ++loadSequenceRef.current;
+        layerLoadIdRef.current[layer] = loadId;
+        isTearingDownRef.current[layer] = false;
+        layerModeRef.current[layer] = 'webrtc';
+
+        // Close any prior session on this layer before starting new connection
+        if (layer === 0) {
+          if (sessionRef0.current) {
+            sessionRef0.current.close();
+            sessionRef0.current = null;
+          }
+          if (videoRef0.current) {
+            videoRef0.current.srcObject = null;
+            videoRef0.current.removeAttribute('src');
+          }
+        } else {
+          if (sessionRef1.current) {
+            sessionRef1.current.close();
+            sessionRef1.current = null;
+          }
+          if (videoRef1.current) {
+            videoRef1.current.srcObject = null;
+            videoRef1.current.removeAttribute('src');
+          }
+        }
 
         if (isInitial) {
           setStatus('connecting');
@@ -161,8 +230,9 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
         let hasActivated = false;
         const onPlayingTrigger = () => {
           if (hasActivated) return;
-          hasActivated = true;
+          if (!isMountedRef.current || layerLoadIdRef.current[layer] !== loadId) return;
 
+          hasActivated = true;
           hasHadPlaybackRef.current = true;
           currentActiveUrlRef.current = { whepUrl: targetWhepUrl, hlsUrl: targetHlsUrl };
           setStatus('connected');
@@ -192,12 +262,20 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
             iceServers,
             timeoutMs: 6000,
             onConnectionStateChange: (iceState) => {
+              if (!isMountedRef.current || layerLoadIdRef.current[layer] !== loadId) return;
               if (iceState === 'failed' || iceState === 'disconnected') {
                 console.warn(`[WhepHlsPlayer] WebRTC ICE state ${iceState} on layer ${layer}, switching to HLS`);
-                loadHlsIntoLayer(layer, targetHlsUrl, isInitial);
+                loadHlsIntoLayer(layer, targetHlsUrl, isInitial, loadId);
               }
             },
           });
+
+          // Guard against stale load or unmounted component during async connectWhep
+          if (!isMountedRef.current || layerLoadIdRef.current[layer] !== loadId) {
+            console.warn(`[WhepHlsPlayer] In-flight WHEP connection aborted (layer ${layer}, loadId ${loadId}); closing session to prevent leak`);
+            session.close();
+            return;
+          }
 
           if (layer === 0) sessionRef0.current = session;
           else sessionRef1.current = session;
@@ -218,11 +296,35 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
           videoEl.addEventListener('playing', handlePlaying);
           videoEl.addEventListener('loadeddata', handlePlaying);
         } catch (err: any) {
+          if (!isMountedRef.current || layerLoadIdRef.current[layer] !== loadId) return;
           console.warn(`[WhepHlsPlayer] WebRTC WHEP connection failed on layer ${layer}, falling back to HLS:`, err.message);
-          loadHlsIntoLayer(layer, targetHlsUrl, isInitial);
+          loadHlsIntoLayer(layer, targetHlsUrl, isInitial, loadId);
         }
       },
       [iceServers, autoPlay, onModeChange, cleanSession, loadHlsIntoLayer, updateForwardedRef]
+    );
+
+    // Fail-loud error handler for both active and incoming layers
+    const handleLayerError = useCallback(
+      (layer: 0 | 1) => {
+        if (isTearingDownRef.current[layer]) {
+          // Intentional teardown or cleanup; ignore
+          return;
+        }
+
+        const layerMode = layerModeRef.current[layer];
+        console.warn(`[WhepHlsPlayer] Video error on layer ${layer} (mode: ${layerMode})`);
+
+        if (layerMode === 'webrtc') {
+          // Attempt fallback to HLS for this layer
+          loadHlsIntoLayer(layer, hlsUrl, false);
+        } else {
+          // HLS failed or already in HLS mode: Fail Loud!
+          setStatus('error');
+          setErrorMessage(`Unable to load video stream (${cameraName})`);
+        }
+      },
+      [hlsUrl, cameraName, loadHlsIntoLayer]
     );
 
     // Initial load and URL changes with cross-fade
@@ -254,9 +356,11 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
       loadStreamIntoLayer(targetLayer, whepUrl, hlsUrl, isFirstLoad);
     }, [whepUrl, hlsUrl, loadStreamIntoLayer, cleanSession]);
 
-    // Unmount cleanup
+    // Unmount cleanup: close all sessions and cancel timers
     useEffect(() => {
+      isMountedRef.current = true;
       return () => {
+        isMountedRef.current = false;
         if (teardownTimerRef.current) {
           clearTimeout(teardownTimerRef.current);
         }
@@ -371,16 +475,7 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
           autoPlay={autoPlay}
           playsInline
           muted={isMuted || activeLayer !== 0}
-          onError={() => {
-            if (activeLayerRef.current === 0) {
-              if (mode === 'webrtc') {
-                loadHlsIntoLayer(0, hlsUrl, false);
-              } else {
-                setStatus('error');
-                setErrorMessage('Unable to load video stream');
-              }
-            }
-          }}
+          onError={() => handleLayerError(0)}
         />
 
         <video
@@ -398,16 +493,7 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
           autoPlay={autoPlay}
           playsInline
           muted={isMuted || activeLayer !== 1}
-          onError={() => {
-            if (activeLayerRef.current === 1) {
-              if (mode === 'webrtc') {
-                loadHlsIntoLayer(1, hlsUrl, false);
-              } else {
-                setStatus('error');
-                setErrorMessage('Unable to load video stream');
-              }
-            }
-          }}
+          onError={() => handleLayerError(1)}
         />
 
         {/* Top-Left Status Overlays */}
