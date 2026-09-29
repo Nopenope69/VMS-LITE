@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { AuditLog } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 
 export interface CreateSnapshotAuditInput {
@@ -24,26 +25,8 @@ export interface SnapshotAuditResult {
   downloadUrl: string;
 }
 
-export interface SnapshotAuditRecord {
-  id: string;
-  userId: string;
-  username: string;
-  action: string;
-  cameraId: string | null;
-  timestampUtc: Date;
-  streamProfile: string | null;
-  resolution: string | null;
-  playbackSegmentId: string | null;
-  mediaOffsetSeconds: number | null;
-  sha256: string;
-  filePath: string;
-  clientIp: string;
-  createdAt: Date;
-}
-
 export class AuditService {
   private readonly configuredDir?: string;
-  private readonly memoryFallback = new Map<string, SnapshotAuditRecord>();
 
   constructor(storageDir?: string) {
     if (storageDir) {
@@ -71,50 +54,28 @@ export class AuditService {
     // Persist exact bytes to storage
     await fs.writeFile(filePath, input.imageBuffer);
 
-    let logEntry: SnapshotAuditRecord | null = null;
-
+    let logEntry: AuditLog;
     try {
-      if ((prisma as any).auditLog?.create) {
-        logEntry = await (prisma as any).auditLog.create({
-          data: {
-            userId: input.userId,
-            username: input.username,
-            action: 'SNAPSHOT_CAPTURED',
-            cameraId: input.cameraId,
-            timestampUtc: input.timestampUtc,
-            streamProfile: input.streamProfile || null,
-            resolution: input.resolution || null,
-            playbackSegmentId: input.playbackSegmentId || null,
-            mediaOffsetSeconds: input.mediaOffsetSeconds ?? null,
-            sha256,
-            filePath,
-            clientIp: input.clientIp,
-          },
-        });
-      }
-    } catch (err: any) {
-      // In test or unmigrated environments, catch table errors and fallback gracefully
-      // but preserve full audit object in memory
-    }
-
-    if (!logEntry) {
-      logEntry = {
-        id: crypto.randomUUID(),
-        userId: input.userId,
-        username: input.username,
-        action: 'SNAPSHOT_CAPTURED',
-        cameraId: input.cameraId,
-        timestampUtc: input.timestampUtc,
-        streamProfile: input.streamProfile || null,
-        resolution: input.resolution || null,
-        playbackSegmentId: input.playbackSegmentId || null,
-        mediaOffsetSeconds: input.mediaOffsetSeconds ?? null,
-        sha256,
-        filePath,
-        clientIp: input.clientIp,
-        createdAt: new Date(),
-      };
-      this.memoryFallback.set(logEntry.id, logEntry);
+      logEntry = await prisma.auditLog.create({
+        data: {
+          userId: input.userId,
+          username: input.username,
+          action: 'SNAPSHOT_CAPTURED',
+          cameraId: input.cameraId,
+          timestampUtc: input.timestampUtc,
+          streamProfile: input.streamProfile || null,
+          resolution: input.resolution || null,
+          playbackSegmentId: input.playbackSegmentId || null,
+          mediaOffsetSeconds: input.mediaOffsetSeconds ?? null,
+          sha256,
+          filePath,
+          clientIp: input.clientIp,
+        },
+      });
+    } catch (err) {
+      // Compensating file cleanup: fail-loud runtime ensures zero orphaned unindexed files on disk
+      await fs.unlink(filePath).catch(() => {});
+      throw err;
     }
 
     return {
@@ -126,21 +87,10 @@ export class AuditService {
     };
   }
 
-  async getSnapshotById(id: string): Promise<SnapshotAuditRecord | null> {
-    try {
-      if ((prisma as any).auditLog?.findUnique) {
-        const record = await (prisma as any).auditLog.findUnique({
-          where: { id },
-        });
-        if (record) {
-          return record;
-        }
-      }
-    } catch {
-      // Fall through to memory fallback
-    }
-
-    return this.memoryFallback.get(id) || null;
+  async getSnapshotById(id: string): Promise<AuditLog | null> {
+    return prisma.auditLog.findUnique({
+      where: { id },
+    });
   }
 }
 

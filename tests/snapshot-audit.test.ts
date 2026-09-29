@@ -251,38 +251,56 @@ describe('Server-Authoritative Snapshot Audit Pipeline (BSA-Aware)', () => {
     expect(record.mediaOffsetSeconds).toBe(15.2);
   });
 
-  it('supports memory fallback when prisma create throws an error', async () => {
+  it('enforces fail-loud runtime and compensating file cleanup on database failure', async () => {
     const { auditService } = await import('../src/audit/audit.service.js');
     const { prisma } = await import('../src/db/prisma.js');
 
-    const originalCreate = (prisma as any).auditLog.create;
-    (prisma as any).auditLog.create = async () => {
-      throw new Error('Table audit_logs does not exist');
-    };
+    const originalCreate = prisma.auditLog.create;
+    prisma.auditLog.create = (async () => {
+      throw new Error('Database transaction failed on audit log insertion');
+    }) as any;
 
     try {
-      const rawImage = Buffer.from('FALLBACK-TEST-IMAGE');
-      const expectedHash = crypto.createHash('sha256').update(rawImage).digest('hex');
+      const rawImage = Buffer.from('FAIL-LOUD-AND-COMPENSATING-CLEANUP-IMAGE');
+      const storageDir = auditService.getStorageDir();
 
-      const result = await auditService.recordSnapshot({
-        imageBuffer: rawImage,
-        userId: 'usr-fallback',
-        username: 'fallbackUser',
-        cameraId: 'cam-fallback',
-        timestampUtc: new Date(),
-        clientIp: '127.0.0.1',
+      // 1. Calling recordSnapshot directly should throw (fail-loud)
+      await expect(
+        auditService.recordSnapshot({
+          imageBuffer: rawImage,
+          userId: 'usr-fail-loud',
+          username: 'failUser',
+          cameraId: 'cam-fail-loud',
+          timestampUtc: new Date(),
+          clientIp: '127.0.0.1',
+        })
+      ).rejects.toThrow('Database transaction failed on audit log insertion');
+
+      // 2. Compensating cleanup check: No orphaned file should remain in storageDir
+      const files = await fs.readdir(storageDir);
+      const matching = files.filter((f) => f.includes('cam-fail-loud'));
+      expect(matching.length).toBe(0);
+
+      // 3. API endpoint should return 500 when database fails
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/audit/snapshot',
+        headers: { authorization: `Bearer ${operatorToken}` },
+        payload: {
+          image: rawImage.toString('base64'),
+          cameraId: 'cam-fail-loud-api',
+          timestampUtc: new Date().toISOString(),
+        },
       });
+      expect(res.statusCode).toBe(500);
 
-      expect(result.id).toBeDefined();
-      expect(result.sha256).toBe(expectedHash);
-
-      const retrieved = await auditService.getSnapshotById(result.id);
-      expect(retrieved).toBeDefined();
-      expect(retrieved?.userId).toBe('usr-fallback');
-      expect(retrieved?.sha256).toBe(expectedHash);
+      const apiFiles = await fs.readdir(storageDir);
+      const matchingApi = apiFiles.filter((f) => f.includes('cam-fail-loud-api'));
+      expect(matchingApi.length).toBe(0);
     } finally {
-      (prisma as any).auditLog.create = originalCreate;
+      prisma.auditLog.create = originalCreate;
     }
   });
 });
+
 
