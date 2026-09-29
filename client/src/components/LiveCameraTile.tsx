@@ -6,12 +6,21 @@ import { MotionZoneEditorModal } from './MotionZoneEditorModal.js';
 import { useAuth } from '../context/AuthContext.js';
 import { CameraHealthTelemetry } from '../hooks/useCameraHealth.js';
 import { captureVideoSnapshot } from '../utils/snapshot.js';
+import { resolveStreamProfile } from '../utils/streamProfileManager.js';
+import type {
+  ViewMode,
+  QualityOverride,
+  StreamProfileResolution,
+} from '../utils/streamProfileManager.js';
+
+export type { ViewMode, QualityOverride, StreamProfileResolution };
 
 export interface CameraStreamInfo {
   cameraId: string;
   name: string;
   mediaMtxPath: string;
   subStreamPath?: string | null;
+  subMediaMtxPath?: string | null;
   whepUrl: string;
   subStreamWhepUrl?: string | null;
   hlsUrl: string;
@@ -27,6 +36,7 @@ export interface LiveCameraTileProps {
   onClearSlot?: (slotIndex: number) => void;
   onMaximizeSlot?: (slotIndex: number) => void;
   isMaximized?: boolean;
+  viewMode?: ViewMode;
   forceSubStream?: boolean;
   hasMotionAlert?: boolean;
   isMotionBuffering?: boolean;
@@ -44,6 +54,7 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
   onClearSlot,
   onMaximizeSlot,
   isMaximized = false,
+  viewMode,
   forceSubStream = false,
   hasMotionAlert = false,
   isMotionBuffering = false,
@@ -53,26 +64,50 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
 }) => {
   const { isAdmin: authIsAdmin } = useAuth();
   const canEditZones = isAdmin !== undefined ? isAdmin : authIsAdmin;
-  const [streamQuality, setStreamQuality] = useState<'main' | 'sub'>('main');
+
+  const [qualityOverride, setQualityOverride] = useState<QualityOverride>('AUTO');
   const [showPtzOverlay, setShowPtzOverlay] = useState(false);
   const [showZoneModal, setShowZoneModal] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // If grid forces sub-stream (2x2, 3x3) and sub-stream is available, use it (T-04-03)
-  const activeQuality =
-    camera?.subStreamWhepUrl && (forceSubStream || streamQuality === 'sub')
-      ? 'sub'
-      : 'main';
+  // Derive effective ViewMode for adaptive stream profile resolution
+  const effectiveViewMode: ViewMode = viewMode
+    ? viewMode
+    : isMaximized
+    ? 'FULLSCREEN'
+    : 'GRID';
 
-  const whepUrl =
-    activeQuality === 'sub' && camera?.subStreamWhepUrl
-      ? camera.subStreamWhepUrl
-      : camera?.whepUrl || '';
+  const subPath =
+    camera?.subMediaMtxPath ||
+    camera?.subStreamPath ||
+    (camera?.subStreamWhepUrl ? `${camera.mediaMtxPath}_sub` : null);
 
-  const hlsUrl =
-    activeQuality === 'sub' && camera?.subStreamHlsUrl
-      ? camera.subStreamHlsUrl
-      : camera?.hlsUrl || '';
+  const streamProfile: StreamProfileResolution | null = camera
+    ? resolveStreamProfile({
+        viewMode: effectiveViewMode,
+        operatorOverride: qualityOverride,
+        mainPath: camera.mediaMtxPath,
+        subPath,
+      })
+    : null;
+
+  // Resolve WHEP and HLS stream URLs based on streamProfile
+  let whepUrl = '';
+  let hlsUrl = '';
+
+  if (camera && streamProfile) {
+    if (streamProfile.selectedStream === 'SUB') {
+      whepUrl =
+        camera.subStreamWhepUrl ||
+        camera.whepUrl.replace(new RegExp(`/${camera.mediaMtxPath}/whep$`), `/${streamProfile.path}/whep`);
+      hlsUrl =
+        camera.subStreamHlsUrl ||
+        camera.hlsUrl.replace(new RegExp(`/${camera.mediaMtxPath}/index\\.m3u8$`), `/${streamProfile.path}/index.m3u8`);
+    } else {
+      whepUrl = camera.whepUrl;
+      hlsUrl = camera.hlsUrl;
+    }
+  }
 
   return (
     <div
@@ -146,24 +181,51 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
 
         {camera && (
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Main / Sub Quality Switcher */}
-            {camera.subStreamWhepUrl && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setStreamQuality(activeQuality === 'main' ? 'sub' : 'main');
-                }}
-                title="Toggle Main HD / Sub Stream"
-                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider transition-colors ${
-                  activeQuality === 'main'
-                    ? 'bg-[#4fc3f7]/20 text-[#4fc3f7] border border-[#4fc3f7]/50'
-                    : 'bg-[#1f2937] text-slate-300 hover:text-white'
-                }`}
-              >
-                <Layers className="w-3 h-3" />
-                <span>{activeQuality.toUpperCase()}</span>
-              </button>
+            {/* Stream Quality Selector Pill (AUTO | SD | HD) or Locked HD Badge */}
+            {streamProfile && (
+              streamProfile.isHdOnly ? (
+                <div
+                  title="Sub-stream unavailable for this camera (Locked to Main HD)"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#1f2937] text-slate-400 border border-[#374151] select-none"
+                  aria-label="Stream Quality: HD Only"
+                >
+                  <Layers className="w-3 h-3 text-slate-400" />
+                  <span>HD</span>
+                </div>
+              ) : (
+                <div
+                  role="group"
+                  aria-label="Stream Quality Selector"
+                  className="flex items-center bg-[#090d16] border border-[#1f2937] rounded-md p-0.5 text-[10px] font-mono font-bold select-none"
+                >
+                  {(['AUTO', 'SD', 'HD'] as const).map((q) => {
+                    const isSelected = qualityOverride === q;
+                    return (
+                      <button
+                        key={q}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setQualityOverride(q);
+                        }}
+                        aria-pressed={isSelected}
+                        title={
+                          q === 'AUTO'
+                            ? `Automatic Quality (Currently ${streamProfile.selectedStream} in ${effectiveViewMode} mode)`
+                            : `Force ${q} stream (${q === 'HD' ? 'Main Profile' : 'Sub Profile'})`
+                        }
+                        className={`px-1.5 py-0.5 rounded transition-all min-w-[28px] text-center ${
+                          isSelected
+                            ? 'bg-[#4fc3f7] text-[#090d16] font-extrabold shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-[#1f2937]'
+                        }`}
+                      >
+                        {q}
+                      </button>
+                    );
+                  })}
+                </div>
+              )
             )}
 
             {/* PTZ Controls Toggle Button */}
@@ -266,11 +328,12 @@ export const LiveCameraTile: React.FC<LiveCameraTileProps> = ({
           <>
             <WhepHlsPlayer
               ref={videoRef}
-              key={`${camera.cameraId}-${activeQuality}`}
+              key={camera.cameraId}
               whepUrl={whepUrl}
               hlsUrl={hlsUrl}
               iceServers={iceServers}
               cameraName={camera.name}
+              streamProfile={streamProfile?.selectedStream}
             />
 
             {/* Solar Amber Motion Alert Badge on Video */}
