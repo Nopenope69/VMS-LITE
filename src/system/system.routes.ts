@@ -4,6 +4,7 @@ import { cameraHealthService } from '../health/camera-health.service.js';
 import { recordingEngine } from '../recordings/recording-engine.js';
 import { settingsService } from '../settings/settings.service.js';
 import { prisma as defaultPrisma } from '../db/prisma.js';
+import { getNtpStatus } from './ntp.service.js';
 
 const bootTimestamp = Date.now();
 
@@ -83,6 +84,18 @@ export const systemRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         // 5. System Uptime & Status Calculation
         const uptimeSeconds = Math.floor((Date.now() - bootTimestamp) / 1000);
 
+        // 6. NTP Sync Status
+        let ntpSync: { synchronized: boolean; available: boolean } = { synchronized: false, available: false };
+        try {
+          const ntpResult = await getNtpStatus();
+          ntpSync = {
+            available: ntpResult.available,
+            synchronized: ntpResult.available ? ntpResult.synchronized : false,
+          };
+        } catch {
+          // NTP status is non-critical for dashboard — default to unavailable
+        }
+
         let status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL' = 'HEALTHY';
         if (
           fleet.offline > 0 ||
@@ -114,11 +127,34 @@ export const systemRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
           },
           licensing: operational.licensing,
           recentEvents,
+          ntpSync,
         });
       } catch (err: any) {
         return reply.status(500).send({
           error: 'DashboardError',
           message: err.message || 'Failed to aggregate system dashboard metrics',
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /api/system/ntp-status
+   * Returns NTP time-sync status from the host OS
+   */
+  app.get(
+    '/ntp-status',
+    {
+      preHandler: [authenticate],
+    },
+    async (_request, reply) => {
+      try {
+        const status = await getNtpStatus();
+        return reply.send(status);
+      } catch (err: any) {
+        return reply.status(500).send({
+          error: 'NtpStatusError',
+          message: err.message || 'Failed to query NTP status',
         });
       }
     }
