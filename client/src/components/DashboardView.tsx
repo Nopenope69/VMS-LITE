@@ -19,6 +19,7 @@ import {
   Globe,
 } from 'lucide-react';
 import { BackupRestoreModal } from './BackupRestoreModal.js';
+import { DriveTelemetryCard, DriveItem } from './DriveTelemetryCard.js';
 
 export interface DashboardData {
   status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL';
@@ -26,6 +27,13 @@ export interface DashboardData {
   ntpSync?: {
     synchronized: boolean;
     available: boolean;
+  };
+  drives?: {
+    totalDrives: number;
+    healthyCount: number;
+    warningCount: number;
+    criticalCount: number;
+    maxTemperatureCelsius: number | null;
   };
   fleet: {
     total: number;
@@ -80,6 +88,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenSettingsModal,
 }) => {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [drives, setDrives] = useState<DriveItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
@@ -109,14 +118,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/system/dashboard', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        throw new Error(`Failed to load system dashboard (${res.status})`);
+      const [dashRes, drivesRes] = await Promise.all([
+        fetch('/api/system/dashboard', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/system/storage/drives', { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+
+      if (!dashRes.ok) {
+        throw new Error(`Failed to load system dashboard (${dashRes.status})`);
       }
-      const json = await res.json();
+      const json = await dashRes.json();
       setData(json);
+
+      if (drivesRes.ok) {
+        const drivesData = await drivesRes.json();
+        if (Array.isArray(drivesData.drives)) {
+          setDrives(drivesData.drives);
+        }
+      }
     } catch (err: any) {
       setError(err.message || 'Error connecting to system monitor');
     } finally {
@@ -573,6 +591,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* S.M.A.R.T. Hardware Drive Telemetry */}
+      {drives.length > 0 && <DriveTelemetryCard drives={drives} />}
 
       {/* Quick Action Navigation Buttons */}
       <div
