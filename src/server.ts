@@ -24,6 +24,8 @@ import { smtpDispatcherService } from './notifications/smtp-dispatcher.service.j
 import { webhookRoutes } from './webhooks/webhook.routes.js';
 import { settingsRoutes } from './settings/settings.routes.js';
 import { systemRoutes } from './system/system.routes.js';
+import { shutdownRoutes } from './system/shutdown.routes.js';
+import { registerProcessSignalHandlers } from './system/shutdown.service.js';
 import { webhookDispatcherService } from './webhooks/webhook-dispatcher.service.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
 import { onvifEventListenerService as defaultOnvifEvents, OnvifEventListenerService } from './events/onvif-events.service.js';
@@ -126,6 +128,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(playbackRoutes, { prefix: '/api/playback' });
   await app.register(settingsRoutes, { prefix: '/api/settings' });
   await app.register(systemRoutes, { prefix: '/api/system' });
+  await app.register(shutdownRoutes, { prefix: '/api/system' });
 
   // Register static file serving & SPA fallback if client/dist exists
   const clientDist = path.resolve(process.cwd(), 'client/dist');
@@ -182,7 +185,13 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
     wsFeed.close();
   });
 
+  // Register process signal handlers for graceful shutdown (skip in test env)
+  if (process.env.NODE_ENV !== 'test') {
+    registerProcessSignalHandlers(app);
+  }
+
   return app;
 }
 
+export { registerProcessSignalHandlers } from './system/shutdown.service.js';
 export default createServer;
