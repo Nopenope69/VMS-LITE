@@ -26,6 +26,8 @@ import { settingsRoutes } from './settings/settings.routes.js';
 import { systemRoutes } from './system/system.routes.js';
 import { shutdownRoutes } from './system/shutdown.routes.js';
 import { backupRoutes } from './system/backup.routes.js';
+import { storageTelemetryRoutes } from './system/storage-telemetry.routes.js';
+import { storageTelemetryService } from './system/storage-telemetry.service.js';
 import { registerProcessSignalHandlers } from './system/shutdown.service.js';
 import { webhookDispatcherService } from './webhooks/webhook-dispatcher.service.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
@@ -131,6 +133,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(systemRoutes, { prefix: '/api/system' });
   await app.register(shutdownRoutes, { prefix: '/api/system' });
   await app.register(backupRoutes, { prefix: '/api/system' });
+  await app.register(storageTelemetryRoutes, { prefix: '/api/system/storage' });
 
   // Register static file serving & SPA fallback if client/dist exists
   const clientDist = path.resolve(process.cwd(), 'client/dist');
@@ -170,6 +173,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
     await notificationService.start();
     await webhookDispatcherService.start();
     await smtpDispatcherService.start();
+    await storageTelemetryService.start();
     wsFeed.attach(app.server, async (token: string) => {
       return app.jwt.verify(token);
     });
@@ -177,6 +181,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
 
   // Clean up on server close
   app.addHook('onClose', async () => {
+    storageTelemetryService.stop();
     notificationService.stop();
     webhookDispatcherService.stop();
     smtpDispatcherService.stop();

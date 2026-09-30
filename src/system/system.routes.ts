@@ -5,6 +5,7 @@ import { recordingEngine } from '../recordings/recording-engine.js';
 import { settingsService } from '../settings/settings.service.js';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 import { getNtpStatus } from './ntp.service.js';
+import { storageTelemetryService } from './storage-telemetry.service.js';
 
 const bootTimestamp = Date.now();
 
@@ -128,6 +129,7 @@ export const systemRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
           licensing: operational.licensing,
           recentEvents,
           ntpSync,
+          drives: storageTelemetryService.getSummary(),
         });
       } catch (err: any) {
         return reply.status(500).send({
