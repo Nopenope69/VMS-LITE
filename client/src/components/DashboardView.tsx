@@ -14,11 +14,19 @@ import {
   Sliders,
   Radio,
   CheckCircle2,
+  Power,
+  Archive,
+  Globe,
 } from 'lucide-react';
+import { BackupRestoreModal } from './BackupRestoreModal.js';
 
 export interface DashboardData {
   status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL';
   uptimeSeconds: number;
+  ntpSync?: {
+    synchronized: boolean;
+    available: boolean;
+  };
   fleet: {
     total: number;
     online: number;
@@ -74,6 +82,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isShuttingDown, setIsShuttingDown] = useState(false);
+  const [shutdownMessage, setShutdownMessage] = useState<string | null>(null);
+
+  const handleShutdown = async () => {
+    if (!window.confirm('Restart VMS service? All in-progress recording segments will be flushed safely.')) {
+      return;
+    }
+    setIsShuttingDown(true);
+    try {
+      const res = await fetch('/api/system/shutdown', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      setShutdownMessage(json.message || 'Shutdown initiated. Service will restart shortly.');
+    } catch (err: any) {
+      setError(err.message || 'Failed to initiate shutdown');
+      setIsShuttingDown(false);
+    }
+  };
 
   const fetchDashboard = useCallback(async () => {
     if (!token) return;
@@ -205,23 +234,73 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           {data && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '13px',
-                color: '#cbd5e1',
-                fontFamily: 'monospace',
-                backgroundColor: 'rgba(0,0,0,0.3)',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                border: '1px solid rgba(255,255,255,0.1)',
-              }}
-            >
-              <Clock size={16} style={{ color: '#38bdf8' }} />
-              <span>UPTIME: {formatUptime(data.uptimeSeconds)}</span>
-            </div>
+            <>
+              {data.ntpSync && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    fontFamily: 'monospace',
+                    backgroundColor: data.ntpSync.synchronized
+                      ? 'rgba(34, 197, 94, 0.15)'
+                      : data.ntpSync.available
+                      ? 'rgba(239, 68, 68, 0.15)'
+                      : 'rgba(148, 163, 184, 0.15)',
+                    color: data.ntpSync.synchronized
+                      ? '#4ade80'
+                      : data.ntpSync.available
+                      ? '#f87171'
+                      : '#94a3b8',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: `1px solid ${
+                      data.ntpSync.synchronized
+                        ? 'rgba(34, 197, 94, 0.3)'
+                        : data.ntpSync.available
+                        ? 'rgba(239, 68, 68, 0.3)'
+                        : 'rgba(148, 163, 184, 0.3)'
+                    }`,
+                  }}
+                  title={
+                    data.ntpSync.synchronized
+                      ? 'System clock synchronized via NTP'
+                      : data.ntpSync.available
+                      ? 'NTP enabled but not synchronized'
+                      : 'NTP service not available on host'
+                  }
+                >
+                  <Globe size={14} />
+                  <span>
+                    NTP:{' '}
+                    {data.ntpSync.synchronized
+                      ? 'SYNCED'
+                      : data.ntpSync.available
+                      ? 'DRIFT'
+                      : 'N/A'}
+                  </span>
+                </div>
+              )}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '13px',
+                  color: '#cbd5e1',
+                  fontFamily: 'monospace',
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                }}
+              >
+                <Clock size={16} style={{ color: '#38bdf8' }} />
+                <span>UPTIME: {formatUptime(data.uptimeSeconds)}</span>
+              </div>
+            </>
           )}
           <button
             onClick={fetchDashboard}
@@ -726,6 +805,110 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         )}
       </div>
+      {/* Appliance Operations & Maintenance Section (Admin-only) */}
+      {isAdmin && (
+        <div
+          style={{
+            marginTop: '24px',
+            backgroundColor: '#1e293b',
+            border: '1px solid #334155',
+            borderRadius: '8px',
+            padding: '20px',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '14px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Archive size={18} style={{ color: '#38bdf8' }} />
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>
+                Appliance Operations & Maintenance
+              </h3>
+            </div>
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+              ADMIN PRIVILEGES ACTIVE
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gap: '12px',
+            }}
+          >
+            <button
+              onClick={() => setIsBackupModalOpen(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '12px 16px',
+                backgroundColor: '#0f172a',
+                border: '1px solid #334155',
+                borderRadius: '6px',
+                color: '#f8fafc',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '13px',
+              }}
+            >
+              <Archive size={16} style={{ color: '#38bdf8' }} />
+              <span>Backup & Restore Config</span>
+            </button>
+
+            <button
+              onClick={handleShutdown}
+              disabled={isShuttingDown}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '12px 16px',
+                backgroundColor: '#0f172a',
+                border: '1px solid #7f1d1d',
+                borderRadius: '6px',
+                color: '#fca5a5',
+                cursor: isShuttingDown ? 'not-allowed' : 'pointer',
+                fontWeight: 600,
+                fontSize: '13px',
+                opacity: isShuttingDown ? 0.6 : 1,
+              }}
+            >
+              <Power size={16} style={{ color: '#ef4444' }} />
+              <span>{isShuttingDown ? 'Flushing Buffers...' : 'Restart VMS Service'}</span>
+            </button>
+          </div>
+
+          {shutdownMessage && (
+            <div
+              style={{
+                marginTop: '12px',
+                padding: '10px 14px',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid #ef4444',
+                borderRadius: '6px',
+                color: '#f87171',
+                fontSize: '13px',
+              }}
+            >
+              {shutdownMessage}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Backup & Restore Modal */}
+      <BackupRestoreModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        token={token}
+      />
     </div>
   );
 };
