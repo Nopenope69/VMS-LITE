@@ -25,6 +25,7 @@ import { webhookRoutes } from './webhooks/webhook.routes.js';
 import { settingsRoutes } from './settings/settings.routes.js';
 import { systemRoutes } from './system/system.routes.js';
 import { shutdownRoutes } from './system/shutdown.routes.js';
+import { backupRoutes } from './system/backup.routes.js';
 import { registerProcessSignalHandlers } from './system/shutdown.service.js';
 import { webhookDispatcherService } from './webhooks/webhook-dispatcher.service.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
@@ -129,6 +130,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(settingsRoutes, { prefix: '/api/settings' });
   await app.register(systemRoutes, { prefix: '/api/system' });
   await app.register(shutdownRoutes, { prefix: '/api/system' });
+  await app.register(backupRoutes, { prefix: '/api/system' });
 
   // Register static file serving & SPA fallback if client/dist exists
   const clientDist = path.resolve(process.cwd(), 'client/dist');
