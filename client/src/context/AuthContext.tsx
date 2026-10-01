@@ -31,6 +31,12 @@ export interface AuthContextType {
   canControlPtz: (cameraId: string) => boolean;
   login: (token: string, user: User) => void;
   logout: () => void;
+  /**
+   * Call when a request made with `failedToken` got 401. Logs out only if that token is
+   * still the current one: after a password change, in-flight requests with the old
+   * (revoked) token must not wipe the new session.
+   */
+  handleUnauthorized: (failedToken: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -70,8 +76,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(data.user);
           setCapabilities(data.capabilities || []);
           localStorage.setItem('vms_user', JSON.stringify(data.user));
-        } else {
-          // Token expired or invalid
+        } else if (localStorage.getItem('vms_token') === token) {
+          // Token expired or revoked, and not already replaced by a newer login
           setToken(null);
           setUser(null);
           localStorage.removeItem('vms_token');
@@ -103,6 +109,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.removeItem('vms_user');
   }, []);
 
+  const handleUnauthorized = useCallback(
+    (failedToken: string | null) => {
+      if (!failedToken || localStorage.getItem('vms_token') === failedToken) {
+        logout();
+      }
+    },
+    [logout]
+  );
+
   const role = user?.role ?? null;
   const canControlPtz = useCallback(
     (cameraId: string) => {
@@ -133,6 +148,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         canControlPtz,
         login,
         logout,
+        handleUnauthorized,
       }}
     >
       {children}
@@ -156,6 +172,7 @@ export const useAuth = (): AuthContextType => {
       canControlPtz: () => false,
       login: () => {},
       logout: () => {},
+      handleUnauthorized: () => {},
     };
   }
   return context;
