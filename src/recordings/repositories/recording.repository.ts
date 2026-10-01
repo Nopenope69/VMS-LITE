@@ -36,6 +36,9 @@ export interface IRecordingRepository {
   }): Promise<RecordingDto>;
 
   findRecordingById(id: string): Promise<RecordingDto | null>;
+  findRecordingByFilePath(filePath: string): Promise<RecordingDto | null>;
+  /** Most recent catalogued segment start for a camera (segment indexer watermark). */
+  findLatestStartTime(cameraId: string): Promise<Date | null>;
   queryRecordings(params: RecordingQueryParams): Promise<RecordingDto[]>;
   /** Segments overlapping [start, end) for one camera, ascending by start time. */
   findRecordingsInRange(cameraId: string, start: Date, end: Date): Promise<RecordingDto[]>;
@@ -118,6 +121,20 @@ export class PrismaRecordingRepository implements IRecordingRepository {
     });
 
     return records.map((r) => this.toDto(r));
+  }
+
+  async findRecordingByFilePath(filePath: string): Promise<RecordingDto | null> {
+    const record = await this.prisma.recording.findUnique({ where: { filePath } });
+    return record ? this.toDto(record) : null;
+  }
+
+  async findLatestStartTime(cameraId: string): Promise<Date | null> {
+    const latest = await this.prisma.recording.findFirst({
+      where: { cameraId },
+      orderBy: { startTime: 'desc' },
+      select: { startTime: true },
+    });
+    return latest ? new Date(latest.startTime) : null;
   }
 
   async findRecordingsInRange(cameraId: string, start: Date, end: Date): Promise<RecordingDto[]> {
@@ -317,6 +334,23 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
 
     list.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
     return list.slice(0, params.limit || 100);
+  }
+
+  async findRecordingByFilePath(filePath: string): Promise<RecordingDto | null> {
+    for (const r of this.recordings.values()) {
+      if (r.filePath === filePath) return r;
+    }
+    return null;
+  }
+
+  async findLatestStartTime(cameraId: string): Promise<Date | null> {
+    let latest: number | null = null;
+    for (const r of this.recordings.values()) {
+      if (r.cameraId !== cameraId) continue;
+      const t = new Date(r.startTime).getTime();
+      if (latest === null || t > latest) latest = t;
+    }
+    return latest === null ? null : new Date(latest);
   }
 
   async findRecordingsInRange(cameraId: string, start: Date, end: Date): Promise<RecordingDto[]> {

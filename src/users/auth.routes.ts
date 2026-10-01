@@ -3,6 +3,7 @@ import { Role } from '@prisma/client';
 import { AuthService } from './auth.service.js';
 import { authenticate, requireRole } from './rbac.guard.js';
 import { auditService } from '../audit/audit.service.js';
+import { clearMediaCookie, setMediaCookie } from '../media/media-proxy.routes.js';
 
 export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
   const authService = new AuthService();
@@ -47,6 +48,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
       username: user.username,
       role: user.role,
     });
+    setMediaCookie(request, reply, token);
 
     return {
       token,
@@ -59,10 +61,19 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
   });
 
   // GET /api/auth/me
-  fastify.get('/me', { preHandler: [authenticate] }, async (request) => {
+  fastify.get('/me', { preHandler: [authenticate] }, async (request, reply) => {
+    // Refresh the media cookie for sessions restored from a stored token
+    const token = request.headers.authorization?.slice(7).trim();
+    if (token) setMediaCookie(request, reply, token);
     return {
       user: request.user,
     };
+  });
+
+  // POST /api/auth/logout
+  fastify.post('/logout', async (_request, reply) => {
+    clearMediaCookie(reply);
+    return { success: true };
   });
 
   // GET /api/auth/users (Admin only)

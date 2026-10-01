@@ -30,6 +30,23 @@ export interface RecordingCatalogOptions {
 /** Segments closer than this are shown as one continuous span on the timeline. */
 const SPAN_GAP_TOLERANCE_MS = 5_000;
 
+/**
+ * Parses the UTC start time MediaMTX encodes in segment file names
+ * (recordPath %Y-%m-%d_%H-%M-%S-%f; microseconds optional). MediaMTX runs in UTC.
+ */
+export function parseSegmentFileTime(segmentPath: string): Date | null {
+  const match = path
+    .basename(segmentPath)
+    .match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})(?:-(\d{1,6}))?/);
+  if (!match) return null;
+  const [, year, month, day, hour, min, sec, micros] = match;
+  // Round up: MediaMTX playback rejects a start even 1µs before the first segment,
+  // so span starts must never precede the real segment start.
+  const ms = micros ? Math.ceil(Number(micros.padEnd(6, '0')) / 1000) : 0;
+  const date = new Date(Date.UTC(+year, +month - 1, +day, +hour, +min, +sec, ms));
+  return isNaN(date.getTime()) ? null : date;
+}
+
 export class UnknownCameraPathError extends Error {
   constructor(mediaMtxPath: string) {
     super(`No camera is registered for media path '${mediaMtxPath}'`);
@@ -79,16 +96,12 @@ export class RecordingCatalog {
       }
     }
 
-    const match = segmentPath.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/);
-    if (match) {
-      const [, year, month, day, hour, min, sec] = match;
-      const startTime = new Date(Date.UTC(+year, +month - 1, +day, +hour, +min, +sec));
-      if (!isNaN(startTime.getTime())) {
-        return {
-          startTime,
-          endTime: new Date(startTime.getTime() + duration * 1000),
-        };
-      }
+    const fileTime = parseSegmentFileTime(segmentPath);
+    if (fileTime) {
+      return {
+        startTime: fileTime,
+        endTime: new Date(fileTime.getTime() + duration * 1000),
+      };
     }
 
     // Fallback: derive from clock
@@ -124,6 +137,12 @@ export class RecordingCatalog {
     }
     if (!isWithinRoot(this.recordingsRoot, payload.segmentPath)) {
       throw new Error(`Segment path ${payload.segmentPath} is outside the recordings root ${this.recordingsRoot}`);
+    }
+
+    // Idempotent: the segment indexer and the MediaMTX hook may both report a file
+    const existing = await this.repository.findRecordingByFilePath(payload.segmentPath);
+    if (existing) {
+      return existing;
     }
 
     const cameraId = camera.id;
@@ -332,7 +351,7 @@ export class RecordingCatalog {
 
     const base = playbackBaseUrl.replace(/\/$/, '');
     const encodedStart = encodeURIComponent(new Date(startTime).toISOString());
-    const fmp4StreamUrl = `${base}/get?path=${camera.mediaMtxPath}&start=${encodedStart}&duration=${durationSeconds}`;
+    const fmp4StreamUrl = `${base}/get?path=${encodeURIComponent(camera.mediaMtxPath)}&start=${encodedStart}&duration=${durationSeconds}`;
 
     return {
       cameraId,

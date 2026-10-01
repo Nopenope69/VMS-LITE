@@ -22,3 +22,28 @@ export async function getVisibleCameraIds(
   });
   return permissions.map((p: { cameraId: string }) => p.cameraId);
 }
+
+export type CameraPermissionFlag = 'canViewLive' | 'canViewPlayback' | 'canControlPtz' | 'canExportClips';
+
+/**
+ * Per-camera permission check shared by route guards and the media proxy.
+ * ADMIN: everything. VIEWER: live + playback on all cameras. OPERATOR: explicit grants.
+ */
+export async function hasCameraPermission(
+  user: Pick<UserTokenPayload, 'id' | 'role'>,
+  cameraId: string,
+  permission: CameraPermissionFlag,
+  prisma: any = defaultPrisma
+): Promise<boolean> {
+  if (user.role === Role.ADMIN) return true;
+  if (user.role === Role.VIEWER) {
+    return permission === 'canViewLive' || permission === 'canViewPlayback';
+  }
+  if (user.role === Role.OPERATOR) {
+    const perm = await prisma.cameraPermission.findUnique({
+      where: { userId_cameraId: { userId: user.id, cameraId } },
+    });
+    return Boolean(perm && perm[permission]);
+  }
+  return false;
+}

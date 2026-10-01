@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { authenticate } from '../users/rbac.guard.js';
+import { authenticate, requireCameraPermission } from '../users/rbac.guard.js';
+import { getVisibleCameraIds } from '../users/camera-access.js';
 import { cameraService } from '../cameras/camera.service.js';
 import {
   CameraStreamInfo,
@@ -55,17 +56,15 @@ export function generateIceServers(
 }
 
 export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
-  const getWhepBaseUrl = () =>
-    process.env.MEDIAMTX_WHEP_BASE_URL || 'http://localhost:8889';
-  const getHlsBaseUrl = () =>
-    process.env.MEDIAMTX_HLS_BASE_URL || 'http://localhost:8888';
+  // Browser-facing media goes through the authenticated proxy on this origin
+  const getWhepBaseUrl = () => '/api/media/whep';
+  const getHlsBaseUrl = () => '/api/media/hls';
 
   const mapCameraToStreamInfo = (cam: any): CameraStreamInfo => {
     const whepBase = getWhepBaseUrl().replace(/\/$/, '');
     const hlsBase = getHlsBaseUrl().replace(/\/$/, '');
     const mainPath = cam.mediaMtxPath;
-    const hasSubStream = Boolean(cam.subStreamUrl);
-    const subPath = hasSubStream ? `${mainPath}_sub` : null;
+    const subPath = cam.subMediaMtxPath || (cam.subStreamUrl ? `${mainPath}_sub` : null);
 
     return {
       cameraId: cam.id,
@@ -90,7 +89,10 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     },
     async (request, reply) => {
       try {
-        const cameras = await cameraService.listCameras();
+        const visible = await getVisibleCameraIds(request.user);
+        const cameras = (await cameraService.listCameras()).filter(
+          (c) => !visible || visible.includes(c.id)
+        );
         const userId = request.user?.id || 'vms_client';
         const iceServers = generateIceServers(userId);
 
@@ -143,7 +145,7 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
   app.get<{ Params: { id: string } }>(
     '/cameras/:id',
     {
-      preHandler: [authenticate],
+      preHandler: [authenticate, requireCameraPermission('canViewLive')],
     },
     async (request, reply) => {
       const { id } = request.params;

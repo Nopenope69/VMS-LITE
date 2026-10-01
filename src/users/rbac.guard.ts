@@ -117,17 +117,8 @@ export function requireCameraPermission(permission: CameraPermissionKey) {
         return;
       }
 
-      const { prisma } = await import('../db/prisma.js');
-      const perm = await prisma.cameraPermission.findUnique({
-        where: {
-          userId_cameraId: {
-            userId,
-            cameraId,
-          },
-        },
-      });
-
-      if (!perm || !perm[permission]) {
+      const { hasCameraPermission } = await import('./camera-access.js');
+      if (!(await hasCameraPermission(request.user, cameraId, permission))) {
         reply.status(403).send({
           error: 'Forbidden',
           message: `Operator lacks '${permission}' permission for camera '${cameraId}'`,

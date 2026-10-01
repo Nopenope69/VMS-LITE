@@ -98,7 +98,7 @@ describe('Playback API (/api/playback) (PLAY-01, PLAY-03)', () => {
       expect(Array.isArray(body.spans)).toBe(true);
       expect(body.spans.length).toBeGreaterThanOrEqual(1);
       expect(body.spans[0].durationSeconds).toBe(120);
-      expect(body.playbackBaseUrl).toContain(':9996');
+      expect(body.playbackBaseUrl).toBe('/api/media/playback');
     });
   });
 
@@ -132,7 +132,7 @@ describe('Playback API (/api/playback) (PLAY-01, PLAY-03)', () => {
       const body = res.json();
       expect(body.success).toBe(true);
       expect(body.cameraId).toBe(testCameraId);
-      expect(body.fmp4StreamUrl).toContain(':9996/get?path=');
+      expect(body.fmp4StreamUrl).toContain('/api/media/playback/get?path=');
       expect(body.fmp4StreamUrl).toContain('start=');
       expect(body.fmp4StreamUrl).toContain('duration=600');
       expect(body.duration).toBe(600);

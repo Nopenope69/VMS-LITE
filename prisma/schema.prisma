@@ -120,7 +120,7 @@ model Recording {
   cameraId     String   @map("camera_id")
   camera       Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
   mediaMtxPath String   @map("mediamtx_path")
-  filePath     String   @map("file_path")
+  filePath     String   @unique @map("file_path")
   fileName     String   @map("file_name")
   startTime    DateTime @map("start_time")
   endTime      DateTime @map("end_time")

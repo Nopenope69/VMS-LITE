@@ -30,6 +30,7 @@ import { backupRoutes } from './system/backup.routes.js';
 import { setupRoutes } from './system/setup.routes.js';
 import { handoffRoutes } from './system/handoff.routes.js';
 import { auditRoutes } from './audit/audit.routes.js';
+import { mediaProxyRoutes } from './media/media-proxy.routes.js';
 import { storageTelemetryRoutes } from './system/storage-telemetry.routes.js';
 import { storageTelemetryService } from './system/storage-telemetry.service.js';
 import { registerProcessSignalHandlers } from './system/shutdown.service.js';
@@ -163,6 +164,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(handoffRoutes, { prefix: '/api/system' });
   await app.register(storageTelemetryRoutes, { prefix: '/api/system/storage' });
   await app.register(auditRoutes, { prefix: '/api/audit' });
+  await app.register(mediaProxyRoutes, { prefix: '/api/media' });
 
   // Register static file serving & SPA fallback if client/dist exists
   const clientDist = path.resolve(process.cwd(), 'client/dist');

@@ -1,60 +1,73 @@
 ###############################################
-# MediaMTX Configuration for Basic VMS Core
+# MediaMTX configuration for Basic VMS (MediaMTX v1.11)
+#
+# The control plane owns all camera paths: it adds them through the API and
+# re-creates them on every scheduler tick, so none are declared here.
+#
+# Security model: every HTTP listener is bound to localhost. Browsers reach live
+# and recorded video only through the control plane's authenticated
+# /api/media/* proxy. Only the WebRTC UDP media port is exposed.
+# (docker-compose runs this container with host networking.)
 ###############################################
 
-# General logging
 logLevel: info
 logDestinations: [stdout]
 
-# Internal Control Plane API
+# Local-only access; nothing else listens on these ports from outside the host.
+authMethod: internal
+authInternalUsers:
+- user: any
+  pass:
+  ips: ['127.0.0.1', '::1']
+  permissions:
+  - action: api
+  - action: read
+  - action: playback
+
+# Control API (used by the control plane only)
 api: yes
-apiAddress: :9997
-
-# Metrics
+apiAddress: 127.0.0.1:9997
 metrics: no
+pprof: no
 
-# Playback Server (fMP4 query and playback: PLAY-03)
+# Recorded fMP4 playback (proxied as /api/media/playback)
 playback: yes
-playbackAddress: :9996
+playbackAddress: 127.0.0.1:9996
 
-# RTSP Server (Camera Ingest: CAM-05)
+# RTSP re-stream, local only (e.g. for exports or third-party tools on the box)
 rtsp: yes
-rtspAddress: :8554
-protocols: [tcp, udp]
-encryption: "no"
+rtspAddress: 127.0.0.1:8554
+rtspTransports: [tcp]
+rtmp: no
+srt: no
 
-# WebRTC / WHEP Server (Low Latency Live Streaming: LIVE-01)
-webrtc: yes
-webrtcAddress: :8889
-webrtcEncryption: "no"
-webrtcLocalUDPAddress: :8889
-webrtcIPsFromInterfaces: yes
-
-# HLS Server (Fallback Streaming: LIVE-02)
+# HLS fallback (proxied as /api/media/hls). Muxers start on demand to save CPU.
 hls: yes
-hlsAddress: :8888
-hlsAlwaysRemux: yes
-hlsVariant: fmp4
-hlsSegmentCount: 5
-hlsSegmentDuration: 1s
-hlsPartDuration: 200ms
+hlsAddress: 127.0.0.1:8888
+hlsAlwaysRemux: no
+hlsVariant: lowLatency
 
-# Path Configuration & Automated Segment Recording (REC-01, REC-03)
-paths:
-  all:
-    # Allow dynamic on-demand RTSP ingest from Fastify control plane
-    source: publisher
+# WebRTC: WHEP signalling is local (proxied as /api/media/whep); media uses UDP 8189.
+webrtc: yes
+webrtcAddress: 127.0.0.1:8889
+webrtcLocalUDPAddress: :8189
+webrtcIPsFromInterfaces: yes
+# Add the public/WAN address here (or via MTX_WEBRTCADDITIONALHOSTS) for remote viewers.
+webrtcAdditionalHosts: []
 
-    # Segment Recording Configuration (zero-transcode fMP4)
-    record: yes
-    recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S
-    recordFormat: fmp4
-    recordPartDuration: 1s
-    recordSegmentDuration: 60s
-    recordDeleteAfter: 0s
+# Defaults applied to every camera path the control plane creates.
+pathDefaults:
+  # Recording is switched per camera by the control plane's scheduler.
+  record: no
+  # Timestamps are UTC (the container has no timezone data). The control plane's
+  # segment indexer scans this directory, so no completion hook is required.
+  recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordPartDuration: 1s
+  recordSegmentDuration: 60s
+  # Retention and disk-full rollover are enforced by the control plane.
+  recordDeleteAfter: 0s
+  # Pull cameras over TCP: reliable across Wi-Fi, VPN and WAN links to remote sites.
+  rtspTransport: tcp
 
-    # Segment Completion Webhook dispatched to Basic VMS Core (REC-03)
-    runOnRecordSegmentComplete: >
-      curl -s -X POST http://app:3000/api/recordings/segments/complete
-      -H "Content-Type: application/json"
-      -d '{"path":"$MTX_PATH","segmentPath":"$MTX_SEGMENT_PATH","duration":$MTX_SEGMENT_DURATION}'
+paths: {}

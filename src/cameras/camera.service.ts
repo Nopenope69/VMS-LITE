@@ -177,7 +177,7 @@ export class CameraService {
       await new Promise((r) => setTimeout(r, 400));
     }
 
-    const whepUrl = `/whep/${pathName}/whep`;
+    const whepUrl = `/api/media/whep/${pathName}/whep`;
 
     return {
       pathName,
