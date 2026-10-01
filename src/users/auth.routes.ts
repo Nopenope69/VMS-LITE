@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { Role } from '@prisma/client';
 import { AuthService } from './auth.service.js';
 import { authenticate, requireRole } from './rbac.guard.js';
+import { auditService } from '../audit/audit.service.js';
 
 export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
   const authService = new AuthService();
@@ -21,11 +22,25 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
 
     const user = await authService.verifyCredentials(username, password);
     if (!user) {
+      await auditService.log({
+        action: 'AUTH_FAILURE',
+        username,
+        ipAddress: request.ip,
+        metadata: { reason: 'Invalid credentials' },
+      });
       return reply.status(401).send({
         error: 'Unauthorized',
         message: 'Invalid username or password',
       });
     }
+
+    await auditService.log({
+      action: 'AUTH_LOGIN',
+      userId: user.id,
+      username: user.username,
+      ipAddress: request.ip,
+      metadata: { role: user.role },
+    });
 
     const token = fastify.jwt.sign({
       id: user.id,

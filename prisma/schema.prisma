@@ -237,3 +237,20 @@ model NotificationConfig {
   @@map("notification_configs")
 }
 
+model AuditLog {
+  id        String   @id @default(uuid())
+  timestamp DateTime @default(now())
+  userId    String?  @map("user_id")
+  username  String?
+  action    String   // e.g. AUTH_LOGIN, LIVE_VIEW_START, EVIDENCE_EXPORT, CONFIG_CHANGE
+  resource  String?  // e.g. camera:cam-123, system:settings
+  ipAddress String?  @map("ip_address")
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([timestamp])
+  @@index([userId])
+  @@index([action])
+  @@map("audit_logs")
+}
+

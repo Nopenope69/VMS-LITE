@@ -5,6 +5,7 @@ import { authenticate, requireCameraPermission } from '../users/rbac.guard.js';
 import { requireCapability } from '../licensing/plugin.js';
 import { exportService } from './export.service.js';
 import { evidenceBundleService } from './evidence-bundle.service.js';
+import { auditService } from '../audit/audit.service.js';
 
 const CreateExportBodySchema = z.object({
   cameraId: z.string().uuid(),
@@ -42,6 +43,20 @@ export const exportRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         const job = await exportService.createExportJob({
           ...parsed.data,
           userId: (request as any).user?.id,
+        });
+
+        await auditService.log({
+          action: 'EVIDENCE_EXPORT',
+          userId: (request as any).user?.id,
+          username: (request as any).user?.username,
+          resource: `camera:${parsed.data.cameraId}`,
+          ipAddress: request.ip,
+          metadata: {
+            jobId: job.id,
+            startTime: parsed.data.startTime,
+            endTime: parsed.data.endTime,
+            exportMode: parsed.data.exportMode,
+          },
         });
 
         return reply.status(202).send({
