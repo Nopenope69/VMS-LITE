@@ -34,10 +34,31 @@ import { storageTelemetryRoutes } from './system/storage-telemetry.routes.js';
 import { storageTelemetryService } from './system/storage-telemetry.service.js';
 import { registerProcessSignalHandlers } from './system/shutdown.service.js';
 import { webhookDispatcherService } from './webhooks/webhook-dispatcher.service.js';
+import { eventBus } from './events/event-bus.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
 import { onvifEventListenerService as defaultOnvifEvents, OnvifEventListenerService } from './events/onvif-events.service.js';
 import { resolveJwtSecret } from './users/jwt-secret.js';
 import { recordingEngine as defaultRecordingEngine, RecordingEngine } from './recordings/recording-engine.js';
+
+let eventRetentionTimer: NodeJS.Timeout | null = null;
+
+/** Prunes persisted events older than EVENT_RETENTION_DAYS (default 90) hourly. */
+function startEventRetention(): void {
+  if (eventRetentionTimer || process.env.NODE_ENV === 'test') return;
+  const days = Math.max(1, Number(process.env.EVENT_RETENTION_DAYS) || 90);
+  const prune = () =>
+    eventBus.pruneOlderThan(days).catch((err) => console.warn('[Events] Retention prune failed:', err.message));
+  prune();
+  eventRetentionTimer = setInterval(prune, 60 * 60 * 1000);
+  eventRetentionTimer.unref();
+}
+
+function stopEventRetention(): void {
+  if (eventRetentionTimer) {
+    clearInterval(eventRetentionTimer);
+    eventRetentionTimer = null;
+  }
+}
 
 export interface ServerOptions {
   logger?: boolean;
@@ -182,6 +203,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
     await notificationService.start();
     await webhookDispatcherService.start();
     await smtpDispatcherService.start();
+    startEventRetention();
     await storageTelemetryService.start();
     wsFeed.attach(app.server, async (token: string) => {
       return app.jwt.verify(token);
@@ -190,6 +212,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
 
   // Clean up on server close
   app.addHook('onClose', async () => {
+    stopEventRetention();
     storageTelemetryService.stop();
     notificationService.stop();
     webhookDispatcherService.stop();

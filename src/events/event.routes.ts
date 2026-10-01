@@ -3,6 +3,7 @@ import { Role } from '@prisma/client';
 import { eventBus } from './event-bus.js';
 import { EmitEventInput, EventQueryFilter } from './event.types.js';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
+import { getVisibleCameraIds } from '../users/camera-access.js';
 
 export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
   // GET /api/events
@@ -15,13 +16,24 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
       offset?: string;
     };
   }>('/events', { preHandler: [authenticate] }, async (request) => {
+    const limit = parseInt(request.query.limit ?? '', 10);
+    const offset = parseInt(request.query.offset ?? '', 10);
     const filter: EventQueryFilter = {
       type: request.query.type,
       cameraId: request.query.cameraId,
       since: request.query.since,
-      limit: request.query.limit ? parseInt(request.query.limit, 10) : 50,
-      offset: request.query.offset ? parseInt(request.query.offset, 10) : 0,
+      limit: Number.isFinite(limit) ? limit : 50,
+      offset: Number.isFinite(offset) ? offset : 0,
     };
+
+    // Operators only see events of cameras they are granted
+    const visible = await getVisibleCameraIds(request.user);
+    if (visible) {
+      if (filter.cameraId && !visible.includes(filter.cameraId)) {
+        return { events: [], count: 0 };
+      }
+      filter.cameraIds = visible;
+    }
 
     const events = await eventBus.queryEvents(filter);
     return {

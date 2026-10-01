@@ -40,6 +40,8 @@ export interface EmitEventInput<T = Record<string, unknown>> {
 export interface EventQueryFilter {
   type?: string;
   cameraId?: string;
+  /** Restrict to these cameras (used for operator camera permissions). */
+  cameraIds?: string[];
   since?: Date | string;
   limit?: number;
   offset?: number;

@@ -210,6 +210,8 @@ describe('OnvifEventListenerService (EVT-03, EVT-04)', () => {
         },
       });
 
+      // Connection details are resolved asynchronously before subscribing
+      await vi.waitFor(() => expect(service.getSubscription('cam-auto-1')).toBeDefined());
       const sub = service.getSubscription('cam-auto-1');
       expect(sub).toBeDefined();
       expect(sub?.active).toBe(true);

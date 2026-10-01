@@ -16,7 +16,16 @@ export interface WebSocketFeedOptions {
 interface AuthenticatedSocket extends WebSocket {
   isAlive?: boolean;
   user?: UserTokenPayload;
+  /** null = all cameras; otherwise the operator's granted cameras (refreshed periodically). */
+  visibleCameraIds?: Set<string> | null;
+  visibleLoadedAt?: number;
 }
+
+/** Event types that are internal bookkeeping and not useful to UI clients. */
+const NON_BROADCAST_EVENT_TYPES = new Set(['recording.segment_created']);
+const ACCESS_REFRESH_MS = 60_000;
+
+export type CameraAccessResolver = (user: UserTokenPayload) => Promise<string[] | null>;
 
 export class WebSocketFeedService {
   private wss: WebSocketServer | null = null;
@@ -25,6 +34,11 @@ export class WebSocketFeedService {
   private path: string;
   private heartbeatIntervalMs: number;
   private maxBufferSize: number;
+
+  private accessResolver: CameraAccessResolver = async (user) => {
+    const { getVisibleCameraIds } = await import('../users/camera-access.js');
+    return getVisibleCameraIds(user);
+  };
 
   constructor(
     private readonly eventBus: EventBus = defaultEventBus,
@@ -79,10 +93,19 @@ export class WebSocketFeedService {
           return;
         }
 
+        let visible: string[] | null = null;
+        try {
+          visible = await this.accessResolver(user);
+        } catch {
+          visible = [];
+        }
+
         // Upgrade socket and emit connection
         this.wss?.handleUpgrade(req, socket, head, (ws) => {
           const authSocket = ws as AuthenticatedSocket;
           authSocket.user = user;
+          authSocket.visibleCameraIds = visible ? new Set(visible) : null;
+          authSocket.visibleLoadedAt = Date.now();
           authSocket.isAlive = true;
           this.wss?.emit('connection', authSocket, req);
         });
@@ -141,6 +164,7 @@ export class WebSocketFeedService {
    */
   broadcast(event: EventRecord): void {
     if (!this.wss) return;
+    if (NON_BROADCAST_EVENT_TYPES.has(event.type)) return;
 
     const payload = JSON.stringify({
       type: 'event',
@@ -150,6 +174,9 @@ export class WebSocketFeedService {
     for (const client of this.wss.clients) {
       const authClient = client as AuthenticatedSocket;
       if (authClient.readyState === WebSocket.OPEN) {
+        if (!this.canSee(authClient, event)) {
+          continue;
+        }
         // Slow consumer defense (T-06-04): drop socket if buffered amount exceeds limit
         if (authClient.bufferedAmount > this.maxBufferSize) {
           console.warn('[WebSocketFeed] Dropping slow consumer exceeding send buffer limit');
@@ -164,6 +191,26 @@ export class WebSocketFeedService {
         }
       }
     }
+  }
+
+  setAccessResolver(resolver: CameraAccessResolver): void {
+    this.accessResolver = resolver;
+  }
+
+  private canSee(client: AuthenticatedSocket, event: EventRecord): boolean {
+    if (client.visibleCameraIds === null || client.visibleCameraIds === undefined) {
+      return true;
+    }
+    if (client.user && Date.now() - (client.visibleLoadedAt ?? 0) > ACCESS_REFRESH_MS) {
+      client.visibleLoadedAt = Date.now();
+      this.accessResolver(client.user)
+        .then((ids) => {
+          client.visibleCameraIds = ids ? new Set(ids) : null;
+        })
+        .catch(() => {});
+    }
+    // System-wide events (storage, etc.) have no camera and are visible to everyone
+    return !event.cameraId || client.visibleCameraIds.has(event.cameraId);
   }
 
   /**

@@ -20,6 +20,45 @@ export interface CameraSubscriptionInput {
   password?: string | null;
 }
 
+/**
+ * Resolves a camera's ONVIF connection details from the database.
+ * Returns undefined when the camera is unknown, null when it is not an ONVIF camera.
+ */
+export type OnvifCameraLookup = (cameraId: string) => Promise<CameraSubscriptionInput | null | undefined>;
+export type OnvifCameraLister = () => Promise<CameraSubscriptionInput[]>;
+
+function toSubscriptionInput(camera: any): CameraSubscriptionInput | null {
+  if (!camera.onvifUrl) return null;
+  return {
+    id: camera.id,
+    name: camera.name,
+    ip: camera.ip ?? undefined,
+    port: camera.port ?? undefined,
+    onvifXAddr: camera.onvifUrl,
+    username: camera.username,
+    password: camera.password,
+  };
+}
+
+const defaultCameraLookup: OnvifCameraLookup = async (cameraId) => {
+  const { prisma } = await import('../db/prisma.js');
+  const camera = await prisma.camera.findUnique({ where: { id: cameraId } });
+  return camera ? toSubscriptionInput(camera) : undefined;
+};
+
+const defaultCameraLister: OnvifCameraLister = async () => {
+  const { prisma } = await import('../db/prisma.js');
+  const cameras = await prisma.camera.findMany({ where: { onvifUrl: { not: null } } });
+  return cameras.map(toSubscriptionInput).filter(Boolean) as CameraSubscriptionInput[];
+};
+
+/** Requested pull-point lifetime; renewed well before it lapses. */
+const SUBSCRIPTION_LIFETIME = 'PT120S';
+const SUBSCRIPTION_LIFETIME_MS = 120_000;
+const RENEW_MARGIN_MS = 30_000;
+const PULL_TIMEOUT = 'PT5S';
+const HTTP_TIMEOUT_MS = 15_000;
+
 export class OnvifEventListenerService {
   private subscriptions = new Map<string, OnvifEventSubscription>();
   private pollTimeouts = new Map<string, NodeJS.Timeout>();
@@ -28,11 +67,17 @@ export class OnvifEventListenerService {
   private isListening = false;
   private eventUnsubscribers: (() => void)[] = [];
 
+  private readonly cameraLookup: OnvifCameraLookup;
+  private readonly cameraLister: OnvifCameraLister;
+
   constructor(
     private readonly eventBus: EventBus = defaultEventBus,
-    mockMode = false
+    mockMode = false,
+    deps: { cameraLookup?: OnvifCameraLookup; cameraLister?: OnvifCameraLister } = {}
   ) {
     this.mockMode = mockMode || process.env.NODE_ENV === 'test';
+    this.cameraLookup = deps.cameraLookup || defaultCameraLookup;
+    this.cameraLister = deps.cameraLister || defaultCameraLister;
   }
 
   /**
@@ -43,25 +88,29 @@ export class OnvifEventListenerService {
     this.isListening = true;
 
     const unsubOnline = this.eventBus.subscribe('camera.online', async (event) => {
-      const meta = event.metadata as any;
-      if (!event.cameraId || !meta) return;
-      // Only auto-subscribe if camera has ONVIF endpoint/IP and is not explicitly manual-only
-      if ((meta.onvifXAddr || meta.ip) && !meta.manual) {
-        try {
-          await this.subscribeCamera({
-            id: event.cameraId,
-            name: meta.name || 'Camera',
-            ip: meta.ip,
-            port: meta.port,
-            onvifXAddr: meta.onvifXAddr,
-            username: meta.username,
-            password: meta.password,
-          });
-        } catch (err: any) {
-          console.warn(`[OnvifEventListenerService] Auto-subscribe failed for camera ${event.cameraId}:`, err.message);
+      if (!event.cameraId) return;
+      try {
+        const input = await this.resolveCamera(event.cameraId, event.metadata as any);
+        if (input) {
+          await this.subscribeCamera(input);
         }
+      } catch (err: any) {
+        console.warn(`[OnvifEventListenerService] Auto-subscribe failed for camera ${event.cameraId}:`, err.message);
       }
     });
+
+    // Subscribe cameras that already exist: nothing re-announces them after a restart
+    if (!this.mockMode) {
+      this.cameraLister()
+        .then(async (cameras) => {
+          for (const camera of cameras) {
+            if (this.isListening && !this.subscriptions.has(camera.id)) {
+              await this.subscribeCamera(camera).catch(() => {});
+            }
+          }
+        })
+        .catch((err) => console.warn('[OnvifEventListenerService] Failed to load ONVIF cameras:', err.message));
+    }
 
     const unsubOffline = this.eventBus.subscribe('camera.offline', (event) => {
       if (event.cameraId) {
@@ -76,6 +125,34 @@ export class OnvifEventListenerService {
     });
 
     this.eventUnsubscribers.push(unsubOnline, unsubOffline, unsubDeleted);
+  }
+
+  /**
+   * Connection details come from the database (credentials are never carried in
+   * events). Event metadata is only used for cameras the database does not know,
+   * which happens in isolated unit tests.
+   */
+  private async resolveCamera(cameraId: string, meta: any): Promise<CameraSubscriptionInput | null> {
+    let fromDb: CameraSubscriptionInput | null | undefined;
+    try {
+      fromDb = await this.cameraLookup(cameraId);
+    } catch {
+      fromDb = undefined;
+    }
+    if (fromDb !== undefined) {
+      return fromDb;
+    }
+    if (meta && (meta.onvifXAddr || meta.ip) && !meta.manual) {
+      return {
+        id: cameraId,
+        name: meta.name || 'Camera',
+        ip: meta.ip,
+        port: meta.port,
+        onvifXAddr: meta.onvifXAddr,
+        username: meta.username,
+      };
+    }
+    return null;
   }
 
   /**
@@ -152,15 +229,8 @@ export class OnvifEventListenerService {
       return subscription;
     }
 
-    try {
-      await this.initiatePullPointSubscription(subscription);
-      this.schedulePoll(camera.id, 100);
-    } catch (err) {
-      console.warn(`[OnvifEventListener] Failed to initiate subscription for camera ${camera.id}:`, (err as Error).message);
-      // Schedule reconnect with backoff
-      this.scheduleReconnect(camera.id);
-    }
-
+    // The poll loop creates the pull-point subscription and keeps it alive
+    this.schedulePoll(camera.id, 100);
     return subscription;
   }
 
@@ -178,6 +248,10 @@ export class OnvifEventListenerService {
     if (sub) {
       sub.active = false;
       this.subscriptions.delete(cameraId);
+      // Free the camera-side pull point (devices allow only a handful)
+      if (!this.mockMode && sub.subscriptionUrl) {
+        this.soapRequest(sub.subscriptionUrl, this.buildUnsubscribeEnvelope(sub)).catch(() => {});
+      }
     }
   }
 
@@ -215,8 +289,11 @@ export class OnvifEventListenerService {
     const securityHeader = this.buildWsSecurityHeader(sub.username, sub.password);
     return `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
+               xmlns:wsa="http://www.w3.org/2005/08/addressing"
                xmlns:tev="http://www.onvif.org/ver10/events/wsdl">
   <soap:Header>
+    <wsa:Action>http://www.onvif.org/ver10/events/wsdl/PullPointSubscription/PullMessagesRequest</wsa:Action>
+    <wsa:To>${escapeXml(sub.subscriptionUrl || '')}</wsa:To>
     ${securityHeader}
   </soap:Header>
   <soap:Body>
@@ -467,69 +544,80 @@ export class OnvifEventListenerService {
    */
   private async initiatePullPointSubscription(sub: OnvifEventSubscription): Promise<void> {
     const eventServiceUrl = sub.xaddr.replace(/device_service.*$/, 'event_service');
-    const envelope = this.buildCreatePullPointEnvelope(sub, 'PT60S');
+    const xmlText = await this.soapRequest(eventServiceUrl, this.buildCreatePullPointEnvelope(sub, SUBSCRIPTION_LIFETIME));
 
-    const res = await fetch(eventServiceUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/soap+xml; charset=utf-8',
-      },
-      body: envelope,
-    });
-
-    if (!res.ok) {
-      throw new Error(`CreatePullPointSubscription failed with HTTP ${res.status}`);
-    }
-
-    const xmlText = await res.text();
     const addressMatch = xmlText.match(/<(?:[a-zA-Z0-9_]+:)?Address[^>]*>([^<]+)<\/(?:[a-zA-Z0-9_]+:)?Address>/i);
     if (!addressMatch) {
       throw new Error('No SubscriptionReference Address returned in PullPoint response');
     }
 
     sub.subscriptionUrl = addressMatch[1].trim();
-    sub.terminationTime = new Date(Date.now() + 60000);
-    sub.errorCount = 0;
+    sub.terminationTime = new Date(Date.now() + SUBSCRIPTION_LIFETIME_MS);
   }
 
   /**
-   * Schedules next PullMessages poll with error backoff (T-06-01).
+   * Extends the subscription lifetime (WS-BaseNotification Renew).
+   */
+  private async renewSubscription(sub: OnvifEventSubscription): Promise<void> {
+    await this.soapRequest(sub.subscriptionUrl!, this.buildRenewEnvelope(sub, SUBSCRIPTION_LIFETIME));
+    sub.terminationTime = new Date(Date.now() + SUBSCRIPTION_LIFETIME_MS);
+  }
+
+  private async soapRequest(url: string, envelope: string): Promise<string> {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
+      body: envelope,
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`ONVIF request to ${url} failed with HTTP ${res.status}`);
+    }
+    return text;
+  }
+
+  /**
+   * Schedules next PullMessages poll.
    */
   private schedulePoll(cameraId: string, delayMs: number): void {
     const existing = this.pollTimeouts.get(cameraId);
     if (existing) clearTimeout(existing);
 
-    const timer = setTimeout(async () => {
-      await this.pollOnce(cameraId);
+    const timer = setTimeout(() => {
+      this.pollOnce(cameraId).catch(() => {});
     }, delayMs);
 
     this.pollTimeouts.set(cameraId, timer);
   }
 
   /**
-   * Executes a single PullMessages poll cycle.
+   * One poll cycle: ensure a live subscription (create or renew), then PullMessages.
+   * Any failure drops the subscription so the next cycle re-creates it after backoff;
+   * re-polling a lapsed subscription URL would never recover.
    */
   private async pollOnce(cameraId: string): Promise<void> {
     const sub = this.subscriptions.get(cameraId);
-    if (!sub || !sub.active || !sub.subscriptionUrl) {
+    if (!sub || !sub.active) {
       return;
     }
 
     try {
-      const envelope = this.buildPullMessagesEnvelope(sub, 'PT5S', 10);
-      const res = await fetch(sub.subscriptionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/soap+xml; charset=utf-8',
-        },
-        body: envelope,
-      });
-
-      if (!res.ok) {
-        throw new Error(`PullMessages returned HTTP ${res.status}`);
+      if (!sub.subscriptionUrl) {
+        await this.initiatePullPointSubscription(sub);
+      } else if (!sub.terminationTime || sub.terminationTime.getTime() - Date.now() < RENEW_MARGIN_MS) {
+        try {
+          await this.renewSubscription(sub);
+        } catch {
+          await this.initiatePullPointSubscription(sub);
+        }
       }
+      if (!sub.active) return;
 
-      const xmlText = await res.text();
+      const xmlText = await this.soapRequest(
+        sub.subscriptionUrl!,
+        this.buildPullMessagesEnvelope(sub, PULL_TIMEOUT, 10)
+      );
       sub.lastPoll = new Date();
       sub.errorCount = 0;
 
@@ -538,10 +626,15 @@ export class OnvifEventListenerService {
         await this.processEvents(cameraId, events);
       }
 
-      // Schedule next poll immediately on success
+      // PullMessages long-polls for up to PULL_TIMEOUT, so poll again right away
       this.schedulePoll(cameraId, 100);
     } catch (err) {
       sub.errorCount += 1;
+      sub.subscriptionUrl = null;
+      sub.terminationTime = null;
+      if (sub.errorCount === 1 || sub.errorCount % 20 === 0) {
+        console.warn(`[OnvifEventListener] Camera ${cameraId} event subscription error (#${sub.errorCount}): ${(err as Error).message}`);
+      }
       this.scheduleReconnect(cameraId);
     }
   }
@@ -556,9 +649,40 @@ export class OnvifEventListenerService {
     // Backoff: 2s, 4s, 8s, up to 30s max
     const backoffMs = Math.min(30000, Math.pow(2, sub.errorCount) * 1000);
     const jitter = Math.floor(Math.random() * 500);
-    const delay = backoffMs + jitter;
+    this.schedulePoll(cameraId, backoffMs + jitter);
+  }
 
-    this.schedulePoll(cameraId, delay);
+  buildRenewEnvelope(sub: OnvifEventSubscription, terminationTime = SUBSCRIPTION_LIFETIME): string {
+    return this.buildEnvelope(
+      sub,
+      'http://docs.oasis-open.org/wsn/bw-2/SubscriptionManager/RenewRequest',
+      `<wsnt:Renew><wsnt:TerminationTime>${terminationTime}</wsnt:TerminationTime></wsnt:Renew>`
+    );
+  }
+
+  buildUnsubscribeEnvelope(sub: OnvifEventSubscription): string {
+    return this.buildEnvelope(
+      sub,
+      'http://docs.oasis-open.org/wsn/bw-2/SubscriptionManager/UnsubscribeRequest',
+      '<wsnt:Unsubscribe/>'
+    );
+  }
+
+  private buildEnvelope(sub: OnvifEventSubscription, action: string, body: string): string {
+    return `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
+               xmlns:wsa="http://www.w3.org/2005/08/addressing"
+               xmlns:tev="http://www.onvif.org/ver10/events/wsdl"
+               xmlns:wsnt="http://docs.oasis-open.org/wsn/b-2">
+  <soap:Header>
+    <wsa:Action>${action}</wsa:Action>
+    <wsa:To>${escapeXml(sub.subscriptionUrl || '')}</wsa:To>
+    ${this.buildWsSecurityHeader(sub.username, sub.password)}
+  </soap:Header>
+  <soap:Body>
+    ${body}
+  </soap:Body>
+</soap:Envelope>`;
   }
 
   /**
@@ -582,7 +706,7 @@ export class OnvifEventListenerService {
       return `<wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
                      xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">
         <wsse:UsernameToken>
-          <wsse:Username>${username}</wsse:Username>
+          <wsse:Username>${escapeXml(username)}</wsse:Username>
           <wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">${passwordDigest}</wsse:Password>
           <wsse:Nonce EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary">${nonceBase64}</wsse:Nonce>
           <wsu:Created>${created}</wsu:Created>
@@ -592,7 +716,7 @@ export class OnvifEventListenerService {
 
     return `<wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
       <wsse:UsernameToken>
-        <wsse:Username>${username}</wsse:Username>
+        <wsse:Username>${escapeXml(username)}</wsse:Username>
       </wsse:UsernameToken>
     </wsse:Security>`;
   }
@@ -600,3 +724,12 @@ export class OnvifEventListenerService {
 
 export const onvifEventListenerService = new OnvifEventListenerService();
 export default onvifEventListenerService;
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
