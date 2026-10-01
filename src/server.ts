@@ -189,7 +189,8 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
         });
       }
 
-      if (request.method === 'GET') {
+      // SPA deep links get index.html; missing static files (e.g. /assets/x.js) stay 404
+      if (request.method === 'GET' && !path.extname(request.url.split('?')[0])) {
         return reply.sendFile('index.html');
       }
 

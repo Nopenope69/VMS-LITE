@@ -1,6 +1,10 @@
 export interface WhepConnectionOptions {
   iceServers?: RTCIceServer[];
   timeoutMs?: number;
+  /** JWT for the /api/media proxy; defaults to the stored session token. */
+  authToken?: string | null;
+  /** Max time to wait for ICE gathering before sending the offer. */
+  iceGatheringTimeoutMs?: number;
   onConnectionStateChange?: (state: RTCIceConnectionState) => void;
 }
 
@@ -17,7 +21,15 @@ export async function connectWhep(
   whepUrl: string,
   options: WhepConnectionOptions = {}
 ): Promise<WhepSession> {
-  const { iceServers = [{ urls: 'stun:stun.l.google.com:19302' }], timeoutMs = 8000, onConnectionStateChange } = options;
+  const {
+    iceServers = [],
+    timeoutMs = 8000,
+    onConnectionStateChange,
+    iceGatheringTimeoutMs = 1500,
+  } = options;
+  const authToken =
+    options.authToken ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('vms_token') : null);
+  const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
   const pc = new RTCPeerConnection({ iceServers });
   const mediaStream = new MediaStream();
@@ -51,7 +63,11 @@ export async function connectWhep(
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  // Wait for initial ICE candidates gathering or proceed with trickled offer
+  // No trickle ICE: wait (bounded) for candidate gathering so the offer carries our
+  // host/srflx/relay candidates. Relay candidates are what make TURN work.
+  await waitForIceGathering(pc, iceGatheringTimeoutMs);
+  const offerSdp = pc.localDescription?.sdp ?? offer.sdp;
+
   let sessionLocation: string | null = null;
 
   const controller = new AbortController();
@@ -62,8 +78,9 @@ export async function connectWhep(
       method: 'POST',
       headers: {
         'Content-Type': 'application/sdp',
+        ...authHeaders,
       },
-      body: offer.sdp,
+      body: offerSdp,
       signal: controller.signal,
     });
 
@@ -88,10 +105,10 @@ export async function connectWhep(
 
   const close = () => {
     if (sessionLocation) {
-      const deleteUrl = sessionLocation.startsWith('http')
-        ? sessionLocation
-        : new URL(sessionLocation, whepUrl).toString();
-      fetch(deleteUrl, { method: 'DELETE' }).catch(() => {});
+      // whepUrl is usually same-origin relative (/api/media/...), so resolve via the page
+      const base = new URL(whepUrl, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
+      const deleteUrl = new URL(sessionLocation, base).toString();
+      fetch(deleteUrl, { method: 'DELETE', headers: authHeaders }).catch(() => {});
     }
     pc.close();
   };
@@ -101,4 +118,20 @@ export async function connectWhep(
     peerConnection: pc,
     close,
   };
+}
+
+function waitForIceGathering(pc: RTCPeerConnection, timeoutMs: number): Promise<void> {
+  if (pc.iceGatheringState === 'complete') return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      pc.removeEventListener('icegatheringstatechange', onChange);
+      resolve();
+    };
+    const onChange = () => {
+      if (pc.iceGatheringState === 'complete') done();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    pc.addEventListener('icegatheringstatechange', onChange);
+  });
 }

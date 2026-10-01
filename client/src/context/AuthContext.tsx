@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 
 export type UserRole = 'ADMIN' | 'OPERATOR' | 'VIEWER';
 
@@ -81,19 +81,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     verifySession();
   }, [token]);
 
-  const login = (newToken: string, newUser: User) => {
+  const login = useCallback((newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem('vms_token', newToken);
     localStorage.setItem('vms_user', JSON.stringify(newUser));
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
+    // Clears the HttpOnly media cookie used for video playback
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     setToken(null);
     setUser(null);
     localStorage.removeItem('vms_token');
     localStorage.removeItem('vms_user');
-  };
+  }, []);
 
   const role = user?.role ?? null;
   const isAdmin = role === 'ADMIN';

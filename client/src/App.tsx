@@ -44,6 +44,12 @@ export interface CameraRecord {
   id: string;
   name: string;
   ipAddress: string;
+  mediaMtxPath?: string;
+  /** Authenticated media-proxy URLs from /api/streaming/config */
+  whepUrl?: string;
+  hlsUrl?: string;
+  subStreamWhepUrl?: string | null;
+  subStreamHlsUrl?: string | null;
   rtspPort?: number;
   onvifPort?: number;
   streamPath: string;
@@ -80,6 +86,8 @@ export const App: React.FC = () => {
 
   // Data states
   const [cameras, setCameras] = useState<CameraRecord[]>([]);
+  const [iceServers, setIceServers] = useState<RTCIceServer[]>([]);
+  const [playbackCameraId, setPlaybackCameraId] = useState<string | null>(null);
   const [events, setEvents] = useState<EventPayload[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
@@ -90,8 +98,8 @@ export const App: React.FC = () => {
   });
 
   // Login form state
-  const [loginUsername, setLoginUsername] = useState<string>('admin');
-  const [loginPassword, setLoginPassword] = useState<string>('admin123');
+  const [loginUsername, setLoginUsername] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
@@ -111,26 +119,48 @@ export const App: React.FC = () => {
   const fetchCameras = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch('/api/cameras', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const headers = { Authorization: `Bearer ${token}` };
+      const [res, streamingRes] = await Promise.all([
+        fetch('/api/cameras', { headers }),
+        fetch('/api/streaming/config', { headers }),
+      ]);
+      if (res.status === 401) {
+        logout();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         const raw = Array.isArray(data) ? data : data.cameras || [];
-        const normalized: CameraRecord[] = raw.map((c: any) => ({
-          ...c,
-          name: c.name || 'Camera',
-          ipAddress: c.ipAddress || c.ip || '',
-          streamPath: c.streamPath || c.mediaMtxPath || c.id || '',
-          status: c.status || 'ONLINE',
-          createdAt: c.createdAt || new Date().toISOString(),
-        }));
+
+        // Live URLs (WHEP/HLS via the authenticated media proxy) and ICE servers
+        const streams = new Map<string, any>();
+        if (streamingRes.ok) {
+          const streaming = await streamingRes.json();
+          for (const info of streaming.cameras || []) streams.set(info.cameraId, info);
+          setIceServers(streaming.iceServers || []);
+        }
+
+        const normalized: CameraRecord[] = raw.map((c: any) => {
+          const stream = streams.get(c.id);
+          return {
+            ...c,
+            name: c.name || 'Camera',
+            ipAddress: c.ipAddress || c.ip || '',
+            streamPath: c.streamPath || c.mediaMtxPath || c.id || '',
+            status: c.status || 'UNKNOWN',
+            createdAt: c.createdAt || new Date().toISOString(),
+            whepUrl: stream?.whepUrl,
+            hlsUrl: stream?.hlsUrl,
+            subStreamWhepUrl: stream?.subStreamWhepUrl ?? null,
+            subStreamHlsUrl: stream?.subStreamHlsUrl ?? null,
+          };
+        });
         setCameras(normalized);
       }
     } catch (err) {
       console.warn('[App] Failed to fetch cameras:', err);
     }
-  }, [token]);
+  }, [token, logout]);
 
   // Check initial first-boot setup status
   useEffect(() => {
@@ -175,9 +205,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!token) return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/events?token=${token}`;
-    const wsClient = new EventsWsClient({ wsUrl, token });
+    // Default URL is the server's feed endpoint (/api/events/feed) on this origin
+    const wsClient = new EventsWsClient({ token });
 
     wsClient.connect();
 
@@ -321,11 +350,6 @@ export const App: React.FC = () => {
             </button>
           </form>
 
-          <div className="mt-6 pt-4 border-t border-white/10 text-center text-[11px] text-zinc-500">
-            <span className="inline-flex items-center gap-1.5">
-              <Info size={13} /> Demo Login: <code className="text-emerald-400 font-mono">admin / admin123</code>
-            </span>
-          </div>
         </div>
       </div>
     );
@@ -381,7 +405,19 @@ export const App: React.FC = () => {
         {/* 2. Live Grid */}
         {currentView === 'live' && (
           <LiveView
-            cameras={cameras}
+            cameras={cameras
+              .filter((c) => c.whepUrl || c.hlsUrl)
+              .map((c) => ({
+                cameraId: c.id,
+                name: c.name,
+                mediaMtxPath: c.mediaMtxPath || c.streamPath,
+                whepUrl: c.whepUrl || '',
+                hlsUrl: c.hlsUrl || '',
+                subStreamWhepUrl: c.subStreamWhepUrl,
+                subStreamHlsUrl: c.subStreamHlsUrl,
+              }))}
+            iceServers={iceServers}
+            healthMap={healthMap}
             onlineCount={onlineCount}
             onSelectCamera={(id) => {
               setFocusedCameraId(id);
@@ -395,6 +431,12 @@ export const App: React.FC = () => {
           focusedCamera ? (
             <CameraFocusedView
               camera={focusedCamera}
+              iceServers={iceServers}
+              health={healthMap[focusedCamera.id] ?? null}
+              onOpenPlayback={(id) => {
+                setPlaybackCameraId(id);
+                setCurrentView('recordings');
+              }}
               onBack={() => setCurrentView('live')}
               onOpenBookmark={(id) => {
                 setBookmarkCameraId(id);
@@ -451,6 +493,7 @@ export const App: React.FC = () => {
           <div className="flex-1 h-full flex flex-col overflow-hidden">
             <PlaybackPage
               authToken={token || ''}
+              initialCameraId={playbackCameraId ?? undefined}
               onNavigateLive={() => setCurrentView('live')}
             />
           </div>

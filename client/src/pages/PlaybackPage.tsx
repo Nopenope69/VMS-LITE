@@ -43,6 +43,8 @@ export type { CameraOption };
 export interface PlaybackPageProps {
   apiBaseUrl?: string;
   authToken?: string;
+  /** Camera to open first (e.g. "View recordings" from the camera view). */
+  initialCameraId?: string;
   onNavigateLive?: () => void;
 }
 
@@ -359,6 +361,7 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
 const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   apiBaseUrl = '',
   authToken = '',
+  initialCameraId,
   onNavigateLive,
 }) => {
   const { token: authContextToken, user } = useAuth();
@@ -435,8 +438,9 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
           setCameras(list);
           if (list.length > 0 && !hasInitializedCamerasRef.current) {
             hasInitializedCamerasRef.current = true;
-            setSelectedCameraIds([list[0].id]);
-            setPrimaryCameraId(list[0].id);
+            const first = list.find((c) => c.id === initialCameraId) ?? list[0];
+            setSelectedCameraIds([first.id]);
+            setPrimaryCameraId(first.id);
           }
         }
       } catch (err: any) {
@@ -450,7 +454,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [apiBaseUrl, effectiveToken, setSelectedCameraIds]);
+  }, [apiBaseUrl, effectiveToken, setSelectedCameraIds, initialCameraId]);
 
   // Keep primaryCameraId valid when selected cameras change
   useEffect(() => {
