@@ -9,7 +9,8 @@ import {
   Radio,
   ExternalLink,
 } from 'lucide-react';
-import { CameraStreamInfo } from '../components/LiveCameraTile.js';
+import { CameraStreamInfo } from '../types/streams.js';
+import { resolveStreamProfile } from '../utils/streamProfileManager.js';
 import { WhepHlsPlayer } from '../components/WhepHlsPlayer.js';
 import { CameraHealthTelemetry } from '../hooks/useCameraHealth.js';
 
@@ -21,6 +22,19 @@ export interface LiveViewProps {
   healthMap?: Record<string, CameraHealthTelemetry>;
   onlineCount: number;
   onSelectCamera: (cameraId: string) => void;
+}
+
+/** Grid layouts use the sub-stream (when the camera has one); a single tile uses the main stream. */
+function pickStream(cam: CameraStreamInfo, layout: LiveLayout): { whepUrl: string; hlsUrl: string } {
+  const profile = resolveStreamProfile({
+    viewMode: layout === '1x1' ? 'FOCUSED' : 'GRID',
+    operatorOverride: 'AUTO',
+    mainPath: cam.whepUrl,
+    subPath: cam.subStreamWhepUrl,
+  });
+  return profile.selectedStream === 'SUB'
+    ? { whepUrl: cam.subStreamWhepUrl!, hlsUrl: cam.subStreamHlsUrl || cam.hlsUrl }
+    : { whepUrl: cam.whepUrl, hlsUrl: cam.hlsUrl };
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -165,8 +179,7 @@ export const LiveView: React.FC<LiveViewProps> = ({
                   {/* Multi-tile layouts use the sub-stream when the camera has one:
                       a 3x3 grid of main streams can saturate a remote site's uplink */}
                   <WhepHlsPlayer
-                    whepUrl={(layout !== '1x1' && cam.subStreamWhepUrl) || cam.whepUrl}
-                    hlsUrl={(layout !== '1x1' && cam.subStreamHlsUrl) || cam.hlsUrl}
+                    {...pickStream(cam, layout)}
                     iceServers={iceServers}
                     cameraName={cam.name}
                     className="w-full h-full object-cover"

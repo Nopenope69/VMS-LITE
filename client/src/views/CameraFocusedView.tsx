@@ -1,8 +1,10 @@
-import React from 'react';
-import { ArrowLeft, Bookmark, Download, History } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowLeft, Bookmark, Download, History, Move } from 'lucide-react';
 import { CameraRecord } from '../App.js';
 import { WhepHlsPlayer } from '../components/WhepHlsPlayer.js';
 import { CameraHealthTelemetry } from '../hooks/useCameraHealth.js';
+import { PtzControlsOverlay } from '../components/PtzControlsOverlay.js';
+import { useAuth } from '../context/AuthContext.js';
 
 export interface CameraFocusedViewProps {
   camera: CameraRecord;
@@ -34,6 +36,9 @@ export const CameraFocusedView: React.FC<CameraFocusedViewProps> = ({
   onOpenBookmark,
   onOpenExport,
 }) => {
+  const { canControlPtz } = useAuth();
+  const ptzAllowed = canControlPtz(camera.id);
+  const [showPtz, setShowPtz] = useState(false);
   const status = STATUS_STYLE[health?.status ?? 'UNKNOWN'] ?? STATUS_STYLE.UNKNOWN;
   const hasStream = Boolean(camera.whepUrl || camera.hlsUrl);
 
@@ -82,6 +87,15 @@ export const CameraFocusedView: React.FC<CameraFocusedViewProps> = ({
           <p className="text-sm text-zinc-500">No live stream is available for this camera.</p>
         )}
 
+        {ptzAllowed && showPtz && (
+          <PtzControlsOverlay
+            cameraId={camera.id}
+            cameraName={camera.name}
+            isMaximized
+            onClose={() => setShowPtz(false)}
+          />
+        )}
+
         <div className="absolute top-4 left-4 z-20">
           <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-950/70 backdrop-blur-md border border-white/10 text-emerald-400 text-xs font-medium font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -91,6 +105,20 @@ export const CameraFocusedView: React.FC<CameraFocusedViewProps> = ({
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {ptzAllowed && (
+          <button
+            type="button"
+            onClick={() => setShowPtz((v) => !v)}
+            className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors flex items-center gap-1.5 ${
+              showPtz
+                ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border-white/10'
+            }`}
+          >
+            <Move className="w-3.5 h-3.5" />
+            <span>PTZ</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onOpenPlayback(camera.id)}

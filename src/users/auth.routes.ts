@@ -83,8 +83,21 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
     // Refresh the media cookie for sessions restored from a stored token
     const token = request.headers.authorization?.slice(7).trim();
     if (token) setMediaCookie(request, reply, token);
+    // Lets the UI hide controls the user cannot use (licensing and operator grants)
+    const cameraPermissions =
+      request.user.role === Role.OPERATOR ? await authService.getUserPermissions(request.user.id) : undefined;
     return {
-      user: request.user,
+      user: {
+        ...request.user,
+        cameraPermissions: cameraPermissions?.map((p: any) => ({
+          cameraId: p.cameraId,
+          canViewLive: p.canViewLive,
+          canViewPlayback: p.canViewPlayback,
+          canControlPtz: p.canControlPtz,
+          canExportClips: p.canExportClips,
+        })),
+      },
+      capabilities: fastify.capabilities?.getAllCapabilities() ?? [],
     };
   });
 

@@ -1190,7 +1190,7 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
                   <div style={{ marginTop: '16px', fontSize: '13px', color: '#cbd5e1' }}>
                     Estimated Runway:{' '}
                     <strong style={{ color: '#22c55e' }}>
-                      ~{storageMetrics.estimatedDaysRemaining ?? 28} Days
+                      {storageMetrics.estimatedDaysRemaining != null ? `~${storageMetrics.estimatedDaysRemaining} Days` : '—'}
                     </strong>{' '}
                     at current bitrate
                   </div>

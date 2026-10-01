@@ -25,6 +25,10 @@ export interface AuthContextType {
   isOperator: boolean;
   isViewer: boolean;
   isLoading: boolean;
+  /** Licensed capabilities (e.g. 'extended.ptz'), from /api/auth/me */
+  capabilities: string[];
+  /** Whether the user may control PTZ on this camera (role + operator grant) */
+  canControlPtz: (cameraId: string) => boolean;
   login: (token: string, user: User) => void;
   logout: () => void;
 }
@@ -45,6 +49,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return null;
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [capabilities, setCapabilities] = useState<string[]>([]);
 
   useEffect(() => {
     async function verifySession() {
@@ -63,6 +68,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (res.ok) {
           const data = await res.json();
           setUser(data.user);
+          setCapabilities(data.capabilities || []);
           localStorage.setItem('vms_user', JSON.stringify(data.user));
         } else {
           // Token expired or invalid
@@ -98,6 +104,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const role = user?.role ?? null;
+  const canControlPtz = useCallback(
+    (cameraId: string) => {
+      if (!capabilities.includes('extended.ptz')) return false;
+      if (role === 'ADMIN') return true;
+      if (role === 'OPERATOR') {
+        return Boolean(user?.cameraPermissions?.some((p) => p.cameraId === cameraId && p.canControlPtz));
+      }
+      return false;
+    },
+    [capabilities, role, user]
+  );
   const isAdmin = role === 'ADMIN';
   const isOperator = role === 'OPERATOR';
   const isViewer = role === 'VIEWER';
@@ -112,6 +129,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isOperator,
         isViewer,
         isLoading,
+        capabilities,
+        canControlPtz,
         login,
         logout,
       }}
@@ -133,6 +152,8 @@ export const useAuth = (): AuthContextType => {
       isOperator: false,
       isViewer: false,
       isLoading: false,
+      capabilities: [],
+      canControlPtz: () => false,
       login: () => {},
       logout: () => {},
     };
