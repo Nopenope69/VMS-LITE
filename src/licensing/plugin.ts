@@ -3,6 +3,27 @@ import fp from 'fastify-plugin';
 import { ICapabilityRegistry } from './types.js';
 import { CapabilityRegistry, createEvaluationRegistry } from './capabilities.js';
 import { verifyLicenseToken } from './verifier.js';
+import { VENDOR_LICENSE_PUBLIC_KEY_HEX } from './vendor-key.js';
+
+/**
+ * The verification key is the compiled-in vendor key in production. Explicit code
+ * options (tests) may supply one; BASIC_VMS_PUBLIC_KEY is honoured only outside
+ * production, so an appliance operator cannot swap in a self-made key.
+ */
+export function resolveLicensePublicKey(
+  explicitKeyHex: string | undefined,
+  fastify?: FastifyInstance
+): string | undefined {
+  if (explicitKeyHex) return explicitKeyHex;
+  const envKey = process.env.BASIC_VMS_PUBLIC_KEY;
+  if (process.env.NODE_ENV !== 'production') {
+    return envKey || VENDOR_LICENSE_PUBLIC_KEY_HEX || undefined;
+  }
+  if (envKey && envKey !== VENDOR_LICENSE_PUBLIC_KEY_HEX) {
+    fastify?.log.warn('[Licensing] BASIC_VMS_PUBLIC_KEY is ignored in production; the built-in vendor key is used.');
+  }
+  return VENDOR_LICENSE_PUBLIC_KEY_HEX || undefined;
+}
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -26,7 +47,7 @@ async function licensingPluginAsync(
   let registry: ICapabilityRegistry;
 
   const token = opts.licenseToken ?? process.env.BASIC_VMS_LICENSE;
-  const publicKeyHex = opts.publicKeyHex ?? process.env.BASIC_VMS_PUBLIC_KEY;
+  const publicKeyHex = resolveLicensePublicKey(opts.publicKeyHex, fastify);
 
   if (token && publicKeyHex) {
     try {
@@ -46,7 +67,11 @@ async function licensingPluginAsync(
       }
     }
   } else {
-    fastify.log.info('[Licensing] No license provided. Initializing in Evaluation Core mode.');
+    fastify.log.info(
+      token
+        ? '[Licensing] No vendor public key is built in; license token cannot be verified. Initializing in Evaluation Core mode.'
+        : '[Licensing] No license provided. Initializing in Evaluation Core mode.'
+    );
     registry = createEvaluationRegistry();
   }
 

@@ -82,7 +82,6 @@ services:
       - TURN_SERVER_HOST=${TURN_SERVER_HOST:-}
       - TURN_SECRET=${TURN_SECRET:-}
       - BASIC_VMS_LICENSE=${BASIC_VMS_LICENSE:-}
-      - BASIC_VMS_PUBLIC_KEY=${BASIC_VMS_PUBLIC_KEY:-}
     volumes:
       - *recordings
       - vms_data:/app/data

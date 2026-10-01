@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import * as ed from '@noble/ed25519';
 import fastify, { FastifyInstance } from 'fastify';
 import {
@@ -169,5 +169,24 @@ describe('Ed25519 Licensing & Capability Registry', () => {
       expect(body.error).toBe('Forbidden');
       expect(body.capability).toBe('ai.anpr');
     });
+  });
+});
+
+describe('License public key resolution', () => {
+  const saved = { env: process.env.NODE_ENV, key: process.env.BASIC_VMS_PUBLIC_KEY };
+  afterEach(() => {
+    process.env.NODE_ENV = saved.env;
+    if (saved.key === undefined) delete process.env.BASIC_VMS_PUBLIC_KEY;
+    else process.env.BASIC_VMS_PUBLIC_KEY = saved.key;
+  });
+
+  it('ignores BASIC_VMS_PUBLIC_KEY in production so operators cannot self-sign licenses', async () => {
+    const { resolveLicensePublicKey } = await import('../src/licensing/plugin.js');
+    const { VENDOR_LICENSE_PUBLIC_KEY_HEX } = await import('../src/licensing/vendor-key.js');
+    process.env.BASIC_VMS_PUBLIC_KEY = 'ab'.repeat(32);
+    process.env.NODE_ENV = 'production';
+    expect(resolveLicensePublicKey(undefined)).toBe(VENDOR_LICENSE_PUBLIC_KEY_HEX || undefined);
+    process.env.NODE_ENV = 'development';
+    expect(resolveLicensePublicKey(undefined)).toBe('ab'.repeat(32));
   });
 });

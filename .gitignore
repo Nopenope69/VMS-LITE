@@ -8,3 +8,6 @@ client/dist/
 coverage/
 *.log
 data/
+
+# Vendor license signing keys must never be committed
+*.key

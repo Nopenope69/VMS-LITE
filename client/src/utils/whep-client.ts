@@ -1,3 +1,5 @@
+import { MediaHttpError } from './stream-errors.js';
+
 export interface WhepConnectionOptions {
   iceServers?: RTCIceServer[];
   timeoutMs?: number;
@@ -87,7 +89,9 @@ export async function connectWhep(
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`WHEP negotiation failed: HTTP ${response.status} ${response.statusText}`);
+      // Keep status + body: MediaMTX explains failures (e.g. "codecs not supported by client")
+      const body = await response.text().catch(() => '');
+      throw new MediaHttpError(response.status, body.slice(0, 300), `WHEP negotiation failed: HTTP ${response.status} ${body.slice(0, 120)}`);
     }
 
     sessionLocation = response.headers.get('Location') || response.headers.get('location');
@@ -100,6 +104,7 @@ export async function connectWhep(
   } catch (err: any) {
     clearTimeout(timeoutId);
     pc.close();
+    if (err instanceof MediaHttpError) throw err;
     throw new Error(err.name === 'AbortError' ? 'WHEP connection timed out' : err.message);
   }
 
