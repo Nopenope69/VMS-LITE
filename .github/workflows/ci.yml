@@ -8,8 +8,23 @@ on:
 
 jobs:
   build-and-verify:
-    name: Test, Audit Licenses & Generate SBOM
+    name: Test, Typecheck, Migrations, Licenses & SBOM
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vms_user
+          POSTGRES_PASSWORD: vms_password
+          POSTGRES_DB: basic_vms
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vms_user -d basic_vms"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout repository
@@ -27,13 +42,28 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Typecheck server and web client
+        run: npm run typecheck
+
       - name: Run automated test suite
         run: npm test
 
-      - name: Verify TypeScript build
+      - name: Build server and web client
         run: |
           npm run build
-          npx tsc -p client/tsconfig.json --noEmit
+          npm run build:client
+
+      - name: Apply migrations to PostgreSQL and check for schema drift
+        env:
+          DATABASE_URL: postgresql://vms_user:vms_password@localhost:5432/basic_vms?schema=public
+        run: |
+          npx prisma migrate deploy
+          PGPASSWORD=vms_password psql -h localhost -U vms_user -d basic_vms -c 'CREATE DATABASE shadow_vms;'
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url postgresql://vms_user:vms_password@localhost:5432/shadow_vms \
+            --exit-code
 
       - name: Verify 100% Permissive Licensing Compliance (DEP-04)
         run: npm run audit:licenses

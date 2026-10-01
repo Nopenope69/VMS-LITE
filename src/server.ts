@@ -73,17 +73,22 @@ export interface ServerOptions {
 export async function createServer(opts: ServerOptions = {}): Promise<FastifyInstance> {
   const app = fastify({
     logger: opts.logger ?? (process.env.NODE_ENV !== 'test'),
+    // Behind Caddy/nginx: take the client IP from X-Forwarded-For (audit logs)
+    trustProxy: process.env.TRUST_PROXY === 'true',
   });
 
   const wsFeed = opts.wsFeedService || webSocketFeedService;
   const engine = opts.recordingEngine || defaultRecordingEngine;
   const onvifEvents = opts.onvifEventsService || defaultOnvifEvents;
 
-  // Permissive CORS
-  await app.register(cors, {
-    origin: true,
-    credentials: true,
-  });
+  // The UI is served from this origin; cross-origin access only for explicitly listed origins
+  const corsOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  if (corsOrigins.length > 0) {
+    await app.register(cors, { origin: corsOrigins, credentials: true });
+  }
 
   // JWT authentication plugin
   await app.register(fastifyJwt, {

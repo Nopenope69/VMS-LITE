@@ -1,26 +1,91 @@
+# Basic VMS appliance stack (Linux host).
+#
+# Network model:
+#   - app and mediamtx use host networking. This gives WebRTC real LAN host
+#     candidates and lets ONVIF WS-Discovery multicast reach cameras.
+#   - Exposed: 3000/tcp (UI, API, authenticated media proxy) and 8189/udp (WebRTC
+#     media); 3478 + relay ports if the optional TURN profile is enabled.
+#   - Everything else (MediaMTX API/HLS/WHEP/playback/RTSP, PostgreSQL) listens
+#     on localhost only.
+#
+# Configure via .env (see .env.example). Start: docker compose up -d
+# With TURN for remote viewers behind strict NAT: docker compose --profile turn up -d
+
+x-recordings: &recordings
+  type: volume
+  source: vms_recordings
+  target: /recordings
+
 services:
+  # Recordings are written by MediaMTX and pruned by the app (FIFO/retention); both
+  # run as uid 1000 so the app can delete what MediaMTX writes.
+  init-permissions:
+    image: busybox:1.36
+    command: ["sh", "-c", "chown 1000:1000 /recordings && chmod 0775 /recordings"]
+    volumes:
+      - *recordings
+    restart: "no"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-vms_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      - POSTGRES_DB=${POSTGRES_DB:-basic_vms}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - vms_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vms_user} -d ${POSTGRES_DB:-basic_vms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.11.0
+    network_mode: host
+    user: "1000:1000"
+    environment:
+      # Public/WAN address(es) advertised to remote WebRTC viewers (comma-separated)
+      - MTX_WEBRTCADDITIONALHOSTS=${PUBLIC_HOST:-}
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+      - *recordings
+    depends_on:
+      init-permissions:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: basic_vms_app
-    ports:
-      - "3000:3000"
+    network_mode: host
     environment:
-      - PORT=3000
-      - HOST=0.0.0.0
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-vms_user}:${POSTGRES_PASSWORD:-vms_password}@postgres:5432/${POSTGRES_DB:-basic_vms}?schema=public
-      - JWT_SECRET=${JWT_SECRET:-vms_jwt_secret_change_in_production}
-      - MEDIAMTX_API_URL=http://mediamtx:9997
-      - MEDIAMTX_WHEP_URL=http://localhost:8889
-      - MEDIAMTX_HLS_URL=http://localhost:8888
-      - MEDIAMTX_PLAYBACK_URL=http://localhost:9996
-      - RECORDING_STORAGE_PATH=/recordings
-      - COTURN_SECRET=${COTURN_SECRET:-vms_turn_secret_change_in_production}
-      - COTURN_EXTERNAL_IP=${COTURN_EXTERNAL_IP:-}
+      - PORT=${PORT:-3000}
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-vms_user}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${POSTGRES_DB:-basic_vms}?schema=public
+      # Optional: a generated secret is persisted in the database when unset
+      - JWT_SECRET=${JWT_SECRET:-}
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-}
+      - MEDIAMTX_API_URL=http://127.0.0.1:9997
+      - MEDIAMTX_WEBRTC_URL=http://127.0.0.1:8889
+      - MEDIAMTX_HLS_URL=http://127.0.0.1:8888
+      - MEDIAMTX_PLAYBACK_URL=http://127.0.0.1:9996
+      - RECORDINGS_PATH=/recordings
+      # Recording schedules are evaluated in this timezone
+      - TZ=${TZ:-Asia/Kolkata}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - TURN_SERVER_HOST=${TURN_SERVER_HOST:-}
+      - TURN_SECRET=${TURN_SECRET:-}
+      - BASIC_VMS_LICENSE=${BASIC_VMS_LICENSE:-}
+      - BASIC_VMS_PUBLIC_KEY=${BASIC_VMS_PUBLIC_KEY:-}
     volumes:
-      - vms_recordings:/recordings
+      - *recordings
+      - vms_data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -28,46 +93,20 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  mediamtx:
-    image: bluenviron/mediamtx:1.11.0
-    container_name: basic_vms_mediamtx
-    ports:
-      - "8554:8554"          # RTSP ingest
-      - "8888:8888"          # HLS live stream
-      - "8889:8889"          # WebRTC / WHEP live stream (TCP)
-      - "8889:8889/udp"      # WebRTC / WHEP live stream (UDP)
-      - "9996:9996"          # fMP4 playback server
-      - "9997:9997"          # Control plane API
-    volumes:
-      - ./mediamtx.yml:/mediamtx.yml:ro
-      - vms_recordings:/recordings
-    restart: unless-stopped
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: basic_vms_postgres
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-vms_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-vms_password}
-      - POSTGRES_DB=${POSTGRES_DB:-basic_vms}
-    volumes:
-      - vms_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vms_user} -d ${POSTGRES_DB:-basic_vms}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
+  # Optional STUN/TURN relay for remote viewers behind symmetric NAT / CGNAT.
   coturn:
     image: coturn/coturn:4.6.2-alpine
-    container_name: basic_vms_coturn
-    ports:
-      - "3478:3478"
-      - "3478:3478/udp"
-      - "49152-49160:49152-49160/udp"
+    profiles: ["turn"]
+    network_mode: host
+    environment:
+      - TURN_SECRET=${TURN_SECRET:-}
+      - PUBLIC_HOST=${PUBLIC_HOST:-}
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        test -n "$$TURN_SECRET" || { echo 'TURN_SECRET must be set in .env'; exit 1; };
+        exec turnserver -c /etc/coturn/turnserver.conf --static-auth-secret="$$TURN_SECRET"
+        $${PUBLIC_HOST:+--external-ip=$$PUBLIC_HOST}
     volumes:
       - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
     restart: unless-stopped
@@ -77,3 +116,5 @@ volumes:
     name: basic_vms_postgres_data
   vms_recordings:
     name: basic_vms_recordings
+  vms_data:
+    name: basic_vms_data

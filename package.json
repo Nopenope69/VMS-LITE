@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "dev:mock": "USE_MOCK_DB=true tsx watch src/index.ts",
@@ -15,7 +15,9 @@
     "audit:licenses": "node scripts/audit-licenses.js",
     "generate:sbom": "node scripts/generate-sbom.js",
     "build:client": "vite build --config client/vite.config.ts",
-    "dev:client": "vite --config client/vite.config.ts"
+    "dev:client": "vite --config client/vite.config.ts",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p client",
+    "db:migrate": "prisma migrate deploy"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
@@ -23,28 +25,36 @@
     "@fastify/static": "^6.12.0",
     "@noble/ed25519": "^2.2.3",
     "@prisma/client": "^5.19.1",
-    "@types/ws": "^8.18.1",
     "bcrypt": "^5.1.1",
     "dotenv": "^16.4.5",
     "fastify": "^4.28.1",
-    "lucide-react": "^1.48.0",
     "node-onvif": "^0.1.7",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "prisma": "^5.19.1",
     "ws": "^8.21.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@tailwindcss/container-queries": "^0.1.1",
+    "@tailwindcss/forms": "^0.5.11",
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^20.14.10",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.7.0",
-    "prisma": "^5.19.1",
+    "autoprefixer": "^10.6.1",
+    "lucide-react": "^1.48.0",
+    "postcss": "^8.5.28",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwindcss": "^3.4.19",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4",
     "vite": "^5.4.2",
     "vitest": "^2.0.5"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
 }

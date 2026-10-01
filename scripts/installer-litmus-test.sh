@@ -85,9 +85,8 @@ fi
 log_step 4 "Validating Caddy Gateway Configuration (Caddyfile)"
 if [ -f "Caddyfile" ]; then
   if grep -q "reverse_proxy 127.0.0.1:3000" Caddyfile && \
-     grep -q "reverse_proxy 127.0.0.1:8889" Caddyfile && \
-     grep -q "./client/dist" Caddyfile; then
-    pass_step "Caddyfile reverse proxy rules valid (MediaMTX 8889, API 3000, Static SPA)"
+     ! grep -qE "127\.0\.0\.1:(8888|8889|9996|9997)" Caddyfile; then
+    pass_step "Caddyfile proxies to the control plane only (media via authenticated proxy)"
   else
     fail_step "Caddyfile missing required ingress reverse proxy rules"
   fi
