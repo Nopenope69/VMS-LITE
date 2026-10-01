@@ -32,6 +32,7 @@ import {
 } from '../hooks/usePlaybackSession.js';
 import { useAuth, CameraPermissionDto } from '../context/AuthContext.js';
 import { ALL_SITES, matchesSiteFilter } from '../types/sites.js';
+import { orderLanesBySite } from '../utils/site-lanes.js';
 import { OperatorBanner } from '../components/OperatorBanner.js';
 import {
   PlaybackSyncProvider,
@@ -48,6 +49,8 @@ export interface PlaybackPageProps {
   initialCameraId?: string;
   /** Global site filter: only that site's cameras are offered */
   siteFilter?: string;
+  /** Known sites, for grouping timeline lanes and the camera picker */
+  sites?: Array<{ id: string | null; name: string }>;
   onNavigateLive?: () => void;
 }
 
@@ -366,6 +369,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   authToken = '',
   initialCameraId,
   siteFilter = ALL_SITES,
+  sites = [],
   onNavigateLive,
 }) => {
   const { token: authContextToken, user } = useAuth();
@@ -436,7 +440,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
         const raw: any[] = Array.isArray(data) ? data : data.cameras || [];
         const list: CameraOption[] = raw
           .filter((c: any) => matchesSiteFilter(c.siteId, siteFilter))
-          .map((c: any) => ({ id: c.id, name: c.name, mediaMtxPath: c.mediaMtxPath }));
+          .map((c: any) => ({ id: c.id, name: c.name, mediaMtxPath: c.mediaMtxPath, siteId: c.siteId ?? null }));
 
         if (!isCancelled) {
           setCameras(list);
@@ -651,17 +655,55 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   };
 
   // Prepare lanes data for MultiLaneTimeline
-  const timelineLanes: LaneCameraData[] = useMemo(() => {
-    return selectedCameraIds.map((camId) => {
-      const cam = cameras.find((c) => c.id === camId);
-      return {
-        cameraId: camId,
-        cameraName: cam?.name || `Camera ${camId}`,
-        spans: timelines[camId] || [],
-        bookmarks: bookmarks[camId] || [],
-      };
-    });
-  }, [selectedCameraIds, cameras, timelines, bookmarks]);
+  // Site name and order per site id (unassigned cameras sort last)
+  const siteIndex = useMemo(() => {
+    const index = new Map<string | null, { name: string; order: number }>();
+    sites.forEach((site, order) => index.set(site.id, { name: site.name, order }));
+    if (!index.has(null)) index.set(null, { name: 'Unassigned', order: sites.length });
+    return index;
+  }, [sites]);
+  const groupBySite = sites.some((site) => site.id !== null);
+
+  // Lanes are ordered by site and carry the site name as their group header
+  const timelineLanes: LaneCameraData[] = useMemo(
+    () =>
+      orderLanesBySite(
+        selectedCameraIds.map((camId) => {
+          const cam = cameras.find((c) => c.id === camId);
+          return {
+            cameraId: camId,
+            cameraName: cam?.name || `Camera ${camId}`,
+            spans: timelines[camId] || [],
+            bookmarks: bookmarks[camId] || [],
+          };
+        }),
+        (camId) => cameras.find((c) => c.id === camId)?.siteId,
+        sites
+      ),
+    [selectedCameraIds, cameras, timelines, bookmarks, sites]
+  );
+
+  // Camera picker groups: [site name, cameras] in site order
+  const cameraGroups = useMemo(() => {
+    if (!groupBySite) return [{ siteId: undefined as string | null | undefined, name: '', cameras }];
+    const groups = new Map<string | null, CameraOption[]>();
+    for (const cam of cameras) {
+      const key = cam.siteId ?? null;
+      groups.set(key, [...(groups.get(key) ?? []), cam]);
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => (siteIndex.get(a)?.order ?? 1e9) - (siteIndex.get(b)?.order ?? 1e9))
+      .map(([siteId, list]) => ({ siteId, name: siteIndex.get(siteId)?.name ?? 'Unassigned', cameras: list }));
+  }, [cameras, groupBySite, siteIndex]);
+
+  // Selecting a site loads its cameras into the playback matrix (up to the 4-camera budget)
+  const selectSiteCameras = useCallback(
+    (list: CameraOption[]) => {
+      const ids = list.slice(0, 4).map((c) => c.id);
+      if (ids.length > 0) setSelectedCameraIds(ids);
+    },
+    [setSelectedCameraIds]
+  );
 
   // Determine grid matrix layout based on active camera count (1 to 4)
   const gridClasses = useMemo(() => {
@@ -711,13 +753,26 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
                     {selectedCameraIds.length} / 4 Max
                   </span>
                 </div>
-                <div className="max-h-48 overflow-y-auto flex flex-col gap-1 py-1">
+                <div className="max-h-72 overflow-y-auto flex flex-col gap-1 py-1">
                   {cameras.length === 0 ? (
                     <div className="text-xs text-zinc-500 italic p-2 text-center">
                       No cameras configured
                     </div>
                   ) : (
-                    cameras.map((c) => {
+                    cameraGroups.map((group) => (
+                    <React.Fragment key={group.siteId ?? 'none'}>
+                    {groupBySite && (
+                      <button
+                        type="button"
+                        onClick={() => selectSiteCameras(group.cameras)}
+                        title={`Show ${Math.min(group.cameras.length, 4)} camera(s) from ${group.name}`}
+                        className="w-full flex items-center justify-between px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 hover:text-emerald-300"
+                      >
+                        <span className="truncate">{group.name}</span>
+                        <span className="normal-case tracking-normal font-normal">select site</span>
+                      </button>
+                    )}
+                    {group.cameras.map((c) => {
                       const isSelected = selectedCameraIds.includes(c.id);
                       return (
                         <button
@@ -736,7 +791,9 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
                           {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
                         </button>
                       );
-                    })
+                    })}
+                    </React.Fragment>
+                    ))
                   )}
                 </div>
               </div>

@@ -42,8 +42,12 @@ use it to save bandwidth for viewers.
 Create sites in **Settings → Sites** (the first-boot site name becomes the first
 site), pick the site when adding a camera, and move cameras between sites from
 the **Cameras** page. The site selector in the sidebar filters every page; the
-Overview shows health per site. Operators only see sites containing cameras they
-have been granted.
+Overview shows health per site, and the Recordings timeline groups lanes by site
+(click a site in the camera picker to load its cameras).
+
+Operators can be granted a whole site in **Settings → User Accounts**: the grant
+covers every camera at that site, including cameras added later, on top of any
+per-camera grants. Operators only see the sites and cameras they are granted.
 
 ## Licensing (vendor)
 

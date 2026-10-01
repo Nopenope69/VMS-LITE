@@ -12,7 +12,18 @@ export interface CameraItem {
   id: string;
   name: string;
   status: string;
+  siteId?: string | null;
 }
+
+type PermissionFlag = 'canViewLive' | 'canViewPlayback' | 'canControlPtz' | 'canExportClips';
+type PermissionFlags = Record<PermissionFlag, boolean>;
+const FLAG_LABELS: Array<[PermissionFlag, string, string]> = [
+  ['canViewLive', 'Live View', '#4fc3f7'],
+  ['canViewPlayback', 'Playback', '#4fc3f7'],
+  ['canControlPtz', 'PTZ Control', '#fb923c'],
+  ['canExportClips', 'Export', '#fb923c'],
+];
+const NO_FLAGS: PermissionFlags = { canViewLive: false, canViewPlayback: false, canControlPtz: false, canExportClips: false };
 
 export interface CameraPermissionItem {
   cameraId: string;
@@ -26,13 +37,22 @@ export interface UserManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
   availableCameras: CameraItem[];
+  /** Sites an operator can be granted as a whole */
+  sites?: Array<{ id: string; name: string }>;
 }
 
 export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   isOpen,
   onClose,
   availableCameras,
+  sites = [],
 }) => {
+  const [sitePermissions, setSitePermissions] = useState<Record<string, PermissionFlags>>({});
+  const toggleSitePermission = (siteId: string, key: PermissionFlag) =>
+    setSitePermissions((prev) => ({
+      ...prev,
+      [siteId]: { ...(prev[siteId] ?? NO_FLAGS), [key]: !prev[siteId]?.[key] },
+    }));
   const { token, isAdmin, user: currentUser } = useAuth();
   const [resetPassword, setResetPassword] = useState('');
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -135,6 +155,24 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
       }
 
       setPermissions(permMap);
+
+      // Site-wide grants (cover every camera at the site, including future ones)
+      const siteMap: Record<string, PermissionFlags> = {};
+      sites.forEach((site) => (siteMap[site.id] = { ...NO_FLAGS }));
+      const siteRes = await fetch(`/api/auth/users/${user.id}/site-permissions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (siteRes.ok) {
+        ((await siteRes.json()).permissions || []).forEach((p: any) => {
+          siteMap[p.siteId] = {
+            canViewLive: Boolean(p.canViewLive),
+            canViewPlayback: Boolean(p.canViewPlayback),
+            canControlPtz: Boolean(p.canControlPtz),
+            canExportClips: Boolean(p.canExportClips),
+          };
+        });
+      }
+      setSitePermissions(siteMap);
     } catch (err) {
       console.error('[UserManagement] Failed to load permissions:', err);
     }
@@ -170,12 +208,26 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
         body: JSON.stringify({ permissions: payload }),
       });
 
-      if (res.ok) {
-        setStatusMessage('Camera permissions updated successfully');
-      } else {
+      if (!res.ok) {
         const data = await res.json();
         setStatusMessage(`Error: ${data.message || 'Failed to update'}`);
+        return;
       }
+      if (sites.length > 0) {
+        const siteRes = await fetch(`/api/auth/users/${selectedUser.id}/site-permissions`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            permissions: Object.entries(sitePermissions).map(([siteId, flags]) => ({ siteId, ...flags })),
+          }),
+        });
+        if (!siteRes.ok) {
+          const data = await siteRes.json().catch(() => ({}));
+          setStatusMessage(`Error: ${data.message || 'Failed to update site access'}`);
+          return;
+        }
+      }
+      setStatusMessage('Permissions updated successfully');
     } catch (err: any) {
       setStatusMessage(`Error: ${err.message}`);
     } finally {
@@ -573,6 +625,43 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                   )}
                 </div>
 
+                {selectedUser.role === 'OPERATOR' && sites.length > 0 && (
+                  <div style={{ marginBottom: '18px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1', marginBottom: '4px' }}>Site access</div>
+                    <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px' }}>
+                      Applies to every camera at the site, including cameras added later.
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {sites.map((site) => {
+                        const flags = sitePermissions[site.id] ?? NO_FLAGS;
+                        return (
+                          <div
+                            key={site.id}
+                            style={{ padding: '10px 12px', backgroundColor: '#0f1a2b', border: '1px solid #1e3a5f', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                          >
+                            <div style={{ fontWeight: 600, fontSize: '13px', color: '#fff' }}>{site.name}</div>
+                            <div style={{ display: 'flex', gap: '14px', fontSize: '12px' }}>
+                              {FLAG_LABELS.map(([key, label, color]) => (
+                                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: '#e5e7eb' }}>
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`${site.name} ${label}`}
+                                    checked={flags[key]}
+                                    onChange={() => toggleSitePermission(site.id, key)}
+                                    style={{ accentColor: color }}
+                                  />
+                                  {label}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1', margin: '16px 0 4px' }}>Individual cameras</div>
+                  </div>
+                )}
+
                 {selectedUser.role === 'OPERATOR' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {availableCameras.length === 0 ? (
@@ -606,7 +695,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                                 {cam.name}
                               </div>
                               <div style={{ fontSize: '11px', color: '#6b7280' }}>
-                                Status: {cam.status}
+                                {(() => {
+                                  const siteFlags = cam.siteId ? sitePermissions[cam.siteId] : undefined;
+                                  const viaSite = FLAG_LABELS.filter(([key]) => siteFlags?.[key]).map(([, label]) => label);
+                                  const siteName = sites.find((site) => site.id === cam.siteId)?.name;
+                                  return viaSite.length > 0
+                                    ? `Via site ${siteName}: ${viaSite.join(', ')}`
+                                    : siteName ?? 'No site';
+                                })()}
                               </div>
                             </div>
 

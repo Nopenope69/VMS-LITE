@@ -11,6 +11,7 @@ export interface CameraOption {
   id: string;
   name: string;
   mediaMtxPath?: string;
+  siteId?: string | null;
 }
 
 export interface UsePlaybackSessionOptions {

@@ -571,6 +571,7 @@ export const App: React.FC = () => {
             <PlaybackPage
               authToken={token || ''}
               siteFilter={siteFilter}
+              sites={sites}
               initialCameraId={playbackCameraId ?? undefined}
               onNavigateLive={() => setCurrentView('live')}
             />
@@ -707,8 +708,10 @@ export const App: React.FC = () => {
         availableCameras={cameras.map((c) => ({
           id: c.id,
           name: c.name,
-          status: c.status || 'ONLINE',
+          status: c.status || 'UNKNOWN',
+          siteId: c.siteId ?? null,
         }))}
+        sites={sites.filter((site) => site.id !== null).map((site) => ({ id: site.id!, name: site.name }))}
       />
 
       <NotificationSettingsModal
