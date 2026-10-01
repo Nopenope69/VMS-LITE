@@ -39,6 +39,8 @@ import { eventBus } from './events/event-bus.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
 import { onvifEventListenerService as defaultOnvifEvents, OnvifEventListenerService } from './events/onvif-events.service.js';
 import { resolveJwtSecret } from './users/jwt-secret.js';
+import { isSessionValid } from './users/session.js';
+import type { UserTokenPayload } from './users/rbac.guard.js';
 import { recordingEngine as defaultRecordingEngine, RecordingEngine } from './recordings/recording-engine.js';
 
 let eventRetentionTimer: NodeJS.Timeout | null = null;
@@ -214,7 +216,11 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
     startEventRetention();
     await storageTelemetryService.start();
     wsFeed.attach(app.server, async (token: string) => {
-      return app.jwt.verify(token);
+      const payload = app.jwt.verify<UserTokenPayload>(token);
+      if (!(await isSessionValid(payload))) {
+        throw new Error('Session revoked');
+      }
+      return payload;
     });
   });
 

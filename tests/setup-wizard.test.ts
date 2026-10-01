@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
 import { setupService } from '../src/system/setup.service.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Setup Wizard Routes & Service', () => {
   let app: FastifyInstance;
@@ -17,7 +18,7 @@ describe('Setup Wizard Routes & Service', () => {
       data: { id: 'admin-uuid', username: 'admin', passwordHash: 'x', role: 'ADMIN' },
     });
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: 'ADMIN',

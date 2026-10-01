@@ -13,6 +13,7 @@ import {
   ExternalLink,
   CheckCircle2,
 } from 'lucide-react';
+import { AccountSecurityCard } from '../components/AccountSecurityCard.js';
 
 export interface SettingsViewProps {
   isAdmin?: boolean;
@@ -43,6 +44,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Settings Grid */}
       <div className="space-y-6">
+        <AccountSecurityCard />
+
         {/* Core Configuration Group */}
         <div>
           <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">

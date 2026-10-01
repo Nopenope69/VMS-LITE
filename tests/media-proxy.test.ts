@@ -3,6 +3,7 @@ import { AddressInfo } from 'node:net';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
+import { signAs } from './helpers/auth.js';
 
 /**
  * The media proxy is the only browser path to MediaMTX, so its auth rules matter:
@@ -65,9 +66,9 @@ describe('Authenticated media proxy (/api/media)', () => {
       data: { userId: 'proxy-operator', cameraId: 'proxy-cam-1', canViewLive: true, canViewPlayback: false },
     });
 
-    adminToken = app.jwt.sign({ id: 'proxy-admin', username: 'a', role: 'ADMIN' });
-    viewerToken = app.jwt.sign({ id: 'proxy-viewer', username: 'v', role: 'VIEWER' });
-    operatorToken = app.jwt.sign({ id: 'proxy-operator', username: 'o', role: 'OPERATOR' });
+    adminToken = await signAs(app, { id: 'proxy-admin', username: 'a', role: 'ADMIN' });
+    viewerToken = await signAs(app, { id: 'proxy-viewer', username: 'v', role: 'VIEWER' });
+    operatorToken = await signAs(app, { id: 'proxy-operator', username: 'o', role: 'OPERATOR' });
   });
 
   afterAll(async () => {

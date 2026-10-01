@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
 import { handoffService } from '../src/system/handoff.service.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Installer Handoff Certificate Routes & Service', () => {
   let app: FastifyInstance;
@@ -11,7 +12,7 @@ describe('Installer Handoff Certificate Routes & Service', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: 'ADMIN',

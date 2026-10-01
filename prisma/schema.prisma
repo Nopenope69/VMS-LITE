@@ -35,6 +35,8 @@ model User {
   username     String   @unique
   passwordHash String
   role         Role     @default(VIEWER)
+  /// Bumped to invalidate every token issued to this user (role/password change, sign-out everywhere)
+  tokenVersion Int      @default(0) @map("token_version")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

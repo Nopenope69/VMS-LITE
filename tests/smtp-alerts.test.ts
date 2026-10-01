@@ -6,6 +6,7 @@ import { TokenBucketRateLimiter } from '../src/notifications/token-bucket-rate-l
 import { MockSmtpTransport } from '../src/notifications/smtp-client.js';
 import { SmtpDispatcherService, smtpDispatcherService } from '../src/notifications/smtp-dispatcher.service.js';
 import { Role } from '@prisma/client';
+import { signAs } from './helpers/auth.js';
 
 describe('Built-in SMTP Email Alerting Subsystem (Phase 19 - Plan 01 - MVP-12)', () => {
   let mockTransport: MockSmtpTransport;
@@ -154,9 +155,9 @@ describe('Built-in SMTP Email Alerting Subsystem (Phase 19 - Plan 01 - MVP-12)',
       // Hook mock transport to singleton service used by server
       smtpDispatcherService.setTransport(mockTransport);
 
-      adminToken = app.jwt.sign({ id: 'usr-admin', username: 'admin', role: Role.ADMIN });
-      operatorToken = app.jwt.sign({ id: 'usr-operator', username: 'operator', role: Role.OPERATOR });
-      viewerToken = app.jwt.sign({ id: 'usr-viewer', username: 'viewer', role: Role.VIEWER });
+      adminToken = await signAs(app, { id: 'usr-admin', username: 'admin', role: Role.ADMIN });
+      operatorToken = await signAs(app, { id: 'usr-operator', username: 'operator', role: Role.OPERATOR });
+      viewerToken = await signAs(app, { id: 'usr-viewer', username: 'viewer', role: Role.VIEWER });
     });
 
     afterEach(async () => {

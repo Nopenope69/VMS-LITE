@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
 import { extractTarGz } from '../src/system/backup.service.js';
 import crypto from 'node:crypto';
+import { signAs } from './helpers/auth.js';
 
 describe('Sub-Project B: Appliance Operations & Maintenance End-to-End Integration', () => {
   let app: FastifyInstance;
@@ -13,13 +14,13 @@ describe('Sub-Project B: Appliance Operations & Maintenance End-to-End Integrati
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: 'ADMIN',
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-uuid',
       username: 'viewer',
       role: 'VIEWER',

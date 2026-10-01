@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
 import { storageTelemetryService } from '../src/system/storage-telemetry.service.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Sub-Project C: Storage Reliability & Drive Telemetry End-to-End', () => {
   let app: FastifyInstance;
@@ -11,7 +12,7 @@ describe('Sub-Project C: Storage Reliability & Drive Telemetry End-to-End', () =
     app = await createServer({ logger: false });
     await app.ready();
 
-    token = app.jwt.sign({
+    token = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: 'ADMIN',

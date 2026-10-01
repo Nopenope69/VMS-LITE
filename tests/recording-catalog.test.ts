@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { Role } from '@prisma/client';
 import { createServer } from '../src/server.js';
 import { eventBus } from '../src/events/event-bus.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Recording Catalog & Webhook Routes (/api/recordings)', () => {
   let app: FastifyInstance;
@@ -24,13 +25,13 @@ describe('Recording Catalog & Webhook Routes (/api/recordings)', () => {
       });
     }
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-id',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-id',
       username: 'viewer',
       role: Role.VIEWER,

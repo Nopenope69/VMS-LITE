@@ -7,6 +7,7 @@ import { CameraHealthService, cameraHealthService } from '../src/health/camera-h
 import { EventBus, eventBus } from '../src/events/event-bus.js';
 import { CameraService } from '../src/cameras/camera.service.js';
 import { IMediaMtxRuntimeAdapter, CameraHealthEventMetadata } from '../src/health/health.types.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', () => {
   let app: FastifyInstance;
@@ -18,19 +19,19 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-1',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    operatorToken = app.jwt.sign({
+    operatorToken = await signAs(app, {
       id: 'op-1',
       username: 'operator',
       role: Role.OPERATOR,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'view-1',
       username: 'viewer',
       role: Role.VIEWER,

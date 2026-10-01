@@ -8,6 +8,7 @@ import {
   MOCK_DISCOVERED_CAMERAS,
   MOCK_PROFILES_DUAL,
 } from './fixtures/onvif-mock.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Camera Routes & Endpoints (/api/cameras)', () => {
   let app: FastifyInstance;
@@ -24,13 +25,13 @@ describe('Camera Routes & Endpoints (/api/cameras)', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-id',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-id',
       username: 'viewer',
       role: Role.VIEWER,

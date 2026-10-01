@@ -33,7 +33,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   onClose,
   availableCameras,
 }) => {
-  const { token, isAdmin } = useAuth();
+  const { token, isAdmin, user: currentUser } = useAuth();
+  const [resetPassword, setResetPassword] = useState('');
   const [users, setUsers] = useState<UserItem[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
   const [permissions, setPermissions] = useState<Record<string, CameraPermissionItem>>({});
@@ -63,6 +64,34 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
       }
     } catch (err) {
       console.error('[UserManagement] Failed to fetch users:', err);
+    }
+  };
+
+  /** Account actions; each one also signs the user out of existing sessions server-side. */
+  const accountAction = async (
+    label: string,
+    method: string,
+    url: string,
+    body?: unknown,
+    confirmText?: string
+  ) => {
+    if (confirmText && !window.confirm(confirmText)) return;
+    setStatusMessage(null);
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      setStatusMessage(`${label}: done`);
+      if (method === 'DELETE') setSelectedUser(null);
+      else if (data.user && selectedUser) setSelectedUser({ ...selectedUser, role: data.user.role });
+      setResetPassword('');
+      await fetchUsers();
+    } catch (err: any) {
+      setStatusMessage(`Error: ${label} failed - ${err.message}`);
     }
   };
 
@@ -459,6 +488,90 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                     {statusMessage}
                   </div>
                 )}
+
+                {/* Account management */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px',
+                    marginBottom: '16px',
+                    border: '1px solid #1f2937',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                  }}
+                >
+                  <label style={{ color: '#9ca3af' }}>
+                    Role{' '}
+                    <select
+                      value={selectedUser.role}
+                      disabled={selectedUser.id === currentUser?.id}
+                      onChange={(e) =>
+                        accountAction('Role change', 'PATCH', `/api/auth/users/${selectedUser.id}`, {
+                          role: e.target.value,
+                        })
+                      }
+                      style={{ marginLeft: '4px', backgroundColor: '#111827', color: '#fff', border: '1px solid #374151', borderRadius: '4px', padding: '4px' }}
+                    >
+                      <option value="ADMIN">ADMIN</option>
+                      <option value="OPERATOR">OPERATOR</option>
+                      <option value="VIEWER">VIEWER</option>
+                    </select>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="New password (min. 8)"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    style={{ backgroundColor: '#111827', color: '#fff', border: '1px solid #374151', borderRadius: '4px', padding: '5px 8px' }}
+                  />
+                  <button
+                    type="button"
+                    disabled={resetPassword.length < 8}
+                    onClick={() =>
+                      accountAction('Password reset', 'POST', `/api/auth/users/${selectedUser.id}/reset-password`, {
+                        password: resetPassword,
+                      })
+                    }
+                    style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid #374151', backgroundColor: '#1f2937', color: '#e5e7eb', cursor: 'pointer' }}
+                  >
+                    Reset password
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      accountAction(
+                        'Sign out everywhere',
+                        'POST',
+                        `/api/auth/users/${selectedUser.id}/revoke-sessions`,
+                        undefined,
+                        `Sign ${selectedUser.username} out of all devices?`
+                      )
+                    }
+                    style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid #374151', backgroundColor: '#1f2937', color: '#e5e7eb', cursor: 'pointer' }}
+                  >
+                    Sign out everywhere
+                  </button>
+                  {selectedUser.id !== currentUser?.id && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        accountAction(
+                          'Delete user',
+                          'DELETE',
+                          `/api/auth/users/${selectedUser.id}`,
+                          undefined,
+                          `Delete user ${selectedUser.username}? This cannot be undone.`
+                        )
+                      }
+                      style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid #7f1d1d', backgroundColor: '#450a0a', color: '#fecaca', cursor: 'pointer', marginLeft: 'auto' }}
+                    >
+                      Delete user
+                    </button>
+                  )}
+                </div>
 
                 {selectedUser.role === 'OPERATOR' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

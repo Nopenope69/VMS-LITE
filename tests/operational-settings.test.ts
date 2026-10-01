@@ -10,6 +10,7 @@ import {
 } from '../src/settings/settings.types.js';
 import { settingsService } from '../src/settings/settings.service.js';
 import { recordingEngine } from '../src/recordings/recording-engine.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Operational Settings & Core Health Licensing Realignment (Phase 16 - MVP-07, MVP-08)', () => {
   let app: FastifyInstance;
@@ -27,19 +28,19 @@ describe('Operational Settings & Core Health Licensing Realignment (Phase 16 - M
       });
     }
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'usr-admin-1',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    operatorToken = app.jwt.sign({
+    operatorToken = await signAs(app, {
       id: 'usr-op-1',
       username: 'operator',
       role: Role.OPERATOR,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'usr-viewer-1',
       username: 'viewer',
       role: Role.VIEWER,

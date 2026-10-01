@@ -9,6 +9,7 @@ import { ExportCompatibilityValidator } from '../src/export/export-compatibility
 import { ExportService } from '../src/export/export.service.js';
 import { ExportPruneService } from '../src/export/export-prune.service.js';
 import { BookmarkService } from '../src/bookmarks/bookmark.service.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Server-Side Clip Export & Timeline Bookmarks (Phase 10 - EXT-04, EXT-05)', () => {
   let app: FastifyInstance;
@@ -30,25 +31,25 @@ describe('Server-Side Clip Export & Timeline Bookmarks (Phase 10 - EXT-04, EXT-0
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    operatorWithExportToken = app.jwt.sign({
+    operatorWithExportToken = await signAs(app, {
       id: opWithExportId,
       username: 'op_export',
       role: Role.OPERATOR,
     });
 
-    operatorNoExportToken = app.jwt.sign({
+    operatorNoExportToken = await signAs(app, {
       id: opNoExportId,
       username: 'op_no_export',
       role: Role.OPERATOR,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: viewerId,
       username: 'viewer',
       role: Role.VIEWER,

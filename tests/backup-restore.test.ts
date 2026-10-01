@@ -4,6 +4,7 @@ import { createServer } from '../src/server.js';
 import { buildTarGz, extractTarGz, BackupManifest } from '../src/system/backup.service.js';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
+import { signAs } from './helpers/auth.js';
 
 describe('System Configuration Backup & Restore', () => {
   let app: FastifyInstance;
@@ -12,7 +13,7 @@ describe('System Configuration Backup & Restore', () => {
   beforeAll(async () => {
     app = await createServer({ logger: false });
     await app.ready();
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: 'ADMIN',

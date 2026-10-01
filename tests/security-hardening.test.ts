@@ -4,6 +4,7 @@ import { createServer } from '../src/server.js';
 import { AuthService } from '../src/users/auth.service.js';
 import { LoginThrottle } from '../src/users/login-throttle.js';
 import { HandoffService } from '../src/system/handoff.service.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Security hardening', () => {
   let app: FastifyInstance;
@@ -14,9 +15,9 @@ describe('Security hardening', () => {
   beforeAll(async () => {
     app = await createServer({ logger: false });
     await app.ready();
-    adminToken = app.jwt.sign({ id: 'sec-admin', username: 'sec-admin', role: 'ADMIN' });
-    viewerToken = app.jwt.sign({ id: 'sec-viewer', username: 'sec-viewer', role: 'VIEWER' });
-    operatorToken = app.jwt.sign({ id: 'sec-operator', username: 'sec-operator', role: 'OPERATOR' });
+    adminToken = await signAs(app, { id: 'sec-admin', username: 'sec-admin', role: 'ADMIN' });
+    viewerToken = await signAs(app, { id: 'sec-viewer', username: 'sec-viewer', role: 'VIEWER' });
+    operatorToken = await signAs(app, { id: 'sec-operator', username: 'sec-operator', role: 'OPERATOR' });
     await new AuthService().createUser('throttled-user', 'correct-horse-battery');
   });
 

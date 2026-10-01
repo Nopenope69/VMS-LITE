@@ -1,12 +1,11 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { Role } from '@prisma/client';
-import { AuthService } from './auth.service.js';
+import { AuthService, MIN_PASSWORD_LENGTH, UserAdminError } from './auth.service.js';
 import { authenticate, requireRole } from './rbac.guard.js';
 import { auditService } from '../audit/audit.service.js';
 import { LoginThrottle } from './login-throttle.js';
 import { clearMediaCookie, setMediaCookie } from '../media/media-proxy.routes.js';
 
-const MIN_PASSWORD_LENGTH = 8;
 const VALID_ROLES = new Set<string>(Object.values(Role));
 
 export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
@@ -61,11 +60,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
       metadata: { role: user.role },
     });
 
-    const token = fastify.jwt.sign({
-      id: user.id,
-      username: user.username,
-      role: user.role,
-    });
+    const token = fastify.jwt.sign(authService.tokenClaims(user));
     setMediaCookie(request, reply, token);
 
     return {
@@ -240,6 +235,144 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
           error: 'Bad Request',
           message: (err as Error).message,
         });
+      }
+    }
+  );
+
+  const sendAdminError = (reply: any, err: unknown) => {
+    if (err instanceof UserAdminError) {
+      return reply.status(err.statusCode).send({ error: err.name, message: err.message });
+    }
+    throw err;
+  };
+
+  // PATCH /api/auth/users/:id  { role }  (Admin only) - re-login required for that user
+  fastify.patch<{ Params: { id: string }; Body: { role?: Role } }>(
+    '/users/:id',
+    { preHandler: [requireRole([Role.ADMIN])] },
+    async (request, reply) => {
+      const { role } = request.body || {};
+      if (!role || !VALID_ROLES.has(role)) {
+        return reply.status(400).send({ error: 'Bad Request', message: `role must be one of ${[...VALID_ROLES].join(', ')}` });
+      }
+      if (role === Role.OPERATOR && !fastify.capabilities?.has('extended.operator_role')) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: "Missing required capability: 'extended.operator_role'",
+          capability: 'extended.operator_role',
+        });
+      }
+      try {
+        const updated = await authService.updateRole(request.params.id, role, request.user.id);
+        await auditService.log({
+          action: 'USER_ROLE_CHANGED',
+          userId: request.user.id,
+          username: request.user.username,
+          ipAddress: request.ip,
+          resource: `user:${updated.id}`,
+          metadata: { targetUsername: updated.username, role },
+        });
+        return { user: { id: updated.id, username: updated.username, role: updated.role } };
+      } catch (err) {
+        return sendAdminError(reply, err);
+      }
+    }
+  );
+
+  // DELETE /api/auth/users/:id  (Admin only)
+  fastify.delete<{ Params: { id: string } }>(
+    '/users/:id',
+    { preHandler: [requireRole([Role.ADMIN])] },
+    async (request, reply) => {
+      try {
+        const deleted = await authService.deleteUser(request.params.id, request.user.id);
+        await auditService.log({
+          action: 'USER_DELETED',
+          userId: request.user.id,
+          username: request.user.username,
+          ipAddress: request.ip,
+          resource: `user:${deleted.id}`,
+          metadata: { targetUsername: deleted.username, role: deleted.role },
+        });
+        return { success: true };
+      } catch (err) {
+        return sendAdminError(reply, err);
+      }
+    }
+  );
+
+  // POST /api/auth/users/:id/reset-password  { password }  (Admin only)
+  fastify.post<{ Params: { id: string }; Body: { password?: string } }>(
+    '/users/:id/reset-password',
+    { preHandler: [requireRole([Role.ADMIN])] },
+    async (request, reply) => {
+      try {
+        const user = await authService.resetPassword(request.params.id, request.body?.password ?? '');
+        await auditService.log({
+          action: 'USER_PASSWORD_RESET',
+          userId: request.user.id,
+          username: request.user.username,
+          ipAddress: request.ip,
+          resource: `user:${user.id}`,
+          metadata: { targetUsername: user.username },
+        });
+        return { success: true };
+      } catch (err) {
+        return sendAdminError(reply, err);
+      }
+    }
+  );
+
+  // POST /api/auth/users/:id/revoke-sessions  (Admin, or the user themselves)
+  fastify.post<{ Params: { id: string } }>(
+    '/users/:id/revoke-sessions',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const isSelf = request.user.id === request.params.id;
+      if (!isSelf && request.user.role !== Role.ADMIN) {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Only administrators can sign out other users' });
+      }
+      try {
+        const user = await authService.revokeSessions(request.params.id);
+        await auditService.log({
+          action: 'USER_SESSIONS_REVOKED',
+          userId: request.user.id,
+          username: request.user.username,
+          ipAddress: request.ip,
+          resource: `user:${user.id}`,
+          metadata: { targetUsername: user.username },
+        });
+        if (isSelf) clearMediaCookie(reply);
+        return { success: true };
+      } catch (err) {
+        return sendAdminError(reply, err);
+      }
+    }
+  );
+
+  // POST /api/auth/me/password  { currentPassword, newPassword }
+  // Signs out every other session and returns a fresh token for this one.
+  fastify.post<{ Body: { currentPassword?: string; newPassword?: string } }>(
+    '/me/password',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const user = await authService.changeOwnPassword(
+          request.user.id,
+          request.body?.currentPassword ?? '',
+          request.body?.newPassword ?? ''
+        );
+        await auditService.log({
+          action: 'USER_PASSWORD_CHANGED',
+          userId: user.id,
+          username: user.username,
+          ipAddress: request.ip,
+        });
+        const token = fastify.jwt.sign(authService.tokenClaims(user));
+        setMediaCookie(request, reply, token);
+        return { token, user: { id: user.id, username: user.username, role: user.role } };
+      } catch (err) {
+        return sendAdminError(reply, err);
       }
     }
   );

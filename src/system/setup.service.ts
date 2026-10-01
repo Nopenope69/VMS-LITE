@@ -4,6 +4,7 @@ import os from 'node:os';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 import { auditService } from '../audit/audit.service.js';
 import { SystemSettingsStore } from '../settings/system-settings.store.js';
+import { invalidateSessionCache } from '../users/session.js';
 
 export interface SetupState {
   completed: boolean;
@@ -104,7 +105,11 @@ export class SetupService {
     };
   }
 
-  async completeSetup(input: CompleteSetupInput, actorUserId?: string): Promise<{ success: boolean; message: string }> {
+  async completeSetup(
+    input: CompleteSetupInput,
+    actorUserId?: string
+  ): Promise<{ success: boolean; message: string; user?: any }> {
+    let updatedUser: any;
     if (input.newPassword) {
       if (input.newPassword.length < 8) {
         throw new Error('New password must be at least 8 characters long');
@@ -115,11 +120,18 @@ export class SetupService {
       }
 
       const passwordHash = await bcrypt.hash(input.newPassword, 10);
-      // Change the password of the admin running the wizard (falls back to the factory account)
-      await this.prisma.user.update({
-        where: actorUserId ? { id: actorUserId } : { username: 'admin' },
-        data: { passwordHash },
+      // Change the password of the admin running the wizard (falls back to the factory
+      // account) and revoke every token issued while the factory password was active.
+      const where = actorUserId ? { id: actorUserId } : { username: 'admin' };
+      const current = await this.prisma.user.findUnique({ where });
+      if (!current) {
+        throw new Error('Administrator account not found');
+      }
+      updatedUser = await this.prisma.user.update({
+        where,
+        data: { passwordHash, tokenVersion: (current.tokenVersion ?? 0) + 1 },
       });
+      invalidateSessionCache(current.id);
     }
 
     const previous = await this.getSetupState();
@@ -143,6 +155,7 @@ export class SetupService {
     return {
       success: true,
       message: 'Initial appliance provisioning completed successfully',
+      user: updatedUser,
     };
   }
 }

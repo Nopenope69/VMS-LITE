@@ -4,6 +4,7 @@ import { Role } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { UserTokenPayload } from '../users/rbac.guard.js';
 import { CameraPermissionFlag, hasCameraPermission } from '../users/camera-access.js';
+import { isSessionValid } from '../users/session.js';
 
 /**
  * Authenticated reverse proxy for MediaMTX's browser-facing endpoints.
@@ -75,7 +76,8 @@ async function authenticateMedia(
   }
   if (!token) return null;
   try {
-    return app.jwt.verify<UserTokenPayload>(token);
+    const payload = app.jwt.verify<UserTokenPayload>(token);
+    return (await isSessionValid(payload)) ? payload : null;
   } catch {
     return null;
   }

@@ -4,6 +4,7 @@ import { Role } from '@prisma/client';
 import { createServer } from '../src/server.js';
 import { cameraService } from '../src/cameras/camera.service.js';
 import { recordingEngine } from '../src/recordings/recording-engine.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Playback API (/api/playback) (PLAY-01, PLAY-03)', () => {
   let app: FastifyInstance;
@@ -15,13 +16,13 @@ describe('Playback API (/api/playback) (PLAY-01, PLAY-03)', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-user-id',
       username: 'viewer',
       role: Role.VIEWER,
     });
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-user-id',
       username: 'admin',
       role: Role.ADMIN,

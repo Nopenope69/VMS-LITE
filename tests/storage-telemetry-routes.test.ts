@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Storage Telemetry Routes', () => {
   let app: FastifyInstance;
@@ -9,7 +10,7 @@ describe('Storage Telemetry Routes', () => {
   beforeAll(async () => {
     app = await createServer({ logger: false });
     await app.ready();
-    token = app.jwt.sign({
+    token = await signAs(app, {
       id: 'test-user',
       username: 'operator',
       role: 'OPERATOR',

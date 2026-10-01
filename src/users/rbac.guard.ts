@@ -5,6 +5,19 @@ export interface UserTokenPayload {
   id: string;
   username: string;
   role: Role;
+  /** User.tokenVersion at issue time; absent on tokens issued before versioning (= 0). */
+  tv?: number;
+}
+
+class SessionRevokedError extends Error {}
+
+/** Verifies the JWT signature/expiry and that the session has not been revoked. */
+async function verifyRequestSession(request: FastifyRequest): Promise<void> {
+  await request.jwtVerify();
+  const { isSessionValid } = await import('./session.js');
+  if (!(await isSessionValid(request.user))) {
+    throw new SessionRevokedError('Session revoked');
+  }
 }
 
 declare module '@fastify/jwt' {
@@ -22,7 +35,7 @@ export async function authenticate(
   reply: FastifyReply
 ): Promise<void> {
   try {
-    await request.jwtVerify();
+    await verifyRequestSession(request);
   } catch (err) {
     reply.status(401).send({
       error: 'Unauthorized',
@@ -41,7 +54,7 @@ export function requireRole(allowedRoles: Role | Role[]) {
     // Ensure authentication ran first
     if (!request.user) {
       try {
-        await request.jwtVerify();
+        await verifyRequestSession(request);
       } catch (err) {
         reply.status(401).send({
           error: 'Unauthorized',
@@ -78,7 +91,7 @@ export function requireCameraPermission(permission: CameraPermissionKey) {
   return async function (request: FastifyRequest, reply: FastifyReply): Promise<void> {
     if (!request.user) {
       try {
-        await request.jwtVerify();
+        await verifyRequestSession(request);
       } catch (err) {
         reply.status(401).send({
           error: 'Unauthorized',

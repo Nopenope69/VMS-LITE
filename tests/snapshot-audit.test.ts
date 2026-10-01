@@ -4,6 +4,7 @@ import { createServer } from '../src/server.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { signAs } from './helpers/auth.js';
 
 describe('Server-Authoritative Snapshot Audit Pipeline (BSA-Aware)', () => {
   let app: FastifyInstance;
@@ -14,7 +15,7 @@ describe('Server-Authoritative Snapshot Audit Pipeline (BSA-Aware)', () => {
     process.env.SNAPSHOTS_PATH = testSnapshotsDir;
     app = await createServer({ logger: false });
     await app.ready();
-    operatorToken = app.jwt.sign({ id: 'usr-op-1', username: 'operator1', role: 'OPERATOR' });
+    operatorToken = await signAs(app, { id: 'usr-op-1', username: 'operator1', role: 'OPERATOR' });
   });
 
   afterAll(async () => {

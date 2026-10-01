@@ -4,6 +4,7 @@ import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
 import { eventBus } from '../src/events/event-bus.js';
 import { CoreEventType } from '../src/events/event.types.js';
+import { signAs } from './helpers/auth.js';
 
 describe('WebSocket Event Feed & REST API (EVT-05)', () => {
   let app: FastifyInstance;
@@ -22,7 +23,7 @@ describe('WebSocket Event Feed & REST API (EVT-05)', () => {
     }
 
     // Generate valid admin test JWT
-    validToken = app.jwt.sign({
+    validToken = await signAs(app, {
       id: 'test-admin-id',
       username: 'admin',
       role: 'ADMIN',
