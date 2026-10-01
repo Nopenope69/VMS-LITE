@@ -249,9 +249,10 @@ export class MotionRingBufferEngine {
     const remaining: BufferedSegment[] = [];
 
     for (const seg of queue) {
-      // Keep segment if promoted or if still within buffer TTL window
-      if (seg.promoted || seg.endTime >= ttlCutoff) {
-        remaining.push(seg);
+      if (seg.endTime >= ttlCutoff) {
+        remaining.push(seg); // Still inside the pre-buffer window
+      } else if (seg.promoted) {
+        // Catalogued as a permanent recording; drop from the in-memory queue only
       } else {
         // Expired and unpromoted: unlink from disk
         try {

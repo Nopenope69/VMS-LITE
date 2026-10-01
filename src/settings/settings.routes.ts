@@ -123,6 +123,9 @@ export const settingsRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
             details: err.errors,
           });
         }
+        if (err.name === 'CameraNotFoundError') {
+          return reply.status(404).send({ error: 'NotFound', message: err.message });
+        }
         return reply.status(500).send({
           error: 'ScheduleUpdateFailed',
           message: err.message || 'Failed to update camera schedule',

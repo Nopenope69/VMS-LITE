@@ -20,6 +20,12 @@ describe('Operational Settings & Core Health Licensing Realignment (Phase 16 - M
   beforeAll(async () => {
     app = await createServer();
     await app.ready();
+    const { prisma: seedPrisma } = await import('../src/db/prisma.js');
+    if (!(await seedPrisma.camera.findUnique({ where: { id: 'test-cam-1' } }))) {
+      await seedPrisma.camera.create({
+        data: { id: 'test-cam-1', name: 'test-cam-1', rtspUrl: 'rtsp://10.0.0.1/stream', mediaMtxPath: 'test-cam-1', recordingMode: 'CONTINUOUS' },
+      });
+    }
 
     adminToken = app.jwt.sign({
       id: 'usr-admin-1',

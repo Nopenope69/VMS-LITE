@@ -13,7 +13,14 @@ export interface CameraRecordSummary {
   id: string;
   name: string;
   mediaMtxPath: string;
+  /** Present when known; required for the scheduler to (re)provision MediaMTX paths. */
+  rtspUrl?: string | null;
+  subStreamUrl?: string | null;
+  subMediaMtxPath?: string | null;
 }
+
+/** Upper bound on segments returned for one timeline window (24h of 30s segments). */
+export const MAX_TIMELINE_SEGMENTS = 3000;
 
 export interface IRecordingRepository {
   createRecording(data: {
@@ -30,7 +37,9 @@ export interface IRecordingRepository {
 
   findRecordingById(id: string): Promise<RecordingDto | null>;
   queryRecordings(params: RecordingQueryParams): Promise<RecordingDto[]>;
-  findOldestRecordings(limit: number): Promise<RecordingDto[]>;
+  /** Segments overlapping [start, end) for one camera, ascending by start time. */
+  findRecordingsInRange(cameraId: string, start: Date, end: Date): Promise<RecordingDto[]>;
+  findOldestRecordings(limit: number, skip?: number): Promise<RecordingDto[]>;
   deleteRecording(id: string): Promise<boolean>;
 
   getCameraSchedule(cameraId: string): Promise<CameraScheduleConfig>;
@@ -43,6 +52,14 @@ export interface IRecordingRepository {
   listAllCameras(): Promise<CameraRecordSummary[]>;
   getCameraByMediaMtxPath(mediaMtxPath: string): Promise<CameraRecordSummary | null>;
   getCameraById(cameraId: string): Promise<CameraRecordSummary | null>;
+}
+
+export class CameraNotFoundError extends Error {
+  public readonly statusCode = 404;
+  constructor(cameraId: string) {
+    super(`Camera with id ${cameraId} not found`);
+    this.name = 'CameraNotFoundError';
+  }
 }
 
 export class PrismaRecordingRepository implements IRecordingRepository {
@@ -103,10 +120,24 @@ export class PrismaRecordingRepository implements IRecordingRepository {
     return records.map((r) => this.toDto(r));
   }
 
-  async findOldestRecordings(limit: number): Promise<RecordingDto[]> {
+  async findRecordingsInRange(cameraId: string, start: Date, end: Date): Promise<RecordingDto[]> {
+    const records = await this.prisma.recording.findMany({
+      where: {
+        cameraId,
+        startTime: { lt: end },
+        endTime: { gt: start },
+      },
+      orderBy: { startTime: 'asc' },
+      take: MAX_TIMELINE_SEGMENTS,
+    });
+    return records.map((r) => this.toDto(r));
+  }
+
+  async findOldestRecordings(limit: number, skip = 0): Promise<RecordingDto[]> {
     const records = await this.prisma.recording.findMany({
       orderBy: { startTime: 'asc' },
       take: limit,
+      skip,
     });
     return records.map((r) => this.toDto(r));
   }
@@ -119,20 +150,12 @@ export class PrismaRecordingRepository implements IRecordingRepository {
   }
 
   async getCameraSchedule(cameraId: string): Promise<CameraScheduleConfig> {
-    // Mode is persisted in Camera model or RecordingSchedule
-    let mode: RecordingMode = 'CONTINUOUS';
-
-    try {
-      const camera = await this.prisma.camera.findUnique({
-        where: { id: cameraId },
-        select: { status: true },
-      });
-      if (camera && (camera as any).recordingMode) {
-        mode = (camera as any).recordingMode as RecordingMode;
-      }
-    } catch {
-      // Fallback
-    }
+    // Mode is persisted on the Camera row; windows in recording_schedules
+    const camera = await this.prisma.camera.findUnique({
+      where: { id: cameraId },
+      select: { recordingMode: true },
+    });
+    const mode: RecordingMode = (camera?.recordingMode as RecordingMode) || 'CONTINUOUS';
 
     const records = await this.prisma.recordingSchedule.findMany({
       where: { cameraId },
@@ -147,10 +170,6 @@ export class PrismaRecordingRepository implements IRecordingRepository {
       endMin: r.endMin,
     }));
 
-    if (records.length > 0 && mode === 'CONTINUOUS') {
-      mode = 'SCHEDULED';
-    }
-
     return { mode, windows };
   }
 
@@ -159,7 +178,17 @@ export class PrismaRecordingRepository implements IRecordingRepository {
     mode: RecordingMode,
     windows: ScheduleWindow[]
   ): Promise<void> {
+    const exists = await this.prisma.camera.findUnique({ where: { id: cameraId }, select: { id: true } });
+    if (!exists) {
+      throw new CameraNotFoundError(cameraId);
+    }
+
     await this.prisma.$transaction(async (tx) => {
+      await tx.camera.update({
+        where: { id: cameraId },
+        data: { recordingMode: mode },
+      });
+
       // Clear existing schedule windows
       await tx.recordingSchedule.deleteMany({
         where: { cameraId },
@@ -183,7 +212,14 @@ export class PrismaRecordingRepository implements IRecordingRepository {
 
   async listAllCameras(): Promise<CameraRecordSummary[]> {
     return this.prisma.camera.findMany({
-      select: { id: true, name: true, mediaMtxPath: true },
+      select: {
+        id: true,
+        name: true,
+        mediaMtxPath: true,
+        rtspUrl: true,
+        subStreamUrl: true,
+        subMediaMtxPath: true,
+      },
     });
   }
 
@@ -283,10 +319,22 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
     return list.slice(0, params.limit || 100);
   }
 
-  async findOldestRecordings(limit: number): Promise<RecordingDto[]> {
+  async findRecordingsInRange(cameraId: string, start: Date, end: Date): Promise<RecordingDto[]> {
+    return Array.from(this.recordings.values())
+      .filter(
+        (r) =>
+          r.cameraId === cameraId &&
+          new Date(r.startTime).getTime() < end.getTime() &&
+          new Date(r.endTime).getTime() > start.getTime()
+      )
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+      .slice(0, MAX_TIMELINE_SEGMENTS);
+  }
+
+  async findOldestRecordings(limit: number, skip = 0): Promise<RecordingDto[]> {
     const list = Array.from(this.recordings.values());
     list.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-    return list.slice(0, limit);
+    return list.slice(skip, skip + limit);
   }
 
   async deleteRecording(id: string): Promise<boolean> {
@@ -320,7 +368,6 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
 
   async getCameraById(cameraId: string): Promise<CameraRecordSummary | null> {
     const cam = this.cameras.get(cameraId);
-    if (!cam) return null;
-    return { id: cam.id, name: cam.name, mediaMtxPath: cam.mediaMtxPath };
+    return cam ? { ...cam } : null;
   }
 }

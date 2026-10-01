@@ -169,18 +169,13 @@ export class SettingsService {
    * Retrieves camera-specific schedule or defaults to global operational schedule.
    */
   async getCameraSchedule(cameraId: string): Promise<CameraScheduleResponse> {
+    // Report exactly what the scheduler applies for this camera
     const existing = await recordingEngine.getSchedule(cameraId);
-    const windows =
-      existing.windows.length > 0
-        ? existing.windows
-        : this.operationalSettings.weeklySchedule;
-    const mode = existing.mode || this.operationalSettings.recordingMode;
-
     return {
       cameraId,
-      mode,
-      windows,
-      grid: windowsToGrid(windows),
+      mode: existing.mode,
+      windows: existing.windows,
+      grid: windowsToGrid(existing.windows),
     };
   }
 

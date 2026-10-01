@@ -86,7 +86,7 @@ describe('Day 75 Field Validation & 72-Hour Acceptance Gate (Phase 21 - MVP-14)'
         repository.registerCamera({
           id: `cam-${idNum}`,
           name: `Camera-${idNum}`,
-          mediaMtxPath: `path_cam_${idNum}`,
+          mediaMtxPath: `path_cam-${idNum}`,
         });
       }
 

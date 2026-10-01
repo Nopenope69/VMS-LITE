@@ -1,4 +1,5 @@
-import { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import crypto from 'node:crypto';
+import { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { Role } from '@prisma/client';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { recordingEngine } from './recording-engine.js';
@@ -8,11 +9,38 @@ import {
   SetCameraScheduleSchema,
 } from './recording.types.js';
 
+/**
+ * The segment hook is called by MediaMTX, not by users. When MEDIAMTX_HOOK_TOKEN is set
+ * (always in docker-compose), the X-VMS-Hook-Token header must match it. Without a
+ * token, only loopback callers are accepted outside development/test.
+ */
+function isAuthorizedHook(request: FastifyRequest): boolean {
+  const expected = process.env.MEDIAMTX_HOOK_TOKEN;
+  if (expected) {
+    const provided = request.headers['x-vms-hook-token'];
+    if (typeof provided !== 'string' || provided.length !== expected.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+  }
+  if (process.env.NODE_ENV === 'production') {
+    const ip = request.socket.remoteAddress || '';
+    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  }
+  return true;
+}
+
 export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
    * Helper handler for MediaMTX segment complete webhook
    */
   const handleSegmentComplete = async (request: any, reply: any) => {
+    if (!isAuthorizedHook(request)) {
+      return reply.status(401).send({
+        error: 'Unauthorized',
+        message: 'Missing or invalid segment hook token',
+      });
+    }
     try {
       const payload = SegmentCompleteWebhookSchema.parse(request.body);
       const recording = await recordingEngine.ingestSegment(payload);
@@ -21,6 +49,9 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         recording,
       });
     } catch (err: any) {
+      if (err.name === 'UnknownCameraPathError') {
+        return reply.status(202).send({ success: false, ignored: true, message: err.message });
+      }
       if (err.name === 'ZodError') {
         return reply.status(400).send({
           error: 'ValidationError',
@@ -143,6 +174,9 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
             message: 'Invalid schedule payload',
             details: err.errors,
           });
+        }
+        if (err.name === 'CameraNotFoundError') {
+          return reply.status(404).send({ error: 'NotFound', message: err.message });
         }
         return reply.status(500).send({
           error: 'ScheduleUpdateFailed',

@@ -285,8 +285,8 @@ export class RecordingEngine implements IRecordingEngine {
     this.isEvaluatingSchedule = true;
     try {
       await this.scheduler.evaluateAllCameras(this.clock.now());
-    } catch {
-      // Tolerate tick errors without crashing process
+    } catch (err) {
+      console.warn(`[RecordingEngine] Schedule evaluation failed: ${(err as Error).message}`);
     } finally {
       this.isEvaluatingSchedule = false;
     }
@@ -301,9 +301,11 @@ export class RecordingEngine implements IRecordingEngine {
     }
     this.isCheckingStorage = true;
     try {
+      // Age-based retention first, then capacity-based FIFO rollover
+      await this.storageController.purgeRetention();
       await this.storageController.checkStorage();
-    } catch {
-      // Tolerate tick errors without crashing process
+    } catch (err) {
+      console.warn(`[RecordingEngine] Storage maintenance failed: ${(err as Error).message}`);
     } finally {
       this.isCheckingStorage = false;
     }
