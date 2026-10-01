@@ -24,7 +24,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     },
     async (request, reply) => {
       const body = (request.body as { timeoutMs?: number }) || {};
-      const timeoutMs = body.timeoutMs ?? 3000;
+      const timeoutMs = Math.min(Math.max(Number(body.timeoutMs) || 3000, 500), 15_000);
 
       const devices = await cameraService.discover(timeoutMs);
       return reply.send({
@@ -41,7 +41,8 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
   app.post(
     '/probe-network',
     {
-      preHandler: [authenticate],
+      // Admin only: lets the server open TCP connections to arbitrary hosts/ports
+      preHandler: [requireRole([Role.ADMIN])],
     },
     async (request, reply) => {
       try {

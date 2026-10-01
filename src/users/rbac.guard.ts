@@ -111,7 +111,8 @@ export function requireCameraPermission(permission: CameraPermissionKey) {
     if (role === Role.OPERATOR) {
       const params = request.params as { id?: string; cameraId?: string } | undefined;
       const body = request.body as { cameraId?: string } | undefined;
-      const cameraId = params?.id || params?.cameraId || body?.cameraId;
+      const query = request.query as { cameraId?: string } | undefined;
+      const cameraId = params?.id || params?.cameraId || body?.cameraId || query?.cameraId;
 
       if (!cameraId) {
         return;

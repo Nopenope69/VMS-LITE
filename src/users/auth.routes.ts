@@ -3,10 +3,15 @@ import { Role } from '@prisma/client';
 import { AuthService } from './auth.service.js';
 import { authenticate, requireRole } from './rbac.guard.js';
 import { auditService } from '../audit/audit.service.js';
+import { LoginThrottle } from './login-throttle.js';
 import { clearMediaCookie, setMediaCookie } from '../media/media-proxy.routes.js';
+
+const MIN_PASSWORD_LENGTH = 8;
+const VALID_ROLES = new Set<string>(Object.values(Role));
 
 export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
   const authService = new AuthService();
+  const loginThrottle = new LoginThrottle();
 
   // POST /api/auth/login
   fastify.post<{
@@ -21,8 +26,20 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
       });
     }
 
+    const retryAfter = loginThrottle.retryAfterSeconds(request.ip, username);
+    if (retryAfter > 0) {
+      return reply
+        .status(429)
+        .header('Retry-After', String(retryAfter))
+        .send({
+          error: 'TooManyRequests',
+          message: `Too many failed login attempts. Try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
+        });
+    }
+
     const user = await authService.verifyCredentials(username, password);
     if (!user) {
+      loginThrottle.recordFailure(request.ip, username);
       await auditService.log({
         action: 'AUTH_FAILURE',
         username,
@@ -35,6 +52,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
       });
     }
 
+    loginThrottle.recordSuccess(request.ip, username);
     await auditService.log({
       action: 'AUTH_LOGIN',
       userId: user.id,
@@ -95,6 +113,19 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
       return reply.status(400).send({
         error: 'Bad Request',
         message: 'Username and password are required',
+      });
+    }
+
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      });
+    }
+    if (role !== undefined && !VALID_ROLES.has(role)) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: `Role must be one of ${[...VALID_ROLES].join(', ')}`,
       });
     }
 

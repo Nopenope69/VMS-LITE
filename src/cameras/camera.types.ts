@@ -88,8 +88,8 @@ export interface CameraResponseDto {
 
 export const ProbeNetworkSchema = z.object({
   ip: z.string().min(1, 'IP address is required'),
-  port: z.number().int().positive().default(554),
-  timeoutMs: z.number().int().positive().default(2500),
+  port: z.number().int().min(1).max(65535).default(554),
+  timeoutMs: z.number().int().positive().max(10_000).default(2500),
 });
 export type ProbeNetworkInput = z.infer<typeof ProbeNetworkSchema>;
 
