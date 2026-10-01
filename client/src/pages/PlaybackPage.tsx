@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Shield,
   Video,
@@ -10,20 +10,33 @@ import {
   History,
   Clock,
   Bookmark,
-  Sparkles,
+  Loader2,
+  X,
+  ChevronDown,
+  Check,
+  Layers,
+  Keyboard,
 } from 'lucide-react';
-import { TimelineScrubber, BookmarkItem } from '../components/TimelineScrubber.js';
+import { BookmarkItem } from '../components/TimelineScrubber.js';
+import { MultiLaneTimeline, LaneCameraData } from '../components/MultiLaneTimeline.js';
 import { PlaybackControls } from '../components/PlaybackControls.js';
-import { PlaybackPlayer } from '../components/PlaybackPlayer.js';
 import { ClipExportModal } from '../components/ClipExportModal.js';
 import { BookmarkModal } from '../components/BookmarkModal.js';
+import { useCctvHotkeys } from '../hooks/useCctvHotkeys.js';
+import { FloatingHudBadge } from '../components/FloatingHudBadge.js';
+import { KeyboardShortcutsModal } from '../components/KeyboardShortcutsModal.js';
 import {
-  usePlaybackSession,
   getTodayString,
   CameraOption,
+  TimelineSpan,
 } from '../hooks/usePlaybackSession.js';
 import { useAuth, CameraPermissionDto } from '../context/AuthContext.js';
 import { OperatorBanner } from '../components/OperatorBanner.js';
+import {
+  PlaybackSyncProvider,
+  usePlaybackSync,
+  calculatePlayerAlignment,
+} from '../context/PlaybackSyncContext.js';
 
 export type { CameraOption };
 
@@ -33,7 +46,317 @@ export interface PlaybackPageProps {
   onNavigateLive?: () => void;
 }
 
-export const PlaybackPage: React.FC<PlaybackPageProps> = ({
+interface SynchronizedCameraTileProps {
+  camera: CameraOption;
+  spans: TimelineSpan[];
+  targetTimestampMs: number;
+  isPlaying: boolean;
+  playbackRate: number;
+  isStallLocked: boolean;
+  apiBaseUrl: string;
+  authToken: string;
+  onBuffering: (cameraId: string, isBuffering: boolean) => void;
+  onTimeUpdate: (cameraId: string, currentTimeSec: number, segmentStartMs: number) => void;
+  isPrimary: boolean;
+}
+
+/**
+ * Individual synchronized playback tile for a camera.
+ * Displays "No Recording" gap card if footage is absent at the playhead,
+ * otherwise renders the fMP4 stream synchronized to the master clock using
+ * gentle rate convergence for minor drift and hard seeking only for major drift.
+ */
+const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
+  camera,
+  spans,
+  targetTimestampMs,
+  isPlaying,
+  playbackRate,
+  isStallLocked,
+  apiBaseUrl,
+  authToken,
+  onBuffering,
+  onTimeUpdate,
+  isPrimary,
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [streamStartTimeMs, setStreamStartTimeMs] = useState<number | null>(null);
+  const [isBufferingLocal, setIsBufferingLocal] = useState<boolean>(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
+
+  const activeStreamRef = useRef<{ url: string; startTimeMs: number; durationSec: number } | null>(
+    null
+  );
+  const loadedSpanIdRef = useRef<string | null>(null);
+  const isFetchingRef = useRef<boolean>(false);
+  const fetchSeqRef = useRef<number>(0);
+  const lastHardSeekTimeRef = useRef<number>(0);
+
+  // Check if camera has recording footage at target timestamp
+  const currentSpan = useMemo(() => {
+    return spans.find((s) => {
+      const startMs = new Date(s.startTime).getTime();
+      const endMs = new Date(s.endTime).getTime();
+      return targetTimestampMs >= startMs && targetTimestampMs <= endMs;
+    });
+  }, [spans, targetTimestampMs]);
+
+  const currentSpanId = currentSpan
+    ? currentSpan.recordingId || `${currentSpan.startTime}_${currentSpan.endTime}`
+    : null;
+
+  const hasFootage = Boolean(currentSpan);
+
+  // Fetch fMP4 stream URL from MediaMTX anchored to span transitions / chunk boundaries
+  // (Prevents in-flight abort race condition on 16ms animation frame ticks)
+  useEffect(() => {
+    if (!hasFootage || !currentSpanId) {
+      setStreamUrl(null);
+      setStreamStartTimeMs(null);
+      setStreamError(null);
+      activeStreamRef.current = null;
+      loadedSpanIdRef.current = null;
+      onBuffering(camera.id, false);
+      return;
+    }
+
+    // Check if currently active stream already covers targetTimestampMs within current span
+    const active = activeStreamRef.current;
+    if (
+      active &&
+      loadedSpanIdRef.current === currentSpanId &&
+      targetTimestampMs >= active.startTimeMs &&
+      targetTimestampMs <= active.startTimeMs + active.durationSec * 1000
+    ) {
+      return;
+    }
+
+    // New stream fetch needed
+    const thisFetchSeq = ++fetchSeqRef.current;
+    isFetchingRef.current = true;
+    setIsBufferingLocal(true);
+    onBuffering(camera.id, true);
+    setStreamError(null);
+
+    const fetchStream = async () => {
+      try {
+        const isoTimestamp = new Date(targetTimestampMs).toISOString();
+        const headers: Record<string, string> = {};
+        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+        const res = await fetch(
+          `${apiBaseUrl}/api/playback/stream?cameraId=${encodeURIComponent(
+            camera.id
+          )}&startTime=${encodeURIComponent(isoTimestamp)}&duration=300`,
+          { headers }
+        );
+
+        if (!res.ok) {
+          throw new Error(`Failed to load stream: HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        // Ignore response if superseded by a newer seek request
+        if (fetchSeqRef.current === thisFetchSeq) {
+          activeStreamRef.current = {
+            url: data.fmp4StreamUrl,
+            startTimeMs: targetTimestampMs,
+            durationSec: 300,
+          };
+          loadedSpanIdRef.current = currentSpanId;
+          setStreamUrl(data.fmp4StreamUrl);
+          setStreamStartTimeMs(targetTimestampMs);
+          isFetchingRef.current = false;
+        }
+      } catch (err: any) {
+        if (fetchSeqRef.current === thisFetchSeq) {
+          setStreamError(err.message || 'Stream retrieval failed');
+          setIsBufferingLocal(false);
+          onBuffering(camera.id, false);
+          isFetchingRef.current = false;
+        }
+      }
+    };
+
+    fetchStream();
+  }, [hasFootage, currentSpanId, targetTimestampMs, camera.id, apiBaseUrl, authToken, onBuffering]);
+
+  // Synchronize play/pause and stall lock
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !streamUrl) return;
+
+    if (isPlaying && !isStallLocked) {
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          // Play interrupted or autoplay policy
+        });
+      }
+    } else {
+      video.pause();
+    }
+  }, [isPlaying, isStallLocked, streamUrl]);
+
+  // Check and enforce player time alignment with rate convergence
+  // (Prevents GOP seek keyframe thrashing / continuous stuttering loops)
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !streamUrl || streamStartTimeMs === null) return;
+
+    const alignment = calculatePlayerAlignment({
+      segmentStartMs: streamStartTimeMs,
+      currentTimeSec: video.currentTime,
+      targetTimestampMs,
+      toleranceMs: 200,
+    });
+
+    const now = Date.now();
+
+    // 1. Large drift (> 1000ms): Hard seek with cooldown to align with user jump or stall recovery
+    if (alignment.skewMs > 1000) {
+      if (now - lastHardSeekTimeRef.current > 600) {
+        lastHardSeekTimeRef.current = now;
+        video.currentTime = alignment.suggestedSeekSec;
+        video.playbackRate = playbackRate;
+      }
+      return;
+    }
+
+    // 2. Minor drift (200ms - 1000ms): Smooth rate convergence without seek freezing
+    if (alignment.skewMs > 200) {
+      const playerIsBehind = alignment.playerAbsoluteMs < targetTimestampMs;
+      if (playerIsBehind) {
+        // Slightly speed up to catch up
+        video.playbackRate = playbackRate * 1.05;
+      } else {
+        // Slightly slow down to let master clock catch up
+        video.playbackRate = Math.max(0.25, playbackRate * 0.95);
+      }
+      return;
+    }
+
+    // 3. In sync (skew <= 200ms): Restore nominal playback rate
+    if (video.playbackRate !== playbackRate) {
+      video.playbackRate = playbackRate;
+    }
+  }, [targetTimestampMs, streamUrl, streamStartTimeMs, playbackRate]);
+
+  // Cleanup buffering state on unmount
+  useEffect(() => {
+    return () => {
+      onBuffering(camera.id, false);
+    };
+  }, [camera.id, onBuffering]);
+
+  const handleWaiting = () => {
+    setIsBufferingLocal(true);
+    onBuffering(camera.id, true);
+  };
+
+  const handleCanPlay = () => {
+    setIsBufferingLocal(false);
+    onBuffering(camera.id, false);
+  };
+
+  const handleTimeUpdate = () => {
+    if (videoRef.current && streamStartTimeMs !== null) {
+      onTimeUpdate(camera.id, videoRef.current.currentTime, streamStartTimeMs);
+    }
+  };
+
+  // If no recording at playhead, render explicit Gap Card
+  if (!hasFootage) {
+    return (
+      <div className="relative w-full h-full bg-[#090d16] flex flex-col items-center justify-center p-6 text-center select-none overflow-hidden">
+        {/* Subtle diagonal gap pattern */}
+        <div
+          className="absolute inset-0 opacity-40 pointer-events-none"
+          style={{
+            backgroundImage: `repeating-linear-gradient(45deg, #090d16, #090d16 12px, #0e1320 12px, #0e1320 24px)`,
+          }}
+        />
+
+        {/* Camera Header Badge */}
+        <div className="absolute top-3 left-3 bg-[#111827]/90 backdrop-blur-sm border border-[#1f2937] px-2.5 py-1 rounded-md text-xs font-semibold text-slate-300 flex items-center gap-2 z-10">
+          <div className="w-2 h-2 rounded-full bg-slate-500" />
+          <span className="truncate max-w-[140px]">{camera.name}</span>
+          {isPrimary && (
+            <span className="text-[10px] text-[#4fc3f7] font-bold uppercase tracking-wider">
+              Primary
+            </span>
+          )}
+        </div>
+
+        {/* Center Gap Notice */}
+        <div className="relative z-10 flex flex-col items-center">
+          <div className="w-14 h-14 rounded-full bg-[#111827] border border-[#1f2937] flex items-center justify-center mb-3 shadow-inner">
+            <Film className="w-7 h-7 text-slate-500" />
+          </div>
+          <h3 className="text-sm font-bold text-slate-200">No Recording</h3>
+          <p className="text-xs text-slate-400 mt-1 max-w-xs font-sans">
+            No footage captured for {camera.name} at{' '}
+            <span className="font-mono text-slate-300">
+              {new Date(targetTimestampMs).toISOString().substring(11, 19)} UTC
+            </span>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden">
+      {streamUrl ? (
+        <video
+          ref={videoRef}
+          src={streamUrl}
+          playsInline
+          autoPlay={isPlaying && !isStallLocked}
+          onWaiting={handleWaiting}
+          onCanPlay={handleCanPlay}
+          onPlaying={handleCanPlay}
+          onTimeUpdate={handleTimeUpdate}
+          className="w-full h-full object-contain"
+        />
+      ) : (
+        <div className="flex flex-col items-center justify-center text-slate-400 gap-2">
+          <Loader2 className="w-8 h-8 text-[#4fc3f7] animate-spin" />
+          <span className="text-xs font-semibold">Resolving stream...</span>
+        </div>
+      )}
+
+      {/* Local Buffering Spinner */}
+      {isBufferingLocal && (
+        <div className="absolute inset-0 bg-[#090d16]/50 backdrop-blur-sm flex items-center justify-center pointer-events-none z-10">
+          <Loader2 className="w-8 h-8 text-[#4fc3f7] animate-spin" />
+        </div>
+      )}
+
+      {/* Camera Header Badge */}
+      <div className="absolute top-3 left-3 bg-[#111827]/90 backdrop-blur-sm border border-[#1f2937] px-2.5 py-1 rounded-md text-xs font-semibold text-slate-100 flex items-center gap-2 shadow-lg z-10">
+        <div className="w-2 h-2 rounded-full bg-[#10b981] shadow-[0_0_6px_#10b981] animate-pulse" />
+        <span className="truncate max-w-[140px]">{camera.name}</span>
+        {isPrimary && (
+          <span className="text-[10px] text-[#4fc3f7] font-bold uppercase tracking-wider">
+            Primary
+          </span>
+        )}
+      </div>
+
+      {/* Error Overlay */}
+      {streamError && (
+        <div className="absolute inset-0 bg-[#090d16]/90 flex flex-col items-center justify-center p-4 text-center border border-red-900/50 z-20">
+          <AlertCircle className="w-8 h-8 text-[#fb923c] mb-2" />
+          <p className="text-xs font-bold text-slate-100">{streamError}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   apiBaseUrl = '',
   authToken = '',
   onNavigateLive,
@@ -42,112 +365,303 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
   const effectiveToken = authToken || authContextToken || '';
 
   const {
-    cameras,
-    selectedCameraId,
-    setSelectedCameraId,
-    selectedDate,
-    setSelectedDate,
-    currentTime,
-    timelineSpans,
-    streamUrl,
+    targetTimestampMs,
     isPlaying,
-    setIsPlaying,
     playbackRate,
+    isBuffering,
+    selectedCameraIds,
+    decodeBudgetWarning,
+    seekToTimestamp,
+    setIsPlaying,
     setPlaybackRate,
-    isLoading,
-    error,
-    selectedCamera,
-    handleSeek,
-    handleStep,
-    handleTogglePlay,
-    handleVideoTimeUpdate,
-    fetchTimeline,
-  } = usePlaybackSession({
-    apiBaseUrl,
-    authToken: effectiveToken,
-  });
+    setSelectedCameraIds,
+    toggleCameraSelection,
+    clearDecodeBudgetWarning,
+    reportBuffering,
+    reportPlayerTime,
+  } = usePlaybackSync();
 
+  const [cameras, setCameras] = useState<CameraOption[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>(() => getTodayString());
+  const [primaryCameraId, setPrimaryCameraId] = useState<string>('');
+  const [timelines, setTimelines] = useState<Record<string, TimelineSpan[]>>({});
+  const [bookmarks, setBookmarks] = useState<Record<string, BookmarkItem[]>>({});
+  const [isLoadingTimeline, setIsLoadingTimeline] = useState<boolean>(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+
+  const [isCameraDropdownOpen, setIsCameraDropdownOpen] = useState<boolean>(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [isBookmarkModalOpen, setIsBookmarkModalOpen] = useState<boolean>(false);
-  const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
+
+  const hasInitializedCamerasRef = useRef<boolean>(false);
 
   const todayStr = getTodayString();
-  const yesterdayDate = new Date(Date.now() - 86400000);
-  const yesterdayStr = getTodayString(yesterdayDate);
-  const dayBeforeDate = new Date(Date.now() - 2 * 86400000);
-  const dayBeforeStr = getTodayString(dayBeforeDate);
+  const yesterdayStr = getTodayString(new Date(Date.now() - 86400000));
+  const dayBeforeStr = getTodayString(new Date(Date.now() - 2 * 86400000));
 
   // Determine export permissions
   const canExport =
     user?.role === 'ADMIN' ||
     (user?.role === 'OPERATOR' &&
-      user?.cameraPermissions?.find((p: CameraPermissionDto) => p.cameraId === selectedCameraId)?.canExportClips !== false);
+      user?.cameraPermissions?.find((p: CameraPermissionDto) => p.cameraId === primaryCameraId)
+        ?.canExportClips !== false);
 
-  // Fetch bookmarks for current camera and date window
-  const fetchBookmarks = useCallback(async () => {
-    if (!selectedCameraId) return;
-    try {
-      const headers: Record<string, string> = {};
-      if (effectiveToken) headers['Authorization'] = `Bearer ${effectiveToken}`;
+  // Fetch camera roster on mount (does not refetch when selectedCameraIds changes)
+  useEffect(() => {
+    let isCancelled = false;
+    const fetchCameras = async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (effectiveToken) headers['Authorization'] = `Bearer ${effectiveToken}`;
 
-      const dayStart = `${selectedDate}T00:00:00.000Z`;
-      const dayEnd = `${selectedDate}T23:59:59.999Z`;
-
-      const res = await fetch(
-        `${apiBaseUrl}/api/cameras/${selectedCameraId}/bookmarks?from=${encodeURIComponent(
-          dayStart
-        )}&to=${encodeURIComponent(dayEnd)}`,
-        { headers }
-      );
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.bookmarks) {
-          setBookmarks(data.bookmarks);
+        let res = await fetch(`${apiBaseUrl}/api/cameras`, { headers });
+        if (!res.ok) {
+          res = await fetch(`${apiBaseUrl}/api/streaming/config`, { headers });
         }
-      }
-    } catch (err) {
-      console.error('Failed to fetch bookmarks:', err);
-    }
-  }, [selectedCameraId, selectedDate, effectiveToken, apiBaseUrl]);
+        if (!res.ok) {
+          throw new Error(`Failed to load camera list: HTTP ${res.status}`);
+        }
 
-  useEffect(() => {
-    fetchBookmarks();
-  }, [fetchBookmarks]);
+        const data = await res.json();
+        const list: CameraOption[] = Array.isArray(data)
+          ? data.map((c: any) => ({ id: c.id, name: c.name, mediaMtxPath: c.mediaMtxPath }))
+          : (data.cameras || []).map((c: any) => ({
+              id: c.id,
+              name: c.name,
+              mediaMtxPath: c.mediaMtxPath,
+            }));
 
-  // Keyboard shortcut: 'b' or 'B' to add bookmark at current playback time
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if typing in an input
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
-        return;
-      }
-      if (e.key === 'b' || e.key === 'B') {
-        e.preventDefault();
-        setIsBookmarkModalOpen(true);
+        if (!isCancelled) {
+          setCameras(list);
+          if (list.length > 0 && !hasInitializedCamerasRef.current) {
+            hasInitializedCamerasRef.current = true;
+            setSelectedCameraIds([list[0].id]);
+            setPrimaryCameraId(list[0].id);
+          }
+        }
+      } catch (err: any) {
+        if (!isCancelled) {
+          console.warn('Error loading camera roster:', err);
+        }
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    fetchCameras();
+    return () => {
+      isCancelled = true;
+    };
+  }, [apiBaseUrl, effectiveToken, setSelectedCameraIds]);
 
-  // Quick incident jump helper (-5m, -15m, -1h)
+  // Keep primaryCameraId valid when selected cameras change
+  useEffect(() => {
+    if (selectedCameraIds.length > 0 && !selectedCameraIds.includes(primaryCameraId)) {
+      setPrimaryCameraId(selectedCameraIds[0]);
+    }
+  }, [selectedCameraIds, primaryCameraId]);
+
+  // Fetch timelines and bookmarks for all selected cameras
+  const fetchAllTimelinesAndBookmarks = useCallback(async () => {
+    if (selectedCameraIds.length === 0) return;
+    setIsLoadingTimeline(true);
+    setPageError(null);
+
+    const headers: Record<string, string> = {};
+    if (effectiveToken) headers['Authorization'] = `Bearer ${effectiveToken}`;
+
+    const dayStart = `${selectedDate}T00:00:00.000Z`;
+    const dayEnd = `${selectedDate}T23:59:59.999Z`;
+
+    try {
+      const timelinePromises = selectedCameraIds.map(async (camId) => {
+        try {
+          const res = await fetch(
+            `${apiBaseUrl}/api/playback/timeline?cameraId=${encodeURIComponent(
+              camId
+            )}&date=${encodeURIComponent(selectedDate)}`,
+            { headers }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            return {
+              camId,
+              spans: (data.spans || []).map((s: any) => ({
+                startTime: s.startTime,
+                endTime: s.endTime,
+                durationSeconds: s.durationSeconds,
+                recordingId: s.recordingId,
+              })),
+            };
+          }
+        } catch {
+          // Ignore individual camera errors
+        }
+        return { camId, spans: [] };
+      });
+
+      const bookmarkPromises = selectedCameraIds.map(async (camId) => {
+        try {
+          const res = await fetch(
+            `${apiBaseUrl}/api/cameras/${encodeURIComponent(
+              camId
+            )}/bookmarks?from=${encodeURIComponent(dayStart)}&to=${encodeURIComponent(dayEnd)}`,
+            { headers }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            return { camId, bookmarks: data.bookmarks || [] };
+          }
+        } catch {
+          // Ignore
+        }
+        return { camId, bookmarks: [] };
+      });
+
+      const [timelineResults, bookmarkResults] = await Promise.all([
+        Promise.all(timelinePromises),
+        Promise.all(bookmarkPromises),
+      ]);
+
+      const newTimelines: Record<string, TimelineSpan[]> = {};
+      timelineResults.forEach((r) => {
+        newTimelines[r.camId] = r.spans;
+      });
+
+      const newBookmarks: Record<string, BookmarkItem[]> = {};
+      bookmarkResults.forEach((r) => {
+        newBookmarks[r.camId] = r.bookmarks;
+      });
+
+      setTimelines(newTimelines);
+      setBookmarks(newBookmarks);
+    } catch (err: any) {
+      setPageError(err.message || 'Failed to retrieve timeline records');
+    } finally {
+      setIsLoadingTimeline(false);
+    }
+  }, [selectedCameraIds, selectedDate, effectiveToken, apiBaseUrl]);
+
+  useEffect(() => {
+    fetchAllTimelinesAndBookmarks();
+  }, [fetchAllTimelinesAndBookmarks]);
+
+  // Two-Context CCTV Keyboard Hotkeys Engine integration for Playback mode
+  const currentShuttleSpeed = useMemo(() => {
+    if (!isPlaying) return 0;
+    return playbackRate;
+  }, [isPlaying, playbackRate]);
+
+  const {
+    isShortcutsOpen,
+    setIsShortcutsOpen,
+    hudBadgeText,
+    triggerHud,
+  } = useCctvHotkeys({
+    mode: 'PLAYBACK',
+    currentShuttleSpeed,
+    onTogglePlayPause: () => {
+      setIsPlaying((prev) => {
+        const next = !prev;
+        triggerHud(next ? '[ Playing ]' : '[ Paused ]');
+        return next;
+      });
+    },
+    onShuttleChange: (newSpeed) => {
+      if (newSpeed === 0) {
+        setIsPlaying(false);
+      } else {
+        setPlaybackRate(newSpeed);
+        setIsPlaying(true);
+      }
+    },
+    onSeekRelativeMs: (deltaMs) => {
+      seekToTimestamp(targetTimestampMs + deltaMs);
+    },
+    onStepFrame: (dir) => {
+      const frameDeltaMs = Math.round((1000 / 30) * dir);
+      seekToTimestamp(targetTimestampMs + frameDeltaMs);
+    },
+    onFocusPlaybackSlot: (slotNum) => {
+      const idx = slotNum - 1;
+      if (selectedCameraIds[idx]) {
+        setPrimaryCameraId(selectedCameraIds[idx]);
+      }
+    },
+    onAddBookmark: () => {
+      setIsBookmarkModalOpen(true);
+    },
+    onToggleShortcutsModal: () => {
+      setIsShortcutsOpen((prev) => !prev);
+    },
+  });
+
+  // Quick incident jump helper (-5m, -15m, -1h) - preserves user play/pause state
   const handleQuickJump = (minutesAgo: number) => {
     const target = new Date(Date.now() - minutesAgo * 60 * 1000);
     const targetDateStr = getTodayString(target);
     if (targetDateStr !== selectedDate) {
       setSelectedDate(targetDateStr);
     }
-    handleSeek(target);
+    seekToTimestamp(target.getTime());
   };
 
-  // Jump to yesterday at same time
+  // Jump to yesterday at same time - preserves user play/pause state
   const handleJumpYesterdaySameTime = () => {
-    const target = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000);
+    const targetMs = targetTimestampMs - 24 * 60 * 60 * 1000;
     setSelectedDate(yesterdayStr);
-    handleSeek(target);
+    seekToTimestamp(targetMs);
   };
+
+  // Timeline seek handler - preserves user play/pause state
+  const handleSeek = (seekTime: Date) => {
+    seekToTimestamp(seekTime.getTime());
+  };
+
+  // Step -5s / +5s handler
+  const handleStep = (seconds: number) => {
+    seekToTimestamp(targetTimestampMs + seconds * 1000);
+  };
+
+  // Toggle play/pause
+  const handleTogglePlay = () => {
+    setIsPlaying((prev) => !prev);
+  };
+
+  // Canonical UTC Date selection handler (PLAY-01, Canonical Time Domain)
+  const handleDateChange = (newDateStr: string) => {
+    setSelectedDate(newDateStr);
+    const parts = newDateStr.split('-').map(Number);
+    if (parts.length === 3) {
+      const utcMs = Date.UTC(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+      seekToTimestamp(utcMs);
+    }
+  };
+
+  // Prepare lanes data for MultiLaneTimeline
+  const timelineLanes: LaneCameraData[] = useMemo(() => {
+    return selectedCameraIds.map((camId) => {
+      const cam = cameras.find((c) => c.id === camId);
+      return {
+        cameraId: camId,
+        cameraName: cam?.name || `Camera ${camId}`,
+        spans: timelines[camId] || [],
+        bookmarks: bookmarks[camId] || [],
+      };
+    });
+  }, [selectedCameraIds, cameras, timelines, bookmarks]);
+
+  // Determine grid matrix layout based on active camera count (1 to 4)
+  const gridClasses = useMemo(() => {
+    const count = selectedCameraIds.length;
+    if (count <= 1) return 'grid-cols-1 grid-rows-1';
+    if (count === 2) return 'grid-cols-1 md:grid-cols-2 grid-rows-1';
+    if (count === 3) return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 grid-rows-1';
+    return 'grid-cols-2 grid-rows-2';
+  }, [selectedCameraIds.length]);
+
+  const primaryCamera = useMemo(
+    () => cameras.find((c) => c.id === primaryCameraId) || cameras[0],
+    [cameras, primaryCameraId]
+  );
 
   return (
     <div className="flex flex-col w-screen h-screen bg-[#090d16] text-slate-100 overflow-hidden font-sans">
@@ -155,7 +669,7 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
       <OperatorBanner />
 
       {/* Top Application Header */}
-      <header className="flex items-center justify-between px-4 py-2.5 bg-[#111827] border-b border-[#1f2937] shrink-0">
+      <header className="flex items-center justify-between px-4 py-2 bg-[#111827] border-b border-[#1f2937] shrink-0 z-30">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 font-bold tracking-tight text-sm text-slate-100">
             <div className="w-8 h-8 rounded-lg bg-[#4fc3f7]/15 border border-[#4fc3f7]/40 flex items-center justify-center">
@@ -163,39 +677,83 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
             </div>
             <div className="flex flex-col">
               <span className="text-xs tracking-wider text-[#4fc3f7] font-mono">BASIC VMS</span>
-              <span className="text-[10px] text-slate-400 font-normal">Playback & Incident Review</span>
+              <span className="text-[10px] text-slate-400 font-normal">
+                Synchronized Multi-Camera Playback Matrix
+              </span>
             </div>
           </div>
           <span className="text-[#1f2937]">|</span>
           <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-300 font-medium">
-            <Film className="w-4 h-4 text-[#4fc3f7]" />
-            <span>24-Hour Timeline</span>
+            <Layers className="w-4 h-4 text-[#4fc3f7]" />
+            <span>1–4 Matrix & Multi-Lane</span>
           </div>
         </div>
 
-        {/* Center: Camera Selector & Quick Date Pills */}
-        <div className="flex items-center gap-3">
-          {/* Camera Dropdown */}
-          <div className="flex items-center gap-2 bg-[#090d16] px-3 py-1.5 rounded-md border border-[#1f2937] text-xs">
-            <Video className="w-4 h-4 text-[#4fc3f7]" />
-            <select
-              value={selectedCameraId}
-              onChange={(e) => setSelectedCameraId(e.target.value)}
-              className="bg-transparent text-slate-100 font-semibold focus:outline-none cursor-pointer text-xs"
+        {/* Center: Camera Multi-Selector & Date Controls */}
+        <div className="flex items-center gap-2.5">
+          {/* Multi-Camera Selector Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsCameraDropdownOpen((prev) => !prev)}
+              className="flex items-center gap-2 bg-[#090d16] px-3 py-1.5 rounded-md border border-[#1f2937] hover:border-[#4fc3f7]/50 text-xs font-semibold text-slate-200 transition-colors"
             >
-              {cameras.map((c) => (
-                <option key={c.id} value={c.id} className="bg-[#111827] text-slate-100">
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              <Video className="w-3.5 h-3.5 text-[#4fc3f7]" />
+              <span>
+                Cameras ({selectedCameraIds.length}/4)
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-1" />
+            </button>
+
+            {isCameraDropdownOpen && (
+              <div className="absolute top-full mt-1.5 left-0 w-64 bg-[#111827] border border-[#1f2937] rounded-lg shadow-2xl p-2 z-50">
+                <div className="flex items-center justify-between px-2 py-1 mb-1 border-b border-[#1f2937] text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <span>Playback Matrix</span>
+                  <span
+                    className={
+                      selectedCameraIds.length >= 4 ? 'text-[#fb923c] font-bold' : 'text-slate-400'
+                    }
+                  >
+                    {selectedCameraIds.length} / 4 Max
+                  </span>
+                </div>
+                <div className="max-h-48 overflow-y-auto flex flex-col gap-1 py-1">
+                  {cameras.length === 0 ? (
+                    <div className="text-xs text-slate-500 italic p-2 text-center">
+                      No cameras configured
+                    </div>
+                  ) : (
+                    cameras.map((c) => {
+                      const isSelected = selectedCameraIds.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => toggleCameraSelection(c.id)}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-colors ${
+                            isSelected
+                              ? 'bg-[#4fc3f7]/15 text-[#4fc3f7] font-bold'
+                              : 'text-slate-300 hover:bg-[#1f2937]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="truncate">{c.name}</span>
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-[#4fc3f7] shrink-0" />}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Quick Date Shortcuts (Today / Yesterday) */}
+          {/* Quick Date Shortcuts */}
           <div className="hidden md:flex items-center gap-1 bg-[#090d16] p-1 rounded-md border border-[#1f2937] text-xs font-semibold">
             <button
               type="button"
-              onClick={() => setSelectedDate(todayStr)}
+              onClick={() => handleDateChange(todayStr)}
               className={`px-2.5 py-1 rounded transition-colors ${
                 selectedDate === todayStr
                   ? 'bg-[#4fc3f7] text-[#090d16] font-bold shadow-sm'
@@ -206,7 +764,7 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setSelectedDate(yesterdayStr)}
+              onClick={() => handleDateChange(yesterdayStr)}
               className={`px-2.5 py-1 rounded transition-colors ${
                 selectedDate === yesterdayStr
                   ? 'bg-[#4fc3f7] text-[#090d16] font-bold shadow-sm'
@@ -217,7 +775,7 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setSelectedDate(dayBeforeStr)}
+              onClick={() => handleDateChange(dayBeforeStr)}
               className={`px-2.5 py-1 rounded transition-colors ${
                 selectedDate === dayBeforeStr
                   ? 'bg-[#4fc3f7] text-[#090d16] font-bold shadow-sm'
@@ -228,28 +786,37 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
             </button>
           </div>
 
-          {/* Custom Date Picker */}
+          {/* Custom Date Input */}
           <div className="flex items-center gap-1.5 bg-[#090d16] px-2.5 py-1.5 rounded-md border border-[#1f2937] text-xs">
             <Calendar className="w-3.5 h-3.5 text-[#4fc3f7]" />
             <input
               type="date"
               value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+              onChange={(e) => handleDateChange(e.target.value)}
               className="bg-transparent text-slate-200 focus:outline-none cursor-pointer text-xs font-semibold"
             />
           </div>
 
-          {/* Refresh Timeline */}
+          {/* Keyboard Shortcuts Cheat Sheet Button */}
           <button
             type="button"
-            onClick={() => {
-              fetchTimeline();
-              fetchBookmarks();
-            }}
-            title="Refresh Timeline Data"
+            onClick={() => setIsShortcutsOpen(true)}
+            title="Keyboard Shortcuts & Jog-Shuttle (?)"
+            className="p-2 text-slate-300 hover:text-[#4fc3f7] rounded-md bg-[#090d16] border border-[#1f2937] hover:border-[#4fc3f7]/50 transition-colors"
+          >
+            <Keyboard className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Refresh Button */}
+          <button
+            type="button"
+            onClick={fetchAllTimelinesAndBookmarks}
+            title="Refresh Timeline Records"
             className="p-2 text-slate-300 hover:text-white rounded-md bg-[#090d16] border border-[#1f2937] hover:border-[#4fc3f7]/50 transition-colors"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-[#4fc3f7]' : ''}`} />
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${isLoadingTimeline ? 'animate-spin text-[#4fc3f7]' : ''}`}
+            />
           </button>
         </div>
 
@@ -259,7 +826,7 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
             <button
               type="button"
               onClick={onNavigateLive}
-              className="flex items-center gap-2 px-3.5 py-2 min-h-[40px] bg-[#4fc3f7] hover:bg-[#38bdf8] text-[#090d16] font-bold text-xs rounded-md transition-all shadow-md active:scale-95"
+              className="flex items-center gap-2 px-3.5 py-1.5 min-h-[36px] bg-[#4fc3f7] hover:bg-[#38bdf8] text-[#090d16] font-bold text-xs rounded-md transition-all shadow-md active:scale-95"
             >
               <Radio className="w-4 h-4" />
               <span>Back to Live</span>
@@ -268,36 +835,104 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
         </div>
       </header>
 
-      {/* Main Playback Area */}
+      {/* Decode Budget Warning Banner */}
+      {decodeBudgetWarning && (
+        <div className="bg-[#fb923c]/15 border-b border-[#fb923c]/40 px-4 py-2 text-xs text-[#fb923c] font-semibold flex items-center justify-between shrink-0 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{decodeBudgetWarning}</span>
+          </div>
+          <button
+            type="button"
+            onClick={clearDecodeBudgetWarning}
+            className="text-[#fb923c] hover:text-white p-0.5 rounded transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Main Playback Matrix Area */}
       <main className="flex-1 w-full relative flex flex-col bg-black overflow-hidden">
-        {error ? (
+        {pageError ? (
           <div className="flex flex-col items-center justify-center w-full h-full p-6 text-center bg-[#090d16]">
             <AlertCircle className="w-12 h-12 text-[#fb923c] mb-3" />
             <h2 className="text-base font-bold text-slate-100 mb-1">Timeline Retrieval Error</h2>
-            <p className="text-xs text-slate-400 max-w-md mb-4">{error}</p>
+            <p className="text-xs text-slate-400 max-w-md mb-4">{pageError}</p>
             <button
               type="button"
-              onClick={fetchTimeline}
+              onClick={fetchAllTimelinesAndBookmarks}
               className="px-5 py-2 min-h-[40px] bg-[#4fc3f7] hover:bg-[#38bdf8] text-[#090d16] font-bold text-xs rounded-md transition-colors"
             >
               Retry Timeline Query
             </button>
           </div>
+        ) : selectedCameraIds.length === 0 ? (
+          <div className="flex flex-col items-center justify-center w-full h-full p-6 text-center bg-[#090d16]">
+            <Video className="w-12 h-12 text-[#4fc3f7] mb-3 opacity-60" />
+            <h2 className="text-base font-bold text-slate-100 mb-1">No Cameras Selected</h2>
+            <p className="text-xs text-slate-400 max-w-md mb-4">
+              Select 1 to 4 cameras from the dropdown above to start synchronized multi-lane
+              playback.
+            </p>
+          </div>
         ) : (
-          <div className="flex-1 w-full h-full relative">
-            <PlaybackPlayer
-              streamUrl={streamUrl}
-              isPlaying={isPlaying}
-              playbackRate={playbackRate}
-              cameraName={selectedCamera?.name || 'Selected Camera'}
-              onTimeUpdate={handleVideoTimeUpdate}
-              onEnded={() => setIsPlaying(false)}
-            />
+          <div className="flex-1 w-full h-full relative p-2 overflow-hidden">
+            {/* Multi-Camera Playback Matrix Grid */}
+            <div className={`grid ${gridClasses} w-full h-full gap-2`}>
+              {selectedCameraIds.map((camId) => {
+                const cam = cameras.find((c) => c.id === camId) || {
+                  id: camId,
+                  name: `Camera ${camId}`,
+                };
+                const isPrimary = camId === primaryCameraId;
+                return (
+                  <div
+                    key={camId}
+                    onClick={() => setPrimaryCameraId(camId)}
+                    className={`relative w-full h-full rounded-lg overflow-hidden border transition-all ${
+                      isPrimary
+                        ? 'border-[#4fc3f7] shadow-[0_0_12px_rgba(79,195,247,0.25)]'
+                        : 'border-[#1f2937] hover:border-slate-600'
+                    }`}
+                  >
+                    <SynchronizedCameraTile
+                      camera={cam}
+                      spans={timelines[camId] || []}
+                      targetTimestampMs={targetTimestampMs}
+                      isPlaying={isPlaying}
+                      playbackRate={playbackRate}
+                      isStallLocked={isBuffering}
+                      apiBaseUrl={apiBaseUrl}
+                      authToken={effectiveToken}
+                      onBuffering={reportBuffering}
+                      onTimeUpdate={reportPlayerTime}
+                      isPrimary={isPrimary}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Stall Lock Indicator Overlay across the Grid */}
+            {isBuffering && (
+              <div className="absolute inset-0 bg-[#090d16]/70 backdrop-blur-sm flex flex-col items-center justify-center z-30 pointer-events-none transition-all">
+                <div className="flex flex-col items-center bg-[#111827]/95 border border-[#1f2937] px-6 py-4 rounded-xl shadow-2xl">
+                  <Loader2 className="w-8 h-8 text-[#4fc3f7] animate-spin mb-2" />
+                  <span className="text-sm font-bold text-slate-100 tracking-wide">
+                    Synchronizing Playback Engine
+                  </span>
+                  <span className="text-xs text-slate-400 mt-1 font-mono">
+                    Stall pause lock active — waiting for camera streams to buffer...
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* Quick-Jump Incident & Bookmark Bar */}
-        <div className="w-full bg-[#111827] px-4 py-2 border-t border-[#1f2937] flex items-center justify-between gap-3 text-xs shrink-0 select-none">
+        <div className="w-full bg-[#111827] px-4 py-1.5 border-t border-[#1f2937] flex items-center justify-between gap-3 text-xs shrink-0 select-none">
           <div className="flex items-center gap-2 text-slate-300 font-semibold">
             <History className="w-4 h-4 text-[#4fc3f7]" />
             <span className="hidden sm:inline">QUICK INCIDENT JUMP:</span>
@@ -350,15 +985,18 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
           </div>
         </div>
 
-        {/* Timeline Scrubber Container */}
-        <div className="w-full bg-[#090d16] px-4 py-3 border-t border-[#1f2937] shrink-0">
-          <TimelineScrubber
+        {/* Stacked Multi-Lane Timeline Component Container */}
+        <div className="w-full bg-[#090d16] px-4 py-2.5 border-t border-[#1f2937] shrink-0">
+          <MultiLaneTimeline
             currentDate={selectedDate}
-            currentTime={currentTime}
-            spans={timelineSpans}
-            bookmarks={bookmarks}
+            currentTime={targetTimestampMs}
+            lanes={timelineLanes}
             onSeek={handleSeek}
-            onAddBookmarkAtTime={() => setIsBookmarkModalOpen(true)}
+            onAddBookmarkAtTime={(time, camId) => {
+              if (camId) setPrimaryCameraId(camId);
+              seekToTimestamp(time.getTime());
+              setIsBookmarkModalOpen(true);
+            }}
           />
         </div>
 
@@ -371,9 +1009,9 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
             playbackRate={playbackRate}
             onChangePlaybackRate={setPlaybackRate}
             selectedDate={selectedDate}
-            onChangeDate={setSelectedDate}
-            currentTime={currentTime}
-            isLoading={isLoading}
+            onChangeDate={handleDateChange}
+            currentTime={new Date(targetTimestampMs)}
+            isLoading={isLoadingTimeline}
             onExportClip={canExport ? () => setIsExportModalOpen(true) : undefined}
           />
         </div>
@@ -383,10 +1021,10 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
       <ClipExportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
-        cameraId={selectedCameraId}
-        cameraName={selectedCamera?.name || 'Selected Camera'}
-        initialStartTime={new Date(currentTime.getTime() - 2.5 * 60 * 1000)}
-        initialEndTime={new Date(currentTime.getTime() + 2.5 * 60 * 1000)}
+        cameraId={primaryCameraId}
+        cameraName={primaryCamera?.name || 'Selected Camera'}
+        initialStartTime={new Date(targetTimestampMs - 2.5 * 60 * 1000)}
+        initialEndTime={new Date(targetTimestampMs + 2.5 * 60 * 1000)}
         apiBaseUrl={apiBaseUrl}
         authToken={effectiveToken}
       />
@@ -395,14 +1033,31 @@ export const PlaybackPage: React.FC<PlaybackPageProps> = ({
       <BookmarkModal
         isOpen={isBookmarkModalOpen}
         onClose={() => setIsBookmarkModalOpen(false)}
-        onSaved={fetchBookmarks}
-        cameraId={selectedCameraId}
-        cameraName={selectedCamera?.name || 'Selected Camera'}
-        timestamp={currentTime}
+        onSaved={fetchAllTimelinesAndBookmarks}
+        cameraId={primaryCameraId}
+        cameraName={primaryCamera?.name || 'Selected Camera'}
+        timestamp={new Date(targetTimestampMs)}
         apiBaseUrl={apiBaseUrl}
         authToken={effectiveToken}
       />
+
+      {/* Accessible Floating HUD Badge Overlay */}
+      <FloatingHudBadge text={hudBadgeText} />
+
+      {/* Keyboard Shortcuts Cheat Sheet Modal (Hotkey: ?) */}
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsOpen}
+        onClose={() => setIsShortcutsOpen(false)}
+      />
     </div>
+  );
+};
+
+export const PlaybackPage: React.FC<PlaybackPageProps> = (props) => {
+  return (
+    <PlaybackSyncProvider>
+      <PlaybackPageContent {...props} />
+    </PlaybackSyncProvider>
   );
 };
 

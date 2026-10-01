@@ -66,6 +66,16 @@ export class MediaMtxClient {
   }
 
   /**
+   * Sets or updates path configuration in MediaMTX via addPath.
+   */
+  async setPath(
+    name: string,
+    config: Partial<MediaMtxPathConfig> & { source: string }
+  ): Promise<boolean> {
+    return this.addPath(name, config.source, config);
+  }
+
+  /**
    * Dynamically adds or configures a stream path in MediaMTX via POST /v3/config/paths/add/{name}
    */
   async addPath(

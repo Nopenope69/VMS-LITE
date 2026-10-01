@@ -1,4 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { PrismaClient, AuditLog } from '@prisma/client';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 
 export interface RecordAuditInput {
@@ -21,11 +24,50 @@ export interface AuditQueryFilter {
   offset?: number;
 }
 
+export interface CreateSnapshotAuditInput {
+  imageBuffer: Buffer;
+  userId: string;
+  username: string;
+  cameraId: string;
+  timestampUtc: Date;
+  streamProfile?: string;
+  resolution?: string;
+  playbackSegmentId?: string;
+  mediaOffsetSeconds?: number;
+  clientIp: string;
+}
+
+export interface SnapshotAuditResult {
+  id: string;
+  sha256: string;
+  filename: string;
+  filePath: string;
+  downloadUrl: string;
+}
+
 export class AuditService {
-  private inMemoryLogs: any[] = [];
+  private readonly configuredDir?: string;
+  private readonly inMemoryLogs: any[] = [];
 
-  constructor(private readonly prisma: PrismaClient = defaultPrisma) {}
+  constructor(
+    private readonly prisma: PrismaClient = defaultPrisma,
+    storageDir?: string
+  ) {
+    if (storageDir) {
+      this.configuredDir = path.resolve(storageDir);
+    }
+  }
 
+  getStorageDir(): string {
+    return (
+      this.configuredDir ||
+      path.resolve(process.env.SNAPSHOTS_PATH || path.resolve(process.cwd(), 'recordings/snapshots'))
+    );
+  }
+
+  /**
+   * Records a general audit log event (authentication, settings, evidence export).
+   */
   async log(input: RecordAuditInput): Promise<any> {
     try {
       const record = await this.prisma.auditLog.create({
@@ -37,6 +79,7 @@ export class AuditService {
           ipAddress: input.ipAddress ?? null,
           metadata: input.metadata ?? {},
           timestamp: input.timestamp ?? new Date(),
+          timestampUtc: input.timestamp ?? new Date(),
         },
       });
       return record;
@@ -45,6 +88,7 @@ export class AuditService {
       const record = {
         id: `mock-audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         timestamp: input.timestamp ?? new Date(),
+        timestampUtc: input.timestamp ?? new Date(),
         userId: input.userId ?? null,
         username: input.username ?? null,
         action: input.action,
@@ -58,6 +102,9 @@ export class AuditService {
     }
   }
 
+  /**
+   * Queries audit logs with pagination and filters.
+   */
   async queryLogs(filter: AuditQueryFilter = {}): Promise<{ total: number; logs: any[] }> {
     const where: any = {};
 
@@ -108,6 +155,63 @@ export class AuditService {
         logs: filtered.slice(offset, offset + limit),
       };
     }
+  }
+
+  /**
+   * Records a snapshot with server-authoritative SHA-256 calculation and compensating cleanup.
+   */
+  async recordSnapshot(input: CreateSnapshotAuditInput): Promise<SnapshotAuditResult> {
+    const storageDir = this.getStorageDir();
+    await fs.mkdir(storageDir, { recursive: true });
+
+    // Server-authoritative SHA-256 hash computed over exact persisted bytes
+    const sha256 = crypto.createHash('sha256').update(input.imageBuffer).digest('hex');
+    const safeCamId = input.cameraId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `SNAP_${safeCamId}_${Date.now()}_${sha256.slice(0, 8)}.jpg`;
+    const filePath = path.join(storageDir, filename);
+
+    // Persist exact bytes to storage
+    await fs.writeFile(filePath, input.imageBuffer);
+
+    let logEntry: AuditLog;
+    try {
+      logEntry = await this.prisma.auditLog.create({
+        data: {
+          userId: input.userId,
+          username: input.username,
+          action: 'SNAPSHOT_CAPTURED',
+          cameraId: input.cameraId,
+          timestamp: input.timestampUtc,
+          timestampUtc: input.timestampUtc,
+          streamProfile: input.streamProfile || null,
+          resolution: input.resolution || null,
+          playbackSegmentId: input.playbackSegmentId || null,
+          mediaOffsetSeconds: input.mediaOffsetSeconds ?? null,
+          sha256,
+          filePath,
+          clientIp: input.clientIp,
+          ipAddress: input.clientIp,
+        },
+      });
+    } catch (err) {
+      // Compensating file cleanup: fail-loud runtime ensures zero orphaned unindexed files on disk
+      await fs.unlink(filePath).catch(() => {});
+      throw err;
+    }
+
+    return {
+      id: logEntry.id,
+      sha256,
+      filename,
+      filePath,
+      downloadUrl: `/api/audit/snapshot/${logEntry.id}/download`,
+    };
+  }
+
+  async getSnapshotById(id: string): Promise<AuditLog | null> {
+    return this.prisma.auditLog.findUnique({
+      where: { id },
+    });
   }
 }
 

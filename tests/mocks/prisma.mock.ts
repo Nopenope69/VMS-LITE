@@ -195,6 +195,7 @@ export function createMockPrisma() {
     webhookEndpoint: new MockCollection<any>(),
     notificationConfig: new MockCollection<any>(),
     event: new MockCollection<any>(),
+    auditLog: new MockCollection<any>(),
     $disconnect: async () => {},
   };
   mock.$transaction = async (fn: any) => {

@@ -12,6 +12,8 @@ import {
 import { onvifCameraProvider as defaultProvider } from './onvif.provider.js';
 import {
   CameraResponseDto,
+  CameraDto,
+  CreateCameraDto,
   ManualCameraInput,
   OnboardCameraInput,
   CommitCameraInput,
@@ -41,11 +43,24 @@ export class CameraService {
   private readonly eventBus: EventBus;
   private readonly prisma: PrismaClient;
 
-  constructor(deps: CameraServiceDependencies = {}) {
-    this.provider = deps.provider || defaultProvider;
-    this.mediaMtx = deps.mediaMtx || defaultMediaMtx;
-    this.eventBus = deps.eventBus || defaultEventBus;
-    this.prisma = deps.prisma || defaultPrisma;
+  constructor(
+    depsOrPrisma: CameraServiceDependencies | PrismaClient | any = {},
+    mediaMtx?: MediaMtxClient,
+    eventBus?: EventBus,
+    provider?: ICameraProvider
+  ) {
+    if (depsOrPrisma && ('$connect' in depsOrPrisma || 'camera' in depsOrPrisma)) {
+      this.prisma = depsOrPrisma as PrismaClient;
+      this.mediaMtx = mediaMtx || defaultMediaMtx;
+      this.eventBus = eventBus || defaultEventBus;
+      this.provider = provider || defaultProvider;
+    } else {
+      const deps = (depsOrPrisma || {}) as CameraServiceDependencies;
+      this.provider = deps.provider || defaultProvider;
+      this.mediaMtx = deps.mediaMtx || defaultMediaMtx;
+      this.eventBus = deps.eventBus || defaultEventBus;
+      this.prisma = deps.prisma || defaultPrisma;
+    }
   }
 
   /**
@@ -172,6 +187,75 @@ export class CameraService {
   async teardownPreviewPath(pathName: string): Promise<void> {
     if (!pathName || !pathName.startsWith('preview_')) return;
     await this.mediaMtx.removePath(pathName).catch(() => {});
+  }
+
+  /**
+   * Directly creates and provisions a camera with dual-stream support.
+   */
+  async createCamera(dto: CreateCameraDto): Promise<CameraDto> {
+    const mediaMtxPath = this.generatePathName(dto.name);
+    const subMediaMtxPath = dto.subRtspUrl ? `${mediaMtxPath}_sub` : null;
+
+    try {
+      // Provision main stream in MediaMTX with sourceOnDemand: false
+      const mainOk = await this.mediaMtx.setPath(mediaMtxPath, {
+        source: dto.rtspUrl,
+        sourceOnDemand: false,
+      });
+      if (!mainOk) {
+        throw new Error(`Failed to configure main stream path in media plane: ${mediaMtxPath}`);
+      }
+
+      // Provision on-demand sub-stream if provided
+      if (dto.subRtspUrl && subMediaMtxPath) {
+        const subOk = await this.mediaMtx.setPath(subMediaMtxPath, {
+          source: dto.subRtspUrl,
+          sourceOnDemand: true,
+        });
+        if (!subOk) {
+          throw new Error(`Failed to configure sub-stream path in media plane: ${subMediaMtxPath}`);
+        }
+      }
+
+      const record = await this.prisma.camera.create({
+        data: {
+          name: dto.name,
+          ip: dto.ip || null,
+          port: dto.port ?? 554,
+          username: dto.username || null,
+          password: dto.password || null,
+          rtspUrl: dto.rtspUrl,
+          subRtspUrl: dto.subRtspUrl || null,
+          subStreamUrl: dto.subRtspUrl || null,
+          mediaMtxPath,
+          subMediaMtxPath,
+          status: 'online',
+          recordingMode: 'CONTINUOUS',
+        },
+      });
+
+      if (this.eventBus) {
+        await this.eventBus.emitEvent({
+          type: 'camera.online',
+          source: 'camera.service',
+          cameraId: record.id,
+          metadata: {
+            name: record.name,
+            mediaMtxPath: record.mediaMtxPath,
+            subMediaMtxPath: record.subMediaMtxPath,
+          },
+        }).catch(() => {});
+      }
+
+      return this.toDto(record);
+    } catch (err) {
+      // Compensating teardown on failure: cleanly remove MediaMTX paths if attempted/provisioned
+      if (subMediaMtxPath) {
+        await this.mediaMtx.removePath(subMediaMtxPath).catch(() => {});
+      }
+      await this.mediaMtx.removePath(mediaMtxPath).catch(() => {});
+      throw err;
+    }
   }
 
   /**
@@ -385,6 +469,9 @@ export class CameraService {
 
     // Teardown MediaMTX stream path
     await this.mediaMtx.removePath(existingCamera.mediaMtxPath);
+    if (existingCamera.subMediaMtxPath) {
+      await this.mediaMtx.removePath(existingCamera.subMediaMtxPath).catch(() => {});
+    }
 
     // Emit lifecycle event
     await this.eventBus.emitEvent({
@@ -461,14 +548,17 @@ export class CameraService {
       port: record.port,
       username: record.username,
       rtspUrl: record.rtspUrl,
-      subStreamUrl: record.subStreamUrl,
+      subRtspUrl: record.subRtspUrl ?? record.subStreamUrl ?? null,
+      subStreamUrl: record.subStreamUrl ?? record.subRtspUrl ?? null,
       onvifUrl: record.onvifUrl,
       profileToken: record.profileToken,
       manufacturer: record.manufacturer,
       model: record.model,
       serialNumber: record.serialNumber,
       status: record.status,
+      recordingMode: record.recordingMode ?? 'CONTINUOUS',
       mediaMtxPath: record.mediaMtxPath,
+      subMediaMtxPath: record.subMediaMtxPath ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };

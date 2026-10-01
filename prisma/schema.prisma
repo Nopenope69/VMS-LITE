@@ -62,23 +62,26 @@ model Event {
 }
 
 model Camera {
-  id           String   @id @default(uuid())
-  name         String
-  ip           String?
-  port         Int?
-  username     String?
-  password     String?
-  rtspUrl      String   @map("rtsp_url")
-  subStreamUrl String?  @map("sub_stream_url")
-  onvifUrl     String?  @map("onvif_url")
-  profileToken String?  @map("profile_token")
-  manufacturer String?
-  model        String?
-  serialNumber String?  @map("serial_number")
-  status       String   @default("offline")
-  mediaMtxPath String   @unique @map("mediamtx_path")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  name            String
+  ip              String?
+  port            Int?     @default(554)
+  username        String?
+  password        String?
+  rtspUrl         String   @map("rtsp_url")
+  subRtspUrl      String?  @map("sub_rtsp_url")
+  subStreamUrl    String?  @map("sub_stream_url")
+  onvifUrl        String?  @map("onvif_url")
+  profileToken    String?  @map("profile_token")
+  manufacturer    String?
+  model           String?
+  serialNumber    String?  @map("serial_number")
+  status          String   @default("offline")
+  recordingMode   String   @default("CONTINUOUS") @map("recording_mode")
+  mediaMtxPath    String   @unique @map("mediamtx_path")
+  subMediaMtxPath String?  @unique @map("sub_mediamtx_path")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   recordings        Recording[]
   schedules         RecordingSchedule[]
@@ -238,19 +241,30 @@ model NotificationConfig {
 }
 
 model AuditLog {
-  id        String   @id @default(uuid())
-  timestamp DateTime @default(now())
-  userId    String?  @map("user_id")
-  username  String?
-  action    String   // e.g. AUTH_LOGIN, LIVE_VIEW_START, EVIDENCE_EXPORT, CONFIG_CHANGE
-  resource  String?  // e.g. camera:cam-123, system:settings
-  ipAddress String?  @map("ip_address")
-  metadata  Json     @default("{}")
-  createdAt DateTime @default(now()) @map("created_at")
+  id                 String    @id @default(uuid())
+  timestamp          DateTime  @default(now())
+  timestampUtc       DateTime? @map("timestamp_utc")
+  userId             String?   @map("user_id")
+  username           String?
+  action             String    // e.g. AUTH_LOGIN, LIVE_VIEW_START, EVIDENCE_EXPORT, SNAPSHOT_CAPTURED, CONFIG_CHANGE
+  resource           String?   // e.g. camera:cam-123, system:settings
+  ipAddress          String?   @map("ip_address")
+  clientIp           String?   @map("client_ip")
+  cameraId           String?   @map("camera_id")
+  streamProfile      String?   @map("stream_profile")
+  resolution         String?
+  playbackSegmentId  String?   @map("playback_segment_id")
+  mediaOffsetSeconds Float?    @map("media_offset_seconds")
+  sha256             String?
+  filePath           String?   @map("file_path")
+  metadata           Json      @default("{}")
+  createdAt          DateTime  @default(now()) @map("created_at")
 
   @@index([timestamp])
+  @@index([timestampUtc])
   @@index([userId])
   @@index([action])
+  @@index([cameraId])
   @@map("audit_logs")
 }
 
