@@ -269,21 +269,21 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
   // If no recording at playhead, render explicit Gap Card
   if (!hasFootage) {
     return (
-      <div className="relative w-full h-full bg-[#090d16] flex flex-col items-center justify-center p-6 text-center select-none overflow-hidden">
+      <div className="relative w-full h-full bg-[#090a0f] flex flex-col items-center justify-center p-6 text-center select-none overflow-hidden">
         {/* Subtle diagonal gap pattern */}
         <div
-          className="absolute inset-0 opacity-40 pointer-events-none"
+          className="absolute inset-0 opacity-20 pointer-events-none"
           style={{
-            backgroundImage: `repeating-linear-gradient(45deg, #090d16, #090d16 12px, #0e1320 12px, #0e1320 24px)`,
+            backgroundImage: `repeating-linear-gradient(45deg, #090a0f, #090a0f 12px, #111318 12px, #111318 24px)`,
           }}
         />
 
         {/* Camera Header Badge */}
-        <div className="absolute top-3 left-3 bg-[#111827]/90 backdrop-blur-sm border border-[#1f2937] px-2.5 py-1 rounded-md text-xs font-semibold text-slate-300 flex items-center gap-2 z-10">
-          <div className="w-2 h-2 rounded-full bg-slate-500" />
-          <span className="truncate max-w-[140px]">{camera.name}</span>
+        <div className="absolute top-3 left-3 hud-chip px-2.5 py-1 rounded-md text-xs font-medium text-zinc-300 flex items-center gap-2 z-10">
+          <div className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+          <span className="truncate max-w-[140px] text-zinc-200">{camera.name}</span>
           {isPrimary && (
-            <span className="text-[10px] text-[#4fc3f7] font-bold uppercase tracking-wider">
+            <span className="text-[10px] text-emerald-400 font-mono font-semibold uppercase tracking-wider">
               Primary
             </span>
           )}
@@ -291,13 +291,13 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
 
         {/* Center Gap Notice */}
         <div className="relative z-10 flex flex-col items-center">
-          <div className="w-14 h-14 rounded-full bg-[#111827] border border-[#1f2937] flex items-center justify-center mb-3 shadow-inner">
-            <Film className="w-7 h-7 text-slate-500" />
+          <div className="w-12 h-12 rounded-xl hud-chip flex items-center justify-center mb-3">
+            <Film className="w-6 h-6 text-zinc-500" />
           </div>
-          <h3 className="text-sm font-bold text-slate-200">No Recording</h3>
-          <p className="text-xs text-slate-400 mt-1 max-w-xs font-sans">
+          <h3 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">No Recording</h3>
+          <p className="text-[11px] text-zinc-400 mt-1 max-w-xs font-sans">
             No footage captured for {camera.name} at{' '}
-            <span className="font-mono text-slate-300">
+            <span className="font-mono text-zinc-300 tabular-nums">
               {new Date(targetTimestampMs).toISOString().substring(11, 19)} UTC
             </span>
           </p>
@@ -321,25 +321,25 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
           className="w-full h-full object-contain"
         />
       ) : (
-        <div className="flex flex-col items-center justify-center text-slate-400 gap-2">
-          <Loader2 className="w-8 h-8 text-[#4fc3f7] animate-spin" />
-          <span className="text-xs font-semibold">Resolving stream...</span>
+        <div className="flex flex-col items-center justify-center text-zinc-400 gap-2">
+          <Loader2 className="w-7 h-7 text-emerald-400 animate-spin" />
+          <span className="text-xs font-medium">Resolving stream...</span>
         </div>
       )}
 
       {/* Local Buffering Spinner */}
       {isBufferingLocal && (
-        <div className="absolute inset-0 bg-[#090d16]/50 backdrop-blur-sm flex items-center justify-center pointer-events-none z-10">
-          <Loader2 className="w-8 h-8 text-[#4fc3f7] animate-spin" />
+        <div className="absolute inset-0 bg-[#090a0f]/60 backdrop-blur-sm flex items-center justify-center pointer-events-none z-10">
+          <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
         </div>
       )}
 
       {/* Camera Header Badge */}
-      <div className="absolute top-3 left-3 bg-[#111827]/90 backdrop-blur-sm border border-[#1f2937] px-2.5 py-1 rounded-md text-xs font-semibold text-slate-100 flex items-center gap-2 shadow-lg z-10">
-        <div className="w-2 h-2 rounded-full bg-[#10b981] shadow-[0_0_6px_#10b981] animate-pulse" />
+      <div className="absolute top-3 left-3 hud-chip px-2.5 py-1 rounded-md text-xs font-medium text-zinc-100 flex items-center gap-2 shadow-lg z-10">
+        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)] animate-pulse" />
         <span className="truncate max-w-[140px]">{camera.name}</span>
         {isPrimary && (
-          <span className="text-[10px] text-[#4fc3f7] font-bold uppercase tracking-wider">
+          <span className="text-[10px] text-emerald-400 font-mono font-semibold uppercase tracking-wider">
             Primary
           </span>
         )}
@@ -347,9 +347,9 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
 
       {/* Error Overlay */}
       {streamError && (
-        <div className="absolute inset-0 bg-[#090d16]/90 flex flex-col items-center justify-center p-4 text-center border border-red-900/50 z-20">
-          <AlertCircle className="w-8 h-8 text-[#fb923c] mb-2" />
-          <p className="text-xs font-bold text-slate-100">{streamError}</p>
+        <div className="absolute inset-0 bg-[#090a0f]/90 flex flex-col items-center justify-center p-4 text-center border border-rose-500/30 z-20">
+          <AlertCircle className="w-7 h-7 text-amber-400 mb-2" />
+          <p className="text-xs font-semibold text-zinc-200">{streamError}</p>
         </div>
       )}
     </div>
@@ -664,54 +664,34 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   );
 
   return (
-    <div className="flex flex-col w-screen h-screen bg-[#090d16] text-slate-100 overflow-hidden font-sans">
+    <div className="flex flex-col w-full h-full flex-1 bg-[#090a0f] text-zinc-100 overflow-hidden font-sans">
       {/* Operator Shift Mode Banner */}
       <OperatorBanner />
 
-      {/* Top Application Header */}
-      <header className="flex items-center justify-between px-4 py-2 bg-[#111827] border-b border-[#1f2937] shrink-0 z-30">
+      {/* Top Application Header / Controls Bar */}
+      <header className="flex items-center justify-between px-4 py-2 glass-bar border-b border-white/[0.08] shrink-0 z-30">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 font-bold tracking-tight text-sm text-slate-100">
-            <div className="w-8 h-8 rounded-lg bg-[#4fc3f7]/15 border border-[#4fc3f7]/40 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-[#4fc3f7]" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-xs tracking-wider text-[#4fc3f7] font-mono">BASIC VMS</span>
-              <span className="text-[10px] text-slate-400 font-normal">
-                Synchronized Multi-Camera Playback Matrix
-              </span>
-            </div>
-          </div>
-          <span className="text-[#1f2937]">|</span>
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-300 font-medium">
-            <Layers className="w-4 h-4 text-[#4fc3f7]" />
-            <span>1–4 Matrix & Multi-Lane</span>
-          </div>
-        </div>
-
-        {/* Center: Camera Multi-Selector & Date Controls */}
-        <div className="flex items-center gap-2.5">
           {/* Multi-Camera Selector Dropdown */}
           <div className="relative">
             <button
               type="button"
               onClick={() => setIsCameraDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-2 bg-[#090d16] px-3 py-1.5 rounded-md border border-[#1f2937] hover:border-[#4fc3f7]/50 text-xs font-semibold text-slate-200 transition-colors"
+              className="flex items-center gap-2 hud-chip px-3 py-1.5 rounded-lg border border-white/10 hover:border-white/20 text-xs font-medium text-zinc-200 transition-colors"
             >
-              <Video className="w-3.5 h-3.5 text-[#4fc3f7]" />
+              <Video className="w-3.5 h-3.5 text-emerald-400" />
               <span>
                 Cameras ({selectedCameraIds.length}/4)
               </span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-1" />
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-400 ml-0.5" />
             </button>
 
             {isCameraDropdownOpen && (
-              <div className="absolute top-full mt-1.5 left-0 w-64 bg-[#111827] border border-[#1f2937] rounded-lg shadow-2xl p-2 z-50">
-                <div className="flex items-center justify-between px-2 py-1 mb-1 border-b border-[#1f2937] text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <div className="absolute top-full mt-1.5 left-0 w-64 alert-glass border border-white/10 rounded-xl shadow-2xl p-2 z-50">
+                <div className="flex items-center justify-between px-2 py-1 mb-1 border-b border-white/5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
                   <span>Playback Matrix</span>
                   <span
                     className={
-                      selectedCameraIds.length >= 4 ? 'text-[#fb923c] font-bold' : 'text-slate-400'
+                      selectedCameraIds.length >= 4 ? 'text-amber-400 font-bold' : 'text-zinc-500'
                     }
                   >
                     {selectedCameraIds.length} / 4 Max
@@ -719,7 +699,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
                 </div>
                 <div className="max-h-48 overflow-y-auto flex flex-col gap-1 py-1">
                   {cameras.length === 0 ? (
-                    <div className="text-xs text-slate-500 italic p-2 text-center">
+                    <div className="text-xs text-zinc-500 italic p-2 text-center">
                       No cameras configured
                     </div>
                   ) : (
@@ -730,16 +710,16 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
                           key={c.id}
                           type="button"
                           onClick={() => toggleCameraSelection(c.id)}
-                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-colors ${
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
                             isSelected
-                              ? 'bg-[#4fc3f7]/15 text-[#4fc3f7] font-bold'
-                              : 'text-slate-300 hover:bg-[#1f2937]'
+                              ? 'bg-emerald-500/15 text-emerald-300 font-medium'
+                              : 'text-zinc-300 hover:bg-white/5'
                           }`}
                         >
                           <div className="flex items-center gap-2 truncate">
                             <span className="truncate">{c.name}</span>
                           </div>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-[#4fc3f7] shrink-0" />}
+                          {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
                         </button>
                       );
                     })
@@ -749,15 +729,17 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
             )}
           </div>
 
+          <div className="h-4 w-px bg-white/10 hidden sm:block"></div>
+
           {/* Quick Date Shortcuts */}
-          <div className="hidden md:flex items-center gap-1 bg-[#090d16] p-1 rounded-md border border-[#1f2937] text-xs font-semibold">
+          <div className="hidden md:flex items-center bg-zinc-950/60 p-0.5 rounded-lg border border-white/[0.07] text-xs">
             <button
               type="button"
               onClick={() => handleDateChange(todayStr)}
-              className={`px-2.5 py-1 rounded transition-colors ${
+              className={`px-2.5 py-1 rounded-md transition-all text-xs font-medium ${
                 selectedDate === todayStr
-                  ? 'bg-[#4fc3f7] text-[#090d16] font-bold shadow-sm'
-                  : 'text-slate-300 hover:text-white'
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               Today
@@ -765,10 +747,10 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
             <button
               type="button"
               onClick={() => handleDateChange(yesterdayStr)}
-              className={`px-2.5 py-1 rounded transition-colors ${
+              className={`px-2.5 py-1 rounded-md transition-all text-xs font-medium ${
                 selectedDate === yesterdayStr
-                  ? 'bg-[#4fc3f7] text-[#090d16] font-bold shadow-sm'
-                  : 'text-slate-300 hover:text-white'
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               Yesterday
@@ -776,10 +758,10 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
             <button
               type="button"
               onClick={() => handleDateChange(dayBeforeStr)}
-              className={`px-2.5 py-1 rounded transition-colors ${
+              className={`px-2.5 py-1 rounded-md transition-all text-xs font-medium ${
                 selectedDate === dayBeforeStr
-                  ? 'bg-[#4fc3f7] text-[#090d16] font-bold shadow-sm'
-                  : 'text-slate-300 hover:text-white'
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               2 Days Ago
@@ -787,24 +769,27 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
           </div>
 
           {/* Custom Date Input */}
-          <div className="flex items-center gap-1.5 bg-[#090d16] px-2.5 py-1.5 rounded-md border border-[#1f2937] text-xs">
-            <Calendar className="w-3.5 h-3.5 text-[#4fc3f7]" />
+          <div className="flex items-center gap-1.5 hud-chip px-2.5 py-1.5 rounded-lg text-xs">
+            <Calendar className="w-3.5 h-3.5 text-zinc-400" />
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => handleDateChange(e.target.value)}
-              className="bg-transparent text-slate-200 focus:outline-none cursor-pointer text-xs font-semibold"
+              className="bg-transparent text-zinc-200 focus:outline-none cursor-pointer text-xs font-medium"
             />
           </div>
+        </div>
 
+        {/* Right Tools: Hotkeys, Refresh & Return to Live */}
+        <div className="flex items-center gap-2">
           {/* Keyboard Shortcuts Cheat Sheet Button */}
           <button
             type="button"
             onClick={() => setIsShortcutsOpen(true)}
             title="Keyboard Shortcuts & Jog-Shuttle (?)"
-            className="p-2 text-slate-300 hover:text-[#4fc3f7] rounded-md bg-[#090d16] border border-[#1f2937] hover:border-[#4fc3f7]/50 transition-colors"
+            className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-lg hud-chip hover:bg-zinc-800 transition-colors"
           >
-            <Keyboard className="w-3.5 h-3.5" />
+            <Keyboard className="w-4 h-4" />
           </button>
 
           {/* Refresh Button */}
@@ -812,23 +797,20 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
             type="button"
             onClick={fetchAllTimelinesAndBookmarks}
             title="Refresh Timeline Records"
-            className="p-2 text-slate-300 hover:text-white rounded-md bg-[#090d16] border border-[#1f2937] hover:border-[#4fc3f7]/50 transition-colors"
+            className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-lg hud-chip hover:bg-zinc-800 transition-colors"
           >
             <RefreshCw
-              className={`w-3.5 h-3.5 ${isLoadingTimeline ? 'animate-spin text-[#4fc3f7]' : ''}`}
+              className={`w-4 h-4 ${isLoadingTimeline ? 'animate-spin text-emerald-400' : ''}`}
             />
           </button>
-        </div>
 
-        {/* Right Navigation: Return to Live */}
-        <div className="flex items-center gap-2">
           {onNavigateLive && (
             <button
               type="button"
               onClick={onNavigateLive}
-              className="flex items-center gap-2 px-3.5 py-1.5 min-h-[36px] bg-[#4fc3f7] hover:bg-[#38bdf8] text-[#090d16] font-bold text-xs rounded-md transition-all shadow-md active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 font-medium text-xs rounded-lg transition-all"
             >
-              <Radio className="w-4 h-4" />
+              <Radio className="w-3.5 h-3.5" />
               <span>Back to Live</span>
             </button>
           )}
@@ -837,7 +819,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
 
       {/* Decode Budget Warning Banner */}
       {decodeBudgetWarning && (
-        <div className="bg-[#fb923c]/15 border-b border-[#fb923c]/40 px-4 py-2 text-xs text-[#fb923c] font-semibold flex items-center justify-between shrink-0 animate-in fade-in">
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-xs text-amber-400 font-medium flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{decodeBudgetWarning}</span>
@@ -845,7 +827,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
           <button
             type="button"
             onClick={clearDecodeBudgetWarning}
-            className="text-[#fb923c] hover:text-white p-0.5 rounded transition-colors"
+            className="text-amber-400 hover:text-zinc-200 p-0.5 rounded transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -853,33 +835,35 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
       )}
 
       {/* Main Playback Matrix Area */}
-      <main className="flex-1 w-full relative flex flex-col bg-black overflow-hidden">
+      <main className="flex-1 w-full relative flex flex-col bg-[#090a0f] overflow-hidden">
         {pageError ? (
-          <div className="flex flex-col items-center justify-center w-full h-full p-6 text-center bg-[#090d16]">
-            <AlertCircle className="w-12 h-12 text-[#fb923c] mb-3" />
-            <h2 className="text-base font-bold text-slate-100 mb-1">Timeline Retrieval Error</h2>
-            <p className="text-xs text-slate-400 max-w-md mb-4">{pageError}</p>
+          <div className="flex flex-col items-center justify-center w-full h-full p-6 text-center bg-[#090a0f]">
+            <AlertCircle className="w-10 h-10 text-amber-400 mb-3" />
+            <h2 className="text-sm font-semibold text-zinc-200 mb-1">Timeline Retrieval Error</h2>
+            <p className="text-xs text-zinc-400 max-w-md mb-4">{pageError}</p>
             <button
               type="button"
               onClick={fetchAllTimelinesAndBookmarks}
-              className="px-5 py-2 min-h-[40px] bg-[#4fc3f7] hover:bg-[#38bdf8] text-[#090d16] font-bold text-xs rounded-md transition-colors"
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-xs rounded-lg transition-colors"
             >
               Retry Timeline Query
             </button>
           </div>
         ) : selectedCameraIds.length === 0 ? (
-          <div className="flex flex-col items-center justify-center w-full h-full p-6 text-center bg-[#090d16]">
-            <Video className="w-12 h-12 text-[#4fc3f7] mb-3 opacity-60" />
-            <h2 className="text-base font-bold text-slate-100 mb-1">No Cameras Selected</h2>
-            <p className="text-xs text-slate-400 max-w-md mb-4">
+          <div className="flex flex-col items-center justify-center w-full h-full p-6 text-center bg-[#090a0f]">
+            <div className="w-12 h-12 rounded-xl hud-chip flex items-center justify-center mb-3 text-zinc-400">
+              <Video className="w-6 h-6" />
+            </div>
+            <h2 className="text-sm font-semibold text-zinc-200 mb-1">No Cameras Selected</h2>
+            <p className="text-xs text-zinc-400 max-w-md">
               Select 1 to 4 cameras from the dropdown above to start synchronized multi-lane
               playback.
             </p>
           </div>
         ) : (
-          <div className="flex-1 w-full h-full relative p-2 overflow-hidden">
+          <div className="flex-1 w-full h-full relative p-2.5 overflow-hidden">
             {/* Multi-Camera Playback Matrix Grid */}
-            <div className={`grid ${gridClasses} w-full h-full gap-2`}>
+            <div className={`grid ${gridClasses} w-full h-full gap-2.5`}>
               {selectedCameraIds.map((camId) => {
                 const cam = cameras.find((c) => c.id === camId) || {
                   id: camId,
@@ -890,10 +874,10 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
                   <div
                     key={camId}
                     onClick={() => setPrimaryCameraId(camId)}
-                    className={`relative w-full h-full rounded-lg overflow-hidden border transition-all ${
+                    className={`relative w-full h-full rounded-xl overflow-hidden border transition-all ${
                       isPrimary
-                        ? 'border-[#4fc3f7] shadow-[0_0_12px_rgba(79,195,247,0.25)]'
-                        : 'border-[#1f2937] hover:border-slate-600'
+                        ? 'border-emerald-500/80 shadow-[0_0_16px_rgba(16,185,129,0.2)] ring-1 ring-emerald-500/50'
+                        : 'border-white/[0.08] hover:border-white/20'
                     }`}
                   >
                     <SynchronizedCameraTile
@@ -916,13 +900,13 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
 
             {/* Stall Lock Indicator Overlay across the Grid */}
             {isBuffering && (
-              <div className="absolute inset-0 bg-[#090d16]/70 backdrop-blur-sm flex flex-col items-center justify-center z-30 pointer-events-none transition-all">
-                <div className="flex flex-col items-center bg-[#111827]/95 border border-[#1f2937] px-6 py-4 rounded-xl shadow-2xl">
-                  <Loader2 className="w-8 h-8 text-[#4fc3f7] animate-spin mb-2" />
-                  <span className="text-sm font-bold text-slate-100 tracking-wide">
+              <div className="absolute inset-0 bg-[#090a0f]/70 backdrop-blur-sm flex flex-col items-center justify-center z-30 pointer-events-none transition-all">
+                <div className="flex flex-col items-center alert-glass border border-white/10 px-6 py-4 rounded-xl shadow-2xl">
+                  <Loader2 className="w-8 h-8 text-emerald-400 animate-spin mb-2" />
+                  <span className="text-xs font-semibold text-zinc-100 tracking-wide">
                     Synchronizing Playback Engine
                   </span>
-                  <span className="text-xs text-slate-400 mt-1 font-mono">
+                  <span className="text-[11px] text-zinc-400 mt-1 font-mono">
                     Stall pause lock active — waiting for camera streams to buffer...
                   </span>
                 </div>
@@ -932,9 +916,9 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
         )}
 
         {/* Quick-Jump Incident & Bookmark Bar */}
-        <div className="w-full bg-[#111827] px-4 py-1.5 border-t border-[#1f2937] flex items-center justify-between gap-3 text-xs shrink-0 select-none">
-          <div className="flex items-center gap-2 text-slate-300 font-semibold">
-            <History className="w-4 h-4 text-[#4fc3f7]" />
+        <div className="w-full glass-bar px-4 py-1.5 border-t border-white/[0.08] flex items-center justify-between gap-3 text-xs shrink-0 select-none">
+          <div className="flex items-center gap-2 text-zinc-400 text-[11px] font-medium">
+            <History className="w-3.5 h-3.5 text-emerald-400" />
             <span className="hidden sm:inline">QUICK INCIDENT JUMP:</span>
           </div>
 
@@ -942,33 +926,33 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
             <button
               type="button"
               onClick={() => handleQuickJump(5)}
-              className="flex items-center gap-1 px-3 py-1 bg-[#090d16] hover:bg-[#1f2937] border border-[#1f2937] hover:border-[#4fc3f7]/50 rounded-md text-slate-200 font-semibold text-xs transition-colors shrink-0"
+              className="px-2.5 py-1 hud-chip hover:bg-zinc-800 rounded-md text-zinc-300 font-mono text-[11px] transition-colors shrink-0"
             >
-              <span>-5 Min</span>
+              -5m
             </button>
 
             <button
               type="button"
               onClick={() => handleQuickJump(15)}
-              className="flex items-center gap-1 px-3 py-1 bg-[#090d16] hover:bg-[#1f2937] border border-[#1f2937] hover:border-[#4fc3f7]/50 rounded-md text-slate-200 font-semibold text-xs transition-colors shrink-0"
+              className="px-2.5 py-1 hud-chip hover:bg-zinc-800 rounded-md text-zinc-300 font-mono text-[11px] transition-colors shrink-0"
             >
-              <span>-15 Min</span>
+              -15m
             </button>
 
             <button
               type="button"
               onClick={() => handleQuickJump(60)}
-              className="flex items-center gap-1 px-3 py-1 bg-[#090d16] hover:bg-[#1f2937] border border-[#1f2937] hover:border-[#4fc3f7]/50 rounded-md text-slate-200 font-semibold text-xs transition-colors shrink-0"
+              className="px-2.5 py-1 hud-chip hover:bg-zinc-800 rounded-md text-zinc-300 font-mono text-[11px] transition-colors shrink-0"
             >
-              <span>-1 Hour</span>
+              -1h
             </button>
 
             <button
               type="button"
               onClick={handleJumpYesterdaySameTime}
-              className="flex items-center gap-1.5 px-3 py-1 bg-[#fb923c]/15 hover:bg-[#fb923c]/25 border border-[#fb923c]/40 text-[#fb923c] font-bold text-xs rounded-md transition-colors shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 font-medium text-[11px] rounded-md transition-colors shrink-0"
             >
-              <Clock className="w-3.5 h-3.5" />
+              <Clock className="w-3 h-3" />
               <span>Yesterday Same Time</span>
             </button>
 
@@ -977,16 +961,16 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
               type="button"
               onClick={() => setIsBookmarkModalOpen(true)}
               title="Bookmark current playback frame (Hotkey: B)"
-              className="flex items-center gap-1.5 px-3 py-1 bg-[#111827] hover:bg-[#1f2937] border border-[#fb923c]/60 text-[#fb923c] font-bold text-xs rounded-md transition-colors shrink-0 shadow-sm"
+              className="flex items-center gap-1.5 px-2.5 py-1 hud-chip hover:bg-zinc-800 text-zinc-200 font-medium text-[11px] rounded-md transition-colors shrink-0"
             >
-              <Bookmark className="w-3.5 h-3.5 text-[#fb923c]" />
-              <span>Add Bookmark (B)</span>
+              <Bookmark className="w-3 h-3 text-amber-400" />
+              <span>Bookmark (B)</span>
             </button>
           </div>
         </div>
 
         {/* Stacked Multi-Lane Timeline Component Container */}
-        <div className="w-full bg-[#090d16] px-4 py-2.5 border-t border-[#1f2937] shrink-0">
+        <div className="w-full bg-[#090a0f] px-4 py-2 border-t border-white/[0.08] shrink-0">
           <MultiLaneTimeline
             currentDate={selectedDate}
             currentTime={targetTimestampMs}

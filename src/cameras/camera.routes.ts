@@ -279,7 +279,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
           },
           select: { cameraId: true },
         });
-        const allowedIds = new Set(permissions.map((p) => p.cameraId));
+        const allowedIds = new Set(permissions.map((p: any) => p.cameraId));
         const filtered = cameras.filter((c) => allowedIds.has(c.id));
         return reply.send({
           count: filtered.length,

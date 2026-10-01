@@ -204,27 +204,27 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
   return (
     <div className={`w-full select-none flex flex-col gap-2 font-sans ${className}`}>
       {/* Multi-Lane Container */}
-      <div className="flex w-full bg-[#090d16] border border-[#1f2937] rounded-lg overflow-hidden shadow-inner">
+      <div className="flex w-full bg-[#090a0f] border border-white/[0.08] rounded-xl overflow-hidden shadow-2xl">
         {/* Left Column: Camera Headers */}
-        <div className="w-36 sm:w-44 shrink-0 bg-[#0d1322] border-r border-[#1f2937] flex flex-col">
+        <div className="w-36 sm:w-44 shrink-0 bg-[#111318] border-r border-white/[0.08] flex flex-col">
           {/* Header spacer aligning with time ruler */}
-          <div className="h-6 px-3 flex items-center border-b border-[#1f2937] bg-[#111827] text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+          <div className="h-6 px-3 flex items-center border-b border-white/[0.08] bg-[#0c0e14] text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
             <span>Camera Lane</span>
           </div>
 
           {/* Lane Labels */}
           {precomputedLanes.length === 0 ? (
-            <div className="h-10 px-3 flex items-center text-xs text-slate-500 italic">
+            <div className="h-10 px-3 flex items-center text-xs text-zinc-500 italic">
               No cameras selected
             </div>
           ) : (
             precomputedLanes.map((lane, idx) => (
               <div
                 key={lane.cameraId || `lane-${idx}`}
-                className="h-9 px-3 flex items-center gap-2 border-b border-[#1f2937]/60 text-xs font-semibold text-slate-200 truncate"
+                className="h-9 px-3 flex items-center gap-2 border-b border-white/5 text-xs font-medium text-zinc-300 truncate"
                 title={lane.cameraName}
               >
-                <div className="w-2 h-2 rounded-full bg-[#4fc3f7] shrink-0" />
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
                 <span className="truncate">{lane.cameraName}</span>
               </div>
             ))
@@ -240,11 +240,11 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
           onPointerLeave={handlePointerLeave}
           className="flex-1 relative cursor-pointer overflow-hidden flex flex-col"
           style={{
-            backgroundImage: `repeating-linear-gradient(45deg, #090d16, #090d16 10px, #0e1320 10px, #0e1320 20px)`,
+            backgroundImage: `repeating-linear-gradient(45deg, #090a0f, #090a0f 10px, #0f1219 10px, #0f1219 20px)`,
           }}
         >
           {/* Top 24-Hour Time Ruler */}
-          <div className="h-6 relative w-full bg-[#111827] border-b border-[#1f2937] pointer-events-none">
+          <div className="h-6 relative w-full bg-[#0c0e14] border-b border-white/[0.08] pointer-events-none">
             {hourTicks.map((hour) => {
               const percent = (hour / 24) * 100;
               return (
@@ -253,10 +253,10 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
                   className="absolute top-0 bottom-0 transform -translate-x-1/2 flex flex-col items-center justify-between py-0.5"
                   style={{ left: `${percent}%` }}
                 >
-                  <span className="text-[10px] font-mono font-semibold text-slate-400">
+                  <span className="text-[10px] font-mono font-medium text-zinc-400">
                     {String(hour).padStart(2, '0')}:00
                   </span>
-                  <div className="w-[1px] h-1 bg-[#1f2937]" />
+                  <div className="w-[1px] h-1 bg-white/10" />
                 </div>
               );
             })}
@@ -266,7 +266,7 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
           {Array.from({ length: 24 }, (_, i) => (
             <div
               key={`grid-line-${i}`}
-              className="absolute top-6 bottom-0 w-[1px] bg-[#1f2937]/50 pointer-events-none z-0"
+              className="absolute top-6 bottom-0 w-[1px] bg-white/[0.04] pointer-events-none z-0"
               style={{ left: `${(i / 24) * 100}%` }}
             />
           ))}
@@ -275,31 +275,31 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
           {precomputedLanes.map((lane, laneIdx) => (
             <div
               key={lane.cameraId || `track-${laneIdx}`}
-              className="h-9 relative w-full border-b border-[#1f2937]/50 flex items-center"
+              className="h-9 relative w-full border-b border-white/5 flex items-center"
             >
-              {/* Continuous recording segments: Emerald Green (#10b981) */}
+              {/* Continuous recording segments: Emerald Green */}
               {lane.renderedSpans.map((rendered) => (
                 <div
                   key={rendered.key}
                   className={`absolute top-1.5 bottom-1.5 rounded-sm pointer-events-none shadow-sm ${
                     rendered.isMotion
-                      ? 'bg-[#f59e0b] shadow-[0_0_6px_rgba(245,158,11,0.5)]'
-                      : 'bg-[#10b981] shadow-[0_0_6px_rgba(16,185,129,0.4)]'
+                      ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]'
+                      : 'bg-emerald-500/80 shadow-[0_0_6px_rgba(16,185,129,0.4)]'
                   }`}
                   style={{ left: rendered.left, width: rendered.width }}
                 />
               ))}
 
-              {/* Motion events overlay: Amber / Orange (#f59e0b) */}
+              {/* Motion events overlay: Amber */}
               {lane.renderedMotionEvents.map((m) => (
                 <div
                   key={m.key}
-                  className="absolute top-1 bottom-1 bg-[#f59e0b] rounded-sm pointer-events-none shadow-[0_0_6px_rgba(245,158,11,0.7)] z-10"
+                  className="absolute top-1 bottom-1 bg-amber-400 rounded-sm pointer-events-none shadow-[0_0_6px_rgba(251,191,36,0.7)] z-10"
                   style={{ left: m.left, width: m.width }}
                 />
               ))}
 
-              {/* Bookmarks overlay: Blue / Cyan (#38bdf8) */}
+              {/* Bookmarks overlay: Cyan */}
               {lane.renderedBookmarks.map((b) => (
                 <div
                   key={b.bookmark.id}
@@ -318,8 +318,8 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
                   className="absolute top-0 bottom-0 w-3 -ml-1.5 z-20 flex flex-col items-center justify-start cursor-pointer group"
                   style={{ left: `${b.percent}%` }}
                 >
-                  <div className="w-2.5 h-3.5 rounded-b-sm bg-[#38bdf8] border border-[#0284c7] shadow-md transform group-hover:scale-125 transition-transform" />
-                  <div className="w-[1px] flex-1 bg-[#38bdf8]/70" />
+                  <div className="w-2.5 h-3.5 rounded-b-sm bg-cyan-400 border border-cyan-300 shadow-md transform group-hover:scale-125 transition-transform" />
+                  <div className="w-[1px] flex-1 bg-cyan-400/70" />
                 </div>
               ))}
             </div>
@@ -329,11 +329,11 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
           {hoverPosition && (
             <>
               <div
-                className="absolute top-0 bottom-0 w-[1px] bg-[#fb923c] pointer-events-none z-25"
+                className="absolute top-0 bottom-0 w-[1px] bg-amber-400 pointer-events-none z-25"
                 style={{ left: `${hoverPosition.xPercent}%` }}
               />
               <div
-                className="absolute top-1 transform -translate-x-1/2 px-2 py-0.5 bg-[#111827] border border-[#fb923c] rounded text-[11px] font-mono text-[#fb923c] font-bold pointer-events-none shadow-xl z-40"
+                className="absolute top-1 transform -translate-x-1/2 px-2 py-0.5 hud-chip border-amber-400/50 rounded text-[10px] font-mono text-amber-300 font-medium pointer-events-none shadow-xl z-40"
                 style={{ left: `${hoverPosition.xPercent}%` }}
               >
                 {hoverPosition.timeStr}
@@ -343,24 +343,24 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
 
           {/* Unified Master Playhead Line spanning all lanes */}
           <div
-            className="absolute top-0 bottom-0 w-[2px] bg-[#4fc3f7] z-30 pointer-events-none flex flex-col items-center"
+            className="absolute top-0 bottom-0 w-[2px] bg-emerald-400 z-30 pointer-events-none flex flex-col items-center"
             style={{ left: `${playheadPercent}%` }}
           >
-            <div className="w-3 h-3 bg-[#4fc3f7] rotate-45 -mt-1 shadow-[0_0_10px_#4fc3f7]" />
-            <div className="flex-1 w-[2px] bg-[#4fc3f7] shadow-[0_0_12px_#4fc3f7]" />
+            <div className="w-2.5 h-2.5 bg-emerald-400 rotate-45 -mt-1 shadow-[0_0_10px_#10b981]" />
+            <div className="flex-1 w-[2px] bg-emerald-400 shadow-[0_0_12px_#10b981]" />
           </div>
 
           {/* Active Bookmark Tooltip */}
           {activeBookmarkTooltip && (
             <div
-              className="absolute top-2 transform -translate-x-1/2 px-2.5 py-1 bg-[#111827] border border-[#38bdf8] rounded-lg text-xs shadow-2xl z-40 pointer-events-none font-sans min-w-[140px]"
+              className="absolute top-2 transform -translate-x-1/2 px-2.5 py-1 alert-glass border border-cyan-500/40 rounded-lg text-xs shadow-2xl z-40 pointer-events-none font-sans min-w-[140px]"
               style={{ left: `${activeBookmarkTooltip.xPercent}%` }}
             >
-              <div className="font-semibold text-slate-100 truncate">
+              <div className="font-medium text-zinc-100 truncate">
                 {activeBookmarkTooltip.bookmark.title}
               </div>
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono mt-0.5">
-                <span className="text-[#38bdf8] font-bold">
+              <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 font-mono mt-0.5">
+                <span className="text-cyan-400 font-semibold">
                   {activeBookmarkTooltip.cameraName}
                 </span>
                 <span>•</span>
@@ -374,32 +374,32 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
       </div>
 
       {/* Timeline Footer: Legend & Master Time Readout */}
-      <div className="flex flex-wrap justify-between items-center text-xs text-slate-400 font-mono px-1 gap-2">
+      <div className="flex flex-wrap justify-between items-center text-xs text-zinc-400 font-mono px-1 gap-2">
         {/* Color Legend */}
         <div className="flex items-center gap-4 text-[11px] font-sans">
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-2 rounded-sm bg-[#10b981] inline-block shadow-[0_0_4px_#10b981]" />
-            <span className="text-slate-300 font-medium">Continuous Recording</span>
+            <span className="w-2.5 h-2 rounded-sm bg-emerald-500 inline-block shadow-[0_0_4px_#10b981]" />
+            <span className="text-zinc-300 font-medium">Continuous</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-2 rounded-sm bg-[#f59e0b] inline-block shadow-[0_0_4px_#f59e0b]" />
-            <span className="text-slate-300 font-medium">Motion Events</span>
+            <span className="w-2.5 h-2 rounded-sm bg-amber-400 inline-block shadow-[0_0_4px_#f59e0b]" />
+            <span className="text-zinc-300 font-medium">Motion Events</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-2 rounded-sm bg-[#38bdf8] inline-block shadow-[0_0_4px_#38bdf8]" />
-            <span className="text-slate-300 font-medium">Bookmarks / Incidents</span>
+            <span className="w-2.5 h-2 rounded-sm bg-cyan-400 inline-block shadow-[0_0_4px_#06b6d4]" />
+            <span className="text-zinc-300 font-medium">Bookmarks</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-2 rounded-sm bg-[#090d16] border border-[#1f2937] inline-block" />
-            <span className="text-slate-500">Gap (No Footage)</span>
+            <span className="w-2.5 h-2 rounded-sm bg-zinc-900 border border-white/10 inline-block" />
+            <span className="text-zinc-500">Gap (No Footage)</span>
           </div>
         </div>
 
         {/* Master Playhead Readout */}
-        <div className="text-slate-100 font-bold flex items-center gap-2 bg-[#111827] px-3 py-1 rounded-md border border-[#1f2937]">
-          <span className="w-2 h-2 rounded-full bg-[#4fc3f7] inline-block shadow-[0_0_6px_#4fc3f7] animate-pulse" />
-          <span className="text-[#4fc3f7]">
-            MASTER PLAYHEAD: {formatTimeFromOffset(currentOffsetMs)} UTC
+        <div className="text-zinc-200 font-medium flex items-center gap-2 hud-chip px-3 py-1 rounded-lg text-xs tabular-nums">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block shadow-[0_0_6px_#10b981] animate-pulse" />
+          <span className="text-emerald-400 font-mono font-semibold">
+            PLAYHEAD: {formatTimeFromOffset(currentOffsetMs)} UTC
           </span>
         </div>
       </div>

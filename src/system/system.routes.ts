@@ -69,7 +69,7 @@ export const systemRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
             orderBy: { timestamp: 'desc' },
             take: 10,
           });
-          recentEvents = events.map((e) => ({
+          recentEvents = events.map((e: any) => ({
             id: e.id,
             cameraId: e.cameraId,
             timestamp: e.timestamp instanceof Date ? e.timestamp.toISOString() : String(e.timestamp),

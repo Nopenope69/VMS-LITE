@@ -33,49 +33,20 @@ export const DriveTelemetryCard: React.FC<DriveTelemetryCardProps> = ({ drives }
   };
 
   return (
-    <div
-      style={{
-        backgroundColor: '#1e293b',
-        border: '1px solid #334155',
-        borderRadius: '8px',
-        padding: '20px',
-        marginBottom: '24px',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '16px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <HardDrive size={18} style={{ color: '#38bdf8' }} />
-          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>
+    <div className="alert-glass border border-white/10 rounded-xl p-5 mb-6 shadow-xl">
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center gap-2">
+          <HardDrive size={18} className="text-emerald-400" />
+          <h3 className="text-sm font-semibold text-zinc-100">
             Storage Hardware & S.M.A.R.T. Telemetry
           </h3>
         </div>
-        <span
-          style={{
-            fontSize: '11px',
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            color: '#94a3b8',
-          }}
-        >
+        <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider">
           {drives.length} Detected Block {drives.length === 1 ? 'Device' : 'Devices'}
         </span>
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '14px',
-        }}
-      >
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
         {drives.map((drive) => {
           const isFailed = drive.healthStatus === 'FAILED' || drive.criticalWarning;
           const isHot = (drive.temperatureCelsius ?? 0) >= 55;
@@ -83,127 +54,82 @@ export const DriveTelemetryCard: React.FC<DriveTelemetryCardProps> = ({ drives }
           return (
             <div
               key={drive.path}
-              style={{
-                backgroundColor: '#0f172a',
-                border: `1px solid ${isFailed ? '#ef4444' : isHot ? '#f59e0b' : '#334155'}`,
-                borderRadius: '6px',
-                padding: '14px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-              }}
+              className={`bg-zinc-950/70 border rounded-xl p-3.5 flex flex-col gap-2.5 transition-all shadow-md ${
+                isFailed
+                  ? 'border-rose-500/60 shadow-[0_0_16px_rgba(239,68,68,0.1)]'
+                  : isHot
+                  ? 'border-amber-500/50'
+                  : 'border-white/10 hover:border-white/20'
+              }`}
             >
               {/* Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="flex justify-between items-start">
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontWeight: 700, fontSize: '14px', color: '#f8fafc' }}>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-xs text-zinc-100 font-mono">
                       {drive.name}
                     </span>
                     {(drive.removable || drive.hotplug) && (
-                      <span
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '2px',
-                          fontSize: '10px',
-                          fontWeight: 700,
-                          backgroundColor: '#0284c7',
-                          color: '#ffffff',
-                          padding: '1px 6px',
-                          borderRadius: '4px',
-                        }}
-                      >
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/25 text-emerald-300 px-1.5 py-0.2 rounded">
                         <Usb size={10} /> USB/EXT
                       </span>
                     )}
-                    <span
-                      style={{
-                        fontSize: '10px',
-                        fontWeight: 700,
-                        backgroundColor: '#1e293b',
-                        color: '#94a3b8',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                      }}
-                    >
-                      {drive.rotational ? 'HDD' : 'SSD'}
+                    <span className="text-[10px] font-mono font-semibold bg-white/5 border border-white/5 text-zinc-400 px-1.5 py-0.2 rounded">
+                      {drive.rotational ? 'HDD' : 'NVMe/SSD'}
                     </span>
                   </div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                  <div className="text-[11px] text-zinc-400 mt-0.5 truncate max-w-[180px]">
                     {drive.model}
                   </div>
                 </div>
 
                 {/* Health Badge */}
                 <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    backgroundColor: isFailed ? '#7f1d1d' : '#064e3b',
-                    color: isFailed ? '#fca5a5' : '#6ee7b7',
-                  }}
+                  className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                    isFailed
+                      ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                      : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                  }`}
                 >
-                  {isFailed ? <AlertTriangle size={12} /> : <CheckCircle2 size={12} />}
+                  {isFailed ? <AlertTriangle size={11} /> : <CheckCircle2 size={11} />}
                   <span>{drive.healthStatus}</span>
                 </div>
               </div>
 
               {/* Specs & Metrics */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '8px',
-                  backgroundColor: 'rgba(255,255,255,0.02)',
-                  padding: '8px',
-                  borderRadius: '4px',
-                  fontSize: '12px',
-                  marginTop: '4px',
-                }}
-              >
+              <div className="grid grid-cols-2 gap-2 bg-zinc-900/60 border border-white/5 p-2 rounded-lg text-xs font-mono text-[11px]">
                 <div>
-                  <span style={{ color: '#64748b' }}>Capacity: </span>
-                  <span style={{ color: '#cbd5e1', fontWeight: 600 }}>
+                  <span className="text-zinc-500">Capacity: </span>
+                  <span className="text-zinc-200 font-semibold">
                     {formatBytes(drive.sizeBytes)}
                   </span>
                 </div>
 
                 <div>
-                  <span style={{ color: '#64748b' }}>Temp: </span>
+                  <span className="text-zinc-500">Temp: </span>
                   <span
-                    style={{
-                      color: isHot ? '#f87171' : '#38bdf8',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '2px',
-                    }}
+                    className={`font-semibold inline-flex items-center gap-1 ${
+                      isHot ? 'text-rose-400' : 'text-emerald-400'
+                    }`}
                   >
-                    <Thermometer size={12} />
+                    <Thermometer size={11} />
                     {drive.temperatureCelsius !== null ? `${drive.temperatureCelsius}°C` : 'N/A'}
                   </span>
                 </div>
 
                 <div>
-                  <span style={{ color: '#64748b' }}>Power-On: </span>
-                  <span style={{ color: '#cbd5e1', fontWeight: 600 }}>
+                  <span className="text-zinc-500">Power-On: </span>
+                  <span className="text-zinc-200 font-semibold">
                     {drive.powerOnHours !== null ? `${drive.powerOnHours}h` : 'N/A'}
                   </span>
                 </div>
 
                 <div>
-                  <span style={{ color: '#64748b' }}>Bad Sectors: </span>
+                  <span className="text-zinc-500">Bad Sectors: </span>
                   <span
-                    style={{
-                      color: (drive.reallocatedSectors ?? 0) > 0 ? '#f87171' : '#cbd5e1',
-                      fontWeight: 600,
-                    }}
+                    className={`font-semibold ${
+                      (drive.reallocatedSectors ?? 0) > 0 ? 'text-rose-400' : 'text-zinc-200'
+                    }`}
                   >
                     {drive.reallocatedSectors ?? 0}
                   </span>
@@ -211,10 +137,10 @@ export const DriveTelemetryCard: React.FC<DriveTelemetryCardProps> = ({ drives }
               </div>
 
               {/* Mountpoint indicator */}
-              <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', gap: '4px' }}>
+              <div className="text-[11px] text-zinc-500 flex items-center gap-1.5 font-mono">
                 <span>Mount:</span>
-                <span style={{ color: drive.mountpoint ? '#38bdf8' : '#64748b', fontFamily: 'monospace' }}>
-                  {drive.mountpoint || 'Unmounted'}
+                <span className="text-zinc-300 truncate">
+                  {drive.mountpoint || 'Unmounted Pool'}
                 </span>
               </div>
             </div>

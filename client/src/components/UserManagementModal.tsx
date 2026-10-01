@@ -197,8 +197,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(9, 13, 22, 0.85)',
-        backdropFilter: 'blur(4px)',
+        backgroundColor: 'rgba(9, 10, 15, 0.82)',
+        backdropFilter: 'blur(20px)',
         zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
@@ -209,14 +209,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
       <div
         style={{
           width: '100%',
-          maxWidth: '900px',
+          maxWidth: '920px',
           maxHeight: '85vh',
-          backgroundColor: '#090d16',
-          border: '1px solid #1f2937',
-          borderRadius: '8px',
+          backgroundColor: '#111318',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '16px',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.8)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.85)',
           overflow: 'hidden',
           color: '#f3f4f6',
         }}
@@ -228,25 +228,26 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '16px 20px',
-            backgroundColor: '#111827',
-            borderBottom: '1px solid #1f2937',
+            backgroundColor: 'rgba(12, 14, 20, 0.95)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: '#4fc3f7', fontSize: '18px', fontWeight: 700 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ color: '#f4f4f5', fontSize: '15px', fontWeight: 600, letterSpacing: '-0.01em' }}>
               Users & Camera Permissions (RBAC)
             </span>
             <span
               style={{
-                fontSize: '11px',
-                padding: '2px 6px',
-                backgroundColor: 'rgba(79, 195, 247, 0.1)',
-                border: '1px solid #4fc3f7',
-                color: '#4fc3f7',
-                borderRadius: '4px',
+                fontSize: '10px',
+                padding: '2px 8px',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                color: '#34d399',
+                borderRadius: '9999px',
+                fontWeight: 500,
               }}
             >
-              Extended Package
+              Enterprise Tier
             </span>
           </div>
           <button
@@ -255,8 +256,9 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               background: 'none',
               border: 'none',
               color: '#9ca3af',
-              fontSize: '20px',
+              fontSize: '18px',
               cursor: 'pointer',
+              padding: '4px',
             }}
           >
             ✕
@@ -269,10 +271,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           <div
             style={{
               width: '320px',
-              borderRight: '1px solid #1f2937',
+              borderRight: '1px solid rgba(255, 255, 255, 0.08)',
               display: 'flex',
               flexDirection: 'column',
-              backgroundColor: '#0c121e',
+              backgroundColor: '#090a0f',
             }}
           >
             {/* Create User Form */}

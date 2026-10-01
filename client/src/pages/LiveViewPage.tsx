@@ -13,6 +13,7 @@ import {
   Volume2,
   VolumeX,
   Users,
+  Keyboard,
 } from 'lucide-react';
 import { LiveGrid, GridLayoutMode } from '../components/LiveGrid.js';
 import { CameraStreamInfo } from '../components/LiveCameraTile.js';
@@ -26,20 +27,29 @@ import { useCctvHotkeys } from '../hooks/useCctvHotkeys.js';
 import { FloatingHudBadge } from '../components/FloatingHudBadge.js';
 import { ChannelSwitcherModal } from '../components/ChannelSwitcherModal.js';
 import { KeyboardShortcutsModal } from '../components/KeyboardShortcutsModal.js';
-import { Keyboard } from 'lucide-react';
+import { captureVideoSnapshot } from '../utils/snapshot.js';
 
 export interface LiveViewPageProps {
   apiBaseUrl?: string;
   authToken?: string;
-  onNavigatePlayback?: () => void;
+  layout?: GridLayoutMode;
+  onLayoutChange?: (layout: GridLayoutMode) => void;
+  onNavigatePlayback?: (cameraId?: string) => void;
+  embedded?: boolean;
 }
 
 export const LiveViewPage: React.FC<LiveViewPageProps> = ({
   apiBaseUrl = '',
   authToken = '',
+  layout: externalLayout,
+  onLayoutChange,
   onNavigatePlayback,
+  embedded = true,
 }) => {
-  const [layout, setLayout] = useState<GridLayoutMode>('2x2');
+  const [internalLayout, setInternalLayout] = useState<GridLayoutMode>('2x2');
+  const layout = externalLayout || internalLayout;
+  const setLayout = onLayoutChange || setInternalLayout;
+
   const [cameras, setCameras] = useState<CameraStreamInfo[]>([]);
   const [assignedSlots, setAssignedSlots] = useState<(CameraStreamInfo | null)[]>([]);
   const [iceServers, setIceServers] = useState<RTCIceServer[]>([]);
@@ -148,7 +158,7 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [apiBaseUrl, authToken]);
+  }, [apiBaseUrl, effectiveToken]);
 
   useEffect(() => {
     fetchStreamingConfig();
@@ -273,204 +283,214 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
     const targetCam = cameras.find((c) => c.cameraId === cam.id) || {
       cameraId: cam.id,
       name: cam.name,
-      streamPath: '',
-      rtspUrl: '',
+      mediaMtxPath: '',
+      whepUrl: '',
+      hlsUrl: '',
     };
     setLayout('1x1');
     setAssignedSlots([targetCam]);
     triggerHud(`[ Switched: CH ${channelIndex + 1} - ${cam.name} ]`);
   };
 
-  const handleOpenDrawer = () => {
-    setIsDrawerOpen(true);
-    setUnreadAlertCount(0);
+  const handleFocusFeed = (cam: CameraStreamInfo) => {
+    if (layout === '1x1' && assignedSlots[0]?.cameraId === cam.cameraId) {
+      // Toggle back to multi-grid
+      setLayout(previousMultiLayout || '2x2');
+      setAssignedSlots(cameras.slice(0, 9));
+      triggerHud('[ Restored Multi-Grid ]');
+    } else {
+      if (layout !== '1x1') {
+        setPreviousMultiLayout(layout);
+      }
+      setLayout('1x1');
+      setAssignedSlots([cam]);
+      triggerHud(`[ Focus: ${cam.name} ]`);
+    }
   };
 
+  // Tactile frame capture with shutter screen flash animation
+  const triggerCapture = useCallback(() => {
+    const flash = document.createElement('div');
+    flash.className = 'fixed inset-0 bg-white/20 z-[9999] pointer-events-none transition-opacity duration-150';
+    document.body.appendChild(flash);
+    setTimeout(() => {
+      flash.style.opacity = '0';
+      setTimeout(() => flash.remove(), 150);
+    }, 40);
+
+    // Capture from the first visible video element
+    const activeVideo = document.querySelector('video') as HTMLVideoElement | null;
+    const targetName = assignedSlots[0]?.name || 'Live_Stream';
+    if (activeVideo) {
+      captureVideoSnapshot(activeVideo, targetName);
+      triggerHud('[ Frame Captured ]');
+    }
+  }, [assignedSlots, triggerHud]);
+
+  // Space hotkey listener for instant snapshot in Live view
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && e.target) {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+          e.preventDefault();
+          triggerCapture();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [triggerCapture]);
+
   return (
-    <div className="flex flex-col w-screen h-screen bg-[#090d16] text-slate-100 overflow-hidden font-sans">
+    <div className="flex flex-col flex-1 w-full h-full bg-brand text-slate-100 overflow-hidden font-sans relative">
       {/* Operator Shift Mode Banner */}
       <OperatorBanner />
 
-      {/* Top Application Bar with Palette 1 Styling */}
-      <header className="flex items-center justify-between px-4 py-2.5 bg-[#111827] border-b border-[#1f2937] shrink-0">
-        {/* Brand & System Health */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 font-bold tracking-tight text-sm text-slate-100">
-            <div className="w-8 h-8 rounded-lg bg-[#4fc3f7]/15 border border-[#4fc3f7]/40 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-[#4fc3f7]" />
+      {/* Standalone Top Application Bar (only when not embedded in App.tsx) */}
+      {!embedded && (
+        <header className="h-13 px-4 lg:px-6 glass-bar border-b border-white/[0.07] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-6 h-6 rounded-md bg-zinc-900 border border-white/15 flex items-center justify-center text-white shadow-sm">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                <polyline points="2 17 12 22 22 17"></polyline>
+                <polyline points="2 12 12 17 22 12"></polyline>
+              </svg>
             </div>
-            <div className="flex flex-col">
-              <span className="text-xs tracking-wider text-[#4fc3f7] font-mono">BASIC VMS</span>
-              <span className="text-[10px] text-slate-400 font-normal">Security Monitoring</span>
-            </div>
+            <span className="font-semibold text-xs tracking-tight text-white">PRISM</span>
+            <span className="text-zinc-600 text-xs">/</span>
+            <span className="text-zinc-400 text-xs">Physical Security</span>
           </div>
 
-          <div className="hidden md:flex items-center gap-2 pl-3 border-l border-[#1f2937] text-xs text-slate-300">
-            <span className="w-2 h-2 rounded-full bg-[#4fc3f7] animate-pulse" />
-            <Video className="w-3.5 h-3.5 text-slate-400" />
-            <span className="font-mono font-medium">
-              {cameras.length} Active {cameras.length === 1 ? 'Camera' : 'Cameras'}
-            </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setLayout('2x2')}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium ${layout === '2x2' ? 'bg-zinc-800 text-white' : 'text-zinc-400'}`}
+            >
+              Quad 2×2
+            </button>
+            <button
+              onClick={() => setLayout('1x1')}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium ${layout === '1x1' ? 'bg-zinc-800 text-white' : 'text-zinc-400'}`}
+            >
+              Focus
+            </button>
           </div>
-        </div>
+        </header>
+      )}
 
-        {/* Center Grid Mode Switcher with High-Affordance Touch Targets */}
-        <div className="flex items-center gap-1.5 bg-[#090d16] p-1 rounded-lg border border-[#1f2937]">
-          <button
-            type="button"
-            onClick={() => setLayout('1x1')}
-            title="Single Camera Focus (1x1)"
-            className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-md text-xs font-semibold transition-colors ${
-              layout === '1x1'
-                ? 'bg-[#4fc3f7] text-[#090d16] shadow-md'
-                : 'text-slate-300 hover:text-white hover:bg-[#1f2937]'
-            }`}
-          >
-            <Square className="w-4 h-4" />
-            <span className="hidden sm:inline">1 Camera</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setLayout('2x2')}
-            title="Quad Grid (2x2)"
-            className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-md text-xs font-semibold transition-colors ${
-              layout === '2x2'
-                ? 'bg-[#4fc3f7] text-[#090d16] shadow-md'
-                : 'text-slate-300 hover:text-white hover:bg-[#1f2937]'
-            }`}
-          >
-            <Grid2X2 className="w-4 h-4" />
-            <span className="hidden sm:inline">4 Grid (2x2)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setLayout('3x3')}
-            title="Nine Grid (3x3)"
-            className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-md text-xs font-semibold transition-colors ${
-              layout === '3x3'
-                ? 'bg-[#4fc3f7] text-[#090d16] shadow-md'
-                : 'text-slate-300 hover:text-white hover:bg-[#1f2937]'
-            }`}
-          >
-            <Grid3X3 className="w-4 h-4" />
-            <span className="hidden sm:inline">9 Grid (3x3)</span>
-          </button>
-        </div>
-
-        {/* Right Action Controls */}
-        <div className="flex items-center gap-2.5">
-          {/* Audio Chime Mute/Unmute */}
-          <button
-            type="button"
-            onClick={() => setChimeEnabled((prev) => !prev)}
-            title={chimeEnabled ? 'Guard Audio Alert Chime: ON' : 'Guard Audio Alert Chime: MUTED'}
-            className={`p-2 min-w-[38px] min-h-[38px] flex items-center justify-center rounded-md border transition-colors ${
-              chimeEnabled
-                ? 'bg-[#111827] text-[#4fc3f7] border-[#1f2937] hover:border-[#4fc3f7]/60'
-                : 'bg-[#111827] text-slate-500 border-[#1f2937] hover:text-slate-300'
-            }`}
-          >
-            {chimeEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
-
-          {/* Incident Alert Badge & Drawer Trigger */}
-          <MotionAlertBadge
-            unreadCount={unreadAlertCount}
-            hasActiveMotion={activeMotionCameraIds.size > 0}
-            onClick={handleOpenDrawer}
-          />
-
-          {/* Admin User & Permission Management */}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setIsUserModalOpen(true)}
-              title="Users & Camera Access Management"
-              className="flex items-center gap-1.5 px-3 py-1.5 min-h-[38px] bg-[#111827] hover:bg-[#1f2937] text-[#4fc3f7] border border-[#1f2937] hover:border-[#4fc3f7]/50 font-semibold text-xs rounded-md transition-all shadow-sm active:scale-95"
-            >
-              <Users className="w-4 h-4" />
-              <span className="hidden lg:inline">Users & Access</span>
-            </button>
-          )}
-
-          {/* Direct Navigate to Playback / History */}
-          {onNavigatePlayback && (
-            <button
-              type="button"
-              onClick={onNavigatePlayback}
-              className="flex items-center gap-2 px-3.5 py-1.5 min-h-[38px] bg-[#4fc3f7] hover:bg-[#38bdf8] text-[#090d16] font-bold text-xs rounded-md transition-all shadow-md active:scale-95"
-            >
-              <Film className="w-4 h-4" />
-              <span>History</span>
-            </button>
-          )}
-
-          {/* Keyboard Shortcuts Cheat Sheet Button */}
-          <button
-            type="button"
-            onClick={() => setIsShortcutsOpen(true)}
-            title="Keyboard Shortcuts & Jog-Shuttle (?)"
-            className="p-2 min-w-[38px] min-h-[38px] flex items-center justify-center text-slate-300 hover:text-[#4fc3f7] rounded-md bg-[#090d16] border border-[#1f2937] hover:border-[#4fc3f7]/50 transition-colors"
-          >
-            <Keyboard className="w-4 h-4" />
-          </button>
-
-          {/* Refresh Feeds */}
-          <button
-            type="button"
-            onClick={fetchStreamingConfig}
-            title="Refresh Feeds"
-            className="p-2 min-w-[38px] min-h-[38px] flex items-center justify-center text-slate-300 hover:text-white rounded-md bg-[#090d16] border border-[#1f2937] hover:border-[#4fc3f7]/50 transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-[#4fc3f7]' : ''}`} />
-          </button>
-
-          {/* Kiosk Multi-Grid Fullscreen for Guard Monitors */}
-          <button
-            type="button"
-            onClick={toggleFullScreen}
-            title={isKioskFullscreen ? 'Exit Kiosk Fullscreen (ESC)' : 'Enter Kiosk Multi-Grid Fullscreen'}
-            className={`p-2 min-w-[38px] min-h-[38px] flex items-center justify-center rounded-md border transition-colors ${
-              isKioskFullscreen
-                ? 'bg-[#4fc3f7] text-[#090d16] border-[#4fc3f7] shadow-md'
-                : 'text-slate-300 hover:text-white bg-[#090d16] border-[#1f2937] hover:border-[#4fc3f7]/50'
-            }`}
-          >
-            {isKioskFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-          </button>
-        </div>
-      </header>
-
-      {/* Main Grid View Area */}
-      <main className="flex-1 w-full h-full relative overflow-hidden bg-[#090d16] flex">
+      {/* Main Surveillance Canvas */}
+      <main className="flex-1 p-2 md:p-3 lg:p-4 flex flex-col gap-3 max-w-[1920px] mx-auto w-full overflow-hidden relative">
         {error ? (
-          <div className="flex flex-col items-center justify-center w-full h-full p-6 text-center">
-            <AlertCircle className="w-12 h-12 text-[#fb923c] mb-3" />
-            <h2 className="text-base font-bold text-slate-100 mb-1">Failed to Connect to Video Server</h2>
-            <p className="text-xs text-slate-400 max-w-md mb-4">{error}</p>
+          <div className="flex flex-col items-center justify-center w-full h-full p-6 text-center alert-glass border border-white/10 rounded-xl my-auto">
+            <AlertCircle className="w-12 h-12 text-amber-400 mb-3" />
+            <h2 className="text-base font-bold text-zinc-100 mb-1">Failed to Connect to Video Server</h2>
+            <p className="text-xs text-zinc-400 max-w-md mb-4">{error}</p>
             <button
               type="button"
               onClick={fetchStreamingConfig}
-              className="px-5 py-2.5 min-h-[44px] bg-[#4fc3f7] hover:bg-[#38bdf8] text-[#090d16] font-bold text-xs rounded-md transition-colors shadow-lg"
+              className="px-5 py-2 min-h-[40px] bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-xs rounded-lg transition-colors shadow-lg"
             >
               Retry Connection
             </button>
           </div>
         ) : (
-          <LiveGrid
-            layout={layout}
-            cameras={cameras}
-            assignedSlots={assignedSlots}
-            onAssignSlot={handleAssignSlot}
-            onClearSlot={handleClearSlot}
-            activeMotionCameraIds={activeMotionCameraIds}
-            canControlPtz={isPtzAllowedForCamera}
-            iceServers={iceServers}
-          />
+          <div className="flex-1 w-full h-full overflow-hidden rounded-xl border border-white/5 bg-brand">
+            <LiveGrid
+              layout={layout}
+              cameras={cameras}
+              assignedSlots={assignedSlots}
+              onAssignSlot={handleAssignSlot}
+              onClearSlot={handleClearSlot}
+              onNavigatePlayback={onNavigatePlayback}
+              activeMotionCameraIds={activeMotionCameraIds}
+              canControlPtz={isPtzAllowedForCamera}
+              iceServers={iceServers}
+            />
+          </div>
         )}
       </main>
+
+      {/* ================= REFINED ENTERPRISE DOCK (Apple Pro / Linear) ================= */}
+      <footer className="sticky bottom-4 z-40 px-4 pointer-events-none shrink-0">
+        <div className="max-w-2xl mx-auto dock-glass px-3 py-1.5 rounded-xl flex items-center justify-between gap-4 pointer-events-auto">
+          {/* Camera switcher chips */}
+          <div className="flex items-center gap-1 overflow-x-auto py-0.5 no-scrollbar">
+            <span className="text-[11px] text-zinc-500 font-medium px-1.5 hidden sm:inline select-none">
+              Feeds
+            </span>
+            {cameras.length === 0 ? (
+              <span className="text-[11px] text-zinc-600 px-2 italic">No feeds configured</span>
+            ) : (
+              cameras.map((c, i) => {
+                const isSelected = assignedSlots[0]?.cameraId === c.cameraId && layout === '1x1';
+                const hasMotion = activeMotionCameraIds.has(c.cameraId);
+                return (
+                  <button
+                    key={c.cameraId}
+                    type="button"
+                    onClick={() => handleFocusFeed(c)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium border flex items-center gap-1.5 transition-all shrink-0 select-none ${
+                      hasMotion
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                        : isSelected
+                        ? 'bg-white/10 text-white border-white/20 shadow-sm'
+                        : 'hover:bg-white/5 text-zinc-400 hover:text-zinc-200 border-transparent'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        hasMotion ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+                      }`}
+                    />
+                    <span className="truncate max-w-[100px]">{c.name.split(' ')[0] || `Cam ${i + 1}`}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {/* Quick Actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Audio chime mute */}
+            <button
+              type="button"
+              onClick={() => setChimeEnabled(!chimeEnabled)}
+              className="w-7 h-7 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-zinc-400 hover:text-zinc-200 flex items-center justify-center transition-all"
+              title={chimeEnabled ? 'Mute Alert Chime' : 'Unmute Alert Chime'}
+            >
+              <span className="material-symbols-outlined text-[15px]">
+                {chimeEnabled ? 'volume_up' : 'volume_off'}
+              </span>
+            </button>
+
+            {/* Tactile Linear / Vercel style CTA button */}
+            <button
+              type="button"
+              id="btn-snapshot"
+              onClick={triggerCapture}
+              className="h-7 px-3 rounded-md bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-medium text-xs tracking-tight flex items-center gap-1.5 shadow-sm shadow-emerald-950/50 transition-all active:scale-[0.98]"
+            >
+              <span className="material-symbols-outlined text-[14px]">photo_camera</span>
+              <span>Capture Frame</span>
+              <kbd className="ml-1 px-1 py-0.2 rounded text-[10px] bg-black/15 font-mono text-zinc-950 font-semibold">
+                Space
+              </kbd>
+            </button>
+
+            {/* Keyboard Shortcuts Trigger */}
+            <button
+              type="button"
+              onClick={() => setIsShortcutsOpen(true)}
+              className="w-7 h-7 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-zinc-400 hover:text-zinc-200 flex items-center justify-center transition-all"
+              title="Keyboard Shortcuts & Jog-Shuttle"
+            >
+              <span className="material-symbols-outlined text-[15px]">keyboard</span>
+            </button>
+          </div>
+        </div>
+      </footer>
 
       {/* Event Notification Drawer */}
       <EventNotificationDrawer
@@ -530,3 +550,4 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({
 };
 
 export default LiveViewPage;
+

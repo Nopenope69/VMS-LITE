@@ -1,49 +1,44 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  LayoutDashboard,
-  Video,
-  Film,
-  Camera,
-  Bell,
-  Settings,
   Shield,
-  ShieldCheck,
-  LogOut,
-  ChevronLeft,
-  ChevronRight,
-  Menu,
-  Activity,
-  HardDrive,
-  AlertTriangle,
-  Info,
-  CheckCircle2,
-  XCircle,
-  Plus,
   RefreshCw,
-  Clock,
-  ExternalLink,
-  Trash2,
-  Sliders,
-  User,
-  Users,
+  Info,
   Search,
+  X,
+  Plus,
 } from 'lucide-react';
 import { useAuth, UserRole } from './context/AuthContext.js';
-import { LiveViewPage } from './pages/LiveViewPage.js';
+import { Sidebar } from './components/Sidebar.js';
+import { OverviewView } from './views/OverviewView.js';
+import { LiveView } from './views/LiveView.js';
+import { CameraFocusedView } from './views/CameraFocusedView.js';
+import { CamerasListView } from './views/CamerasListView.js';
+import { EventsView } from './views/EventsView.js';
+import { HealthView } from './views/HealthView.js';
+import { SettingsView } from './views/SettingsView.js';
 import { PlaybackPage } from './pages/PlaybackPage.js';
 import { useCameraHealth, CameraHealthTelemetry } from './hooks/useCameraHealth.js';
-import { UserManagementModal, CameraItem } from './components/UserManagementModal.js';
+import { UserManagementModal } from './components/UserManagementModal.js';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal.js';
 import { MotionZoneEditorModal } from './components/MotionZoneEditorModal.js';
-import { EventNotificationDrawer } from './components/EventNotificationDrawer.js';
 import { CameraOnboardingWizardModal } from './components/CameraOnboardingWizardModal.js';
 import { OperationalSettingsModal } from './components/OperationalSettingsModal.js';
-import { DashboardView } from './components/DashboardView.js';
 import { FirstBootWizardModal } from './components/FirstBootWizardModal.js';
 import { AuditLogViewerModal } from './components/AuditLogViewerModal.js';
+import { BookmarkModal } from './components/BookmarkModal.js';
+import { ClipExportModal } from './components/ClipExportModal.js';
+import { BackupRestoreModal } from './components/BackupRestoreModal.js';
 import { EventsWsClient, EventPayload } from './utils/events-ws-client.js';
 
-export type ViewType = 'dashboard' | 'live' | 'playback' | 'cameras' | 'events' | 'settings';
+export type ViewType =
+  | 'overview'
+  | 'live'
+  | 'camera'
+  | 'cameras'
+  | 'events'
+  | 'recordings'
+  | 'health'
+  | 'settings';
 
 export interface CameraRecord {
   id: string;
@@ -62,26 +57,31 @@ export const App: React.FC = () => {
   const { user, token, role, isAdmin, isOperator, isLoading: isAuthLoading, login, logout } = useAuth();
 
   // Navigation state
-  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [currentView, setCurrentView] = useState<ViewType>('overview');
+  const [focusedCameraId, setFocusedCameraId] = useState<string | null>(null);
+  const [isQuickSearchOpen, setIsQuickSearchOpen] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Modals state
   const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState<boolean>(false);
   const [isOperationalSettingsOpen, setIsOperationalSettingsOpen] = useState<boolean>(false);
-  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState<boolean>(false);
   const [isFirstBootModalOpen, setIsFirstBootModalOpen] = useState<boolean>(false);
   const [selectedCameraForZones, setSelectedCameraForZones] = useState<CameraRecord | null>(null);
-
-  // Camera Onboarding Wizard modal state
   const [isAddCameraModalOpen, setIsAddCameraModalOpen] = useState<boolean>(false);
+
+  // Focus View action modals
+  const [isBookmarkModalOpen, setIsBookmarkModalOpen] = useState<boolean>(false);
+  const [bookmarkCameraId, setBookmarkCameraId] = useState<string | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [exportCameraId, setExportCameraId] = useState<string | null>(null);
 
   // Data states
   const [cameras, setCameras] = useState<CameraRecord[]>([]);
   const [events, setEvents] = useState<EventPayload[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
-  const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
 
   // Camera health telemetry polling (15s)
   const { healthMap, summary: healthSummary, refresh: refreshHealth } = useCameraHealth({
@@ -95,26 +95,16 @@ export const App: React.FC = () => {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
-  // Real-time clock update (every second)
+  // Global ⌘K shortcut listener
   useEffect(() => {
-    function updateClock() {
-      const now = new Date();
-      // Formats as: "Mon, 27 Sep 2026, 02:45:10 IST" or local format
-      const options: Intl.DateTimeFormatOptions = {
-        weekday: 'short',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      };
-      setCurrentTimeStr(now.toLocaleString('en-IN', options));
-    }
-    updateClock();
-    const interval = setInterval(updateClock, 1000);
-    return () => clearInterval(interval);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsQuickSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Fetch cameras roster
@@ -126,7 +116,16 @@ export const App: React.FC = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        setCameras(Array.isArray(data) ? data : data.cameras || []);
+        const raw = Array.isArray(data) ? data : data.cameras || [];
+        const normalized: CameraRecord[] = raw.map((c: any) => ({
+          ...c,
+          name: c.name || 'Camera',
+          ipAddress: c.ipAddress || c.ip || '',
+          streamPath: c.streamPath || c.mediaMtxPath || c.id || '',
+          status: c.status || 'ONLINE',
+          createdAt: c.createdAt || new Date().toISOString(),
+        }));
+        setCameras(normalized);
       }
     } catch (err) {
       console.warn('[App] Failed to fetch cameras:', err);
@@ -163,27 +162,40 @@ export const App: React.FC = () => {
     }
   }, [token]);
 
+  // Initial data load upon authentication
   useEffect(() => {
     if (token) {
       fetchCameras();
       fetchEvents();
+      refreshHealth();
     }
-  }, [token, fetchCameras, fetchEvents]);
+  }, [token, fetchCameras, fetchEvents, refreshHealth]);
 
-  // WebSocket for real-time events and notification badge
+  // Real-time Event Stream via WebSocket
   useEffect(() => {
     if (!token) return;
-    const wsClient = new EventsWsClient({ token });
-    const unsubscribe = wsClient.subscribe((evt: EventPayload) => {
-      setEvents((prev) => [evt, ...prev.slice(0, 99)]);
-      setUnreadCount((c) => c + 1);
-    });
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/events?token=${token}`;
+    const wsClient = new EventsWsClient({ wsUrl, token });
+
     wsClient.connect();
+
+    const unsubscribe = wsClient.subscribe((event: EventPayload) => {
+      setEvents((prev) => [event, ...prev.slice(0, 99)]);
+      setUnreadCount((c) => c + 1);
+
+      // Refresh health if camera online/offline event occurs
+      if (event.type === 'camera.offline' || event.type === 'camera.online') {
+        refreshHealth();
+      }
+    });
+
     return () => {
       unsubscribe();
       wsClient.disconnect();
     };
-  }, [token]);
+  }, [token, refreshHealth]);
 
   // Handle Login submission
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -214,112 +226,104 @@ export const App: React.FC = () => {
     }
   };
 
-  // Delete camera
-  const handleDeleteCamera = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to remove camera "${name}"?`)) return;
-    try {
-      const res = await fetch(`/api/cameras/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        fetchCameras();
-        refreshHealth();
-      }
-    } catch (err) {
-      console.error('Failed to delete camera:', err);
+  // Online / Offline count calculations
+  const onlineCount = useMemo(() => {
+    if (healthSummary) return healthSummary.onlineCount;
+    return cameras.filter((c) => {
+      const h = healthMap[c.id];
+      return h ? h.status === 'ONLINE' : c.status === 'ONLINE';
+    }).length;
+  }, [healthSummary, cameras, healthMap]);
+
+  const offlineCount = Math.max(0, cameras.length - onlineCount);
+
+  // Active focused camera
+  const focusedCamera = useMemo(() => {
+    if (focusedCameraId) {
+      const match = cameras.find((c) => c.id === focusedCameraId);
+      if (match) return match;
     }
-  };
+    return cameras[0] || null;
+  }, [cameras, focusedCameraId]);
 
   // If loading auth session
   if (isAuthLoading) {
     return (
-      <div style={{ display: 'flex', height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', color: '#94a3b8' }}>
-        <div style={{ textAlign: 'center' }}>
-          <RefreshCw size={36} className="animate-spin" style={{ margin: '0 auto 12px auto', color: '#38bdf8' }} />
-          <p style={{ fontSize: '14px', letterSpacing: '0.05em' }}>INITIALIZING BASIC VMS CONSOLE...</p>
+      <div className="flex h-screen w-screen items-center justify-center bg-[#090a0f] text-zinc-400 font-sans">
+        <div className="text-center flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-white/10 flex items-center justify-center text-emerald-400 shadow-md">
+            <RefreshCw size={18} className="animate-spin" />
+          </div>
+          <p className="text-xs font-mono tracking-widest text-zinc-500">INITIALIZING VMS-LITE...</p>
         </div>
       </div>
     );
   }
 
-  // If unauthenticated: Login View
+  // If unauthenticated: VMS-LITE Login View
   if (!token) {
     return (
-      <div style={{ display: 'flex', height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', padding: '16px' }}>
-        <div style={{ maxWidth: '420px', width: '100%', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '32px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
-          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <div style={{ display: 'inline-flex', padding: '12px', backgroundColor: '#0284c7', borderRadius: '12px', marginBottom: '12px', color: '#fff' }}>
-              <ShieldCheck size={32} />
+      <div className="flex h-screen w-screen items-center justify-center bg-[#090a0f] p-4 relative overflow-hidden select-none font-sans">
+        {/* Ambient subtle glow background */}
+        <div className="absolute w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[140px] pointer-events-none -top-40 -left-40" />
+
+        <div className="max-w-[380px] w-full bg-[#111318] border border-white/10 rounded-2xl p-7 shadow-2xl relative z-10">
+          <div className="text-center mb-6">
+            <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-white/15 mx-auto flex items-center justify-center text-white shadow-md mb-3">
+              <Shield className="w-5 h-5 text-emerald-400" />
             </div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: '#f8fafc', letterSpacing: '0.025em' }}>BASIC VMS</h1>
-            <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>Security Control Plane & Media Ingress</p>
+            <h1 className="text-lg font-bold text-white tracking-tight">VMS-LITE</h1>
+            <p className="text-xs text-zinc-400 mt-1 font-normal">Physical Security OS · Core Control</p>
           </div>
 
           {loginError && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', borderRadius: '6px', color: '#fca5a5', fontSize: '13px', marginBottom: '16px' }}>
-              <AlertTriangle size={16} />
-              <span>{loginError}</span>
+            <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs text-center font-medium">
+              {loginError}
             </div>
           )}
 
-          <form onSubmit={handleLoginSubmit}>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#cbd5e1', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <form onSubmit={handleLoginSubmit} className="space-y-3.5">
+            <div>
+              <label className="block text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
                 Username
               </label>
               <input
                 type="text"
+                required
                 value={loginUsername}
                 onChange={(e) => setLoginUsername(e.target.value)}
-                required
-                style={{ width: '100%', padding: '10px 12px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#f8fafc', fontSize: '14px', outline: 'none' }}
                 placeholder="admin"
+                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all font-mono"
               />
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#cbd5e1', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div>
+              <label className="block text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
                 Password
               </label>
               <input
                 type="password"
+                required
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
-                required
-                style={{ width: '100%', padding: '10px 12px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#f8fafc', fontSize: '14px', outline: 'none' }}
                 placeholder="••••••••"
+                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all font-mono"
               />
             </div>
 
             <button
               type="submit"
               disabled={isLoggingIn}
-              style={{
-                width: '100%',
-                padding: '12px',
-                backgroundColor: isLoggingIn ? '#0369a1' : '#0284c7',
-                border: 'none',
-                borderRadius: '6px',
-                color: '#fff',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: isLoggingIn ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                transition: 'background-color 0.2s',
-              }}
+              className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-xs rounded-lg transition-all shadow-md shadow-emerald-950/50 flex items-center justify-center gap-2 disabled:opacity-50 mt-2 active:scale-[0.99]"
             >
-              {isLoggingIn && <RefreshCw size={16} className="animate-spin" />}
+              {isLoggingIn && <RefreshCw size={14} className="animate-spin" />}
               {isLoggingIn ? 'Authenticating...' : 'Sign In to Console'}
             </button>
           </form>
 
-          <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #334155', textAlign: 'center', fontSize: '12px', color: '#64748b' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              <Info size={13} /> Default Installer: <code style={{ color: '#38bdf8' }}>admin / admin123</code>
+          <div className="mt-6 pt-4 border-t border-white/10 text-center text-[11px] text-zinc-500">
+            <span className="inline-flex items-center gap-1.5">
+              <Info size={13} /> Demo Login: <code className="text-emerald-400 font-mono">admin / admin123</code>
             </span>
           </div>
         </div>
@@ -327,709 +331,254 @@ export const App: React.FC = () => {
     );
   }
 
-  // Role Badge Styling
-  const getRoleBadgeStyle = (r: UserRole | null) => {
-    switch (r) {
-      case 'ADMIN':
-        return { bg: 'rgba(16, 185, 129, 0.2)', border: '#10b981', color: '#6ee7b7' };
-      case 'OPERATOR':
-        return { bg: 'rgba(2, 132, 199, 0.2)', border: '#0284c7', color: '#7dd3fc' };
-      case 'VIEWER':
-      default:
-        return { bg: 'rgba(139, 92, 246, 0.2)', border: '#8b5cf6', color: '#c4b5fd' };
-    }
-  };
-
-  const roleStyle = getRoleBadgeStyle(role);
+  // Filtered cameras for ⌘K Quick Search
+  const filteredCameras = cameras.filter((c) => {
+    const q = searchQuery.toLowerCase();
+    const name = (c.name || '').toLowerCase();
+    const ip = (c.ipAddress || (c as any).ip || '').toLowerCase();
+    return name.includes(q) || ip.includes(q);
+  });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', backgroundColor: '#0f172a', overflow: 'hidden' }}>
-      {/* ==================== 1. PERSISTENT TOP HEADER ==================== */}
-      <header
-        style={{
-          height: '52px',
-          backgroundColor: '#1e293b',
-          borderBottom: '1px solid #334155',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 16px',
-          zIndex: 40,
-          flexShrink: 0,
+    <div className="flex h-screen w-screen bg-[#090a0f] text-zinc-200 overflow-hidden font-sans">
+      {/* ================= PRIMARY SIDEBAR (Linear / Raycast Style) ================= */}
+      <Sidebar
+        currentView={currentView}
+        onNavigate={(view) => {
+          if (view !== 'camera') {
+            setFocusedCameraId(null);
+          }
+          if (view === 'events') {
+            setUnreadCount(0);
+          }
+          setCurrentView(view);
         }}
-      >
-        {/* Left: Brand & Sidebar Toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button
-            onClick={() => setIsSidebarCollapsed((prev) => !prev)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#94a3b8',
-              cursor: 'pointer',
-              padding: '6px',
-              borderRadius: '4px',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            <Menu size={18} />
-          </button>
+        onlineCount={onlineCount}
+        totalCount={cameras.length}
+        unreadEventsCount={unreadCount}
+        userName={user?.username || 'Admin'}
+        userRole={role || 'Administrator'}
+        onLogout={logout}
+      />
 
-          <div
-            onClick={() => setCurrentView('dashboard')}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
-          >
-            <ShieldCheck size={22} style={{ color: '#0284c7' }} />
-            <span style={{ fontWeight: 700, fontSize: '16px', letterSpacing: '0.04em', color: '#f8fafc' }}>
-              BASIC VMS
-            </span>
-            <span
-              style={{
-                fontSize: '10px',
-                padding: '2px 6px',
-                backgroundColor: '#334155',
-                color: '#94a3b8',
-                borderRadius: '4px',
-                fontWeight: 600,
-                letterSpacing: '0.05em',
+      {/* ================= MAIN CONTENT CANVAS ================= */}
+      <main className="flex-1 h-screen overflow-y-auto flex flex-col bg-[#090a0f] relative">
+        {/* 1. Overview */}
+        {currentView === 'overview' && (
+          <OverviewView
+            cameras={cameras}
+            events={events}
+            onlineCount={onlineCount}
+            offlineCount={offlineCount}
+            onNavigate={(v) => setCurrentView(v)}
+            onSelectCamera={(id) => {
+              setFocusedCameraId(id);
+              setCurrentView('camera');
+            }}
+          />
+        )}
+
+        {/* 2. Live Grid */}
+        {currentView === 'live' && (
+          <LiveView
+            cameras={cameras}
+            onlineCount={onlineCount}
+            onSelectCamera={(id) => {
+              setFocusedCameraId(id);
+              setCurrentView('camera');
+            }}
+          />
+        )}
+
+        {/* 3. Focused Camera */}
+        {currentView === 'camera' && (
+          focusedCamera ? (
+            <CameraFocusedView
+              camera={focusedCamera}
+              onBack={() => setCurrentView('live')}
+              onOpenBookmark={(id) => {
+                setBookmarkCameraId(id);
+                setIsBookmarkModalOpen(true);
               }}
-            >
-              CORE-MVP
-            </span>
-          </div>
-        </div>
-
-        {/* Center: Live Digital Clock & Fleet Status */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#94a3b8', fontSize: '13px' }}>
-            <Clock size={15} style={{ color: '#38bdf8' }} />
-            <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{currentTimeStr || 'Connecting...'}</span>
-          </div>
-
-          {healthSummary && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '3px 8px',
-                backgroundColor: '#0f172a',
-                borderRadius: '16px',
-                border: '1px solid #334155',
-                fontSize: '11px',
+              onOpenExport={(id) => {
+                setExportCameraId(id);
+                setIsExportModalOpen(true);
               }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#4ade80' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#4ade80' }} />
-                {healthSummary.onlineCount} Online
-              </span>
-              {healthSummary.degradedCount > 0 && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#facc15' }}>
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#facc15' }} />
-                  {healthSummary.degradedCount} Degraded
-                </span>
-              )}
-              {healthSummary.offlineCount > 0 && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#f87171' }}>
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f87171' }} />
-                  {healthSummary.offlineCount} Offline
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Right: Drawer bell, User pill & Logout */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button
-            onClick={() => {
-              setIsDrawerOpen(true);
-              setUnreadCount(0);
-            }}
-            style={{
-              position: 'relative',
-              background: 'none',
-              border: 'none',
-              color: '#94a3b8',
-              cursor: 'pointer',
-              padding: '6px',
-              borderRadius: '6px',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-            title="Event Notifications"
-          >
-            <Bell size={18} />
-            {unreadCount > 0 && (
-              <span
-                style={{
-                  position: 'absolute',
-                  top: '2px',
-                  right: '2px',
-                  width: '16px',
-                  height: '16px',
-                  borderRadius: '50%',
-                  backgroundColor: '#ef4444',
-                  color: '#fff',
-                  fontSize: '9px',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+              <p className="text-sm text-zinc-400">No camera available.</p>
+              <button
+                type="button"
+                onClick={() => setCurrentView('live')}
+                className="mt-4 px-3 py-1.5 rounded-lg bg-white/[0.04] text-xs text-white hover:bg-white/[0.08]"
               >
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </button>
-
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '4px 10px',
-              backgroundColor: '#0f172a',
-              border: '1px solid #334155',
-              borderRadius: '20px',
-            }}
-          >
-            <User size={14} style={{ color: '#94a3b8' }} />
-            <span style={{ fontSize: '13px', fontWeight: 500, color: '#f1f5f9' }}>{user?.username}</span>
-            <span
-              style={{
-                fontSize: '10px',
-                fontWeight: 700,
-                padding: '2px 6px',
-                borderRadius: '4px',
-                backgroundColor: roleStyle.bg,
-                border: `1px solid ${roleStyle.border}`,
-                color: roleStyle.color,
-                letterSpacing: '0.04em',
-              }}
-            >
-              {role || 'VIEWER'}
-            </span>
-          </div>
-
-          <button
-            onClick={logout}
-            style={{
-              background: 'none',
-              border: '1px solid #475569',
-              color: '#cbd5e1',
-              cursor: 'pointer',
-              padding: '6px 10px',
-              borderRadius: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '12px',
-              fontWeight: 500,
-            }}
-            title="Sign out of console"
-          >
-            <LogOut size={14} />
-            <span>Logout</span>
-          </button>
-        </div>
-      </header>
-
-      {/* ==================== 2. MAIN LAYOUT (SIDEBAR + CONTENT) ==================== */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Navigation Sidebar */}
-        <aside
-          style={{
-            width: isSidebarCollapsed ? '64px' : '220px',
-            backgroundColor: '#1e293b',
-            borderRight: '1px solid #334155',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            transition: 'width 0.2s ease',
-            flexShrink: 0,
-          }}
-        >
-          {/* Top navigation items */}
-          <nav style={{ padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {[
-              { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-              { id: 'live', label: 'Live View', icon: Video },
-              { id: 'playback', label: 'Playback', icon: Film },
-              { id: 'cameras', label: 'Cameras', icon: Camera },
-              { id: 'events', label: 'Events & Alerts', icon: Bell },
-              { id: 'settings', label: 'Settings', icon: Settings },
-            ].map((item) => {
-              const Icon = item.icon;
-              const isActive = currentView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setCurrentView(item.id as ViewType)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: 'none',
-                    borderRadius: '8px',
-                    backgroundColor: isActive ? '#0284c7' : 'transparent',
-                    color: isActive ? '#ffffff' : '#94a3b8',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: isActive ? 600 : 500,
-                    textAlign: 'left',
-                    transition: 'all 0.15s ease',
-                  }}
-                  title={isSidebarCollapsed ? item.label : undefined}
-                >
-                  <Icon size={18} style={{ flexShrink: 0 }} />
-                  {!isSidebarCollapsed && <span>{item.label}</span>}
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* Bottom status indicator inside sidebar */}
-          {!isSidebarCollapsed && (
-            <div style={{ padding: '12px 16px', borderTop: '1px solid #334155', fontSize: '11px', color: '#64748b' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                <Activity size={12} style={{ color: '#22c55e' }} />
-                <span>MediaMTX Ingress: Ready</span>
-              </div>
-              <div>Node Storage: Normal</div>
+                Return to Live
+              </button>
             </div>
-          )}
-        </aside>
+          )
+        )}
 
-        {/* View Workspace */}
-        <main style={{ flex: 1, backgroundColor: '#0f172a', overflow: 'auto', position: 'relative' }}>
-          {/* VIEW: DASHBOARD */}
-          {currentView === 'dashboard' && (
-            <DashboardView
-              token={token || ''}
-              isAdmin={isAdmin}
-              onNavigate={(view) => setCurrentView(view as ViewType)}
-              onOpenSettingsModal={() => setIsOperationalSettingsOpen(true)}
-              onOpenAuditModal={() => setIsAuditModalOpen(true)}
-            />
-          )}
+        {/* 4. Cameras List */}
+        {currentView === 'cameras' && (
+          <CamerasListView
+            cameras={cameras}
+            healthMap={healthMap}
+            isAdmin={isAdmin}
+            onSelectCamera={(id) => {
+              setFocusedCameraId(id);
+              setCurrentView('camera');
+            }}
+            onOpenAddCamera={() => setIsAddCameraModalOpen(true)}
+            onOpenMotionZones={(camera) => setSelectedCameraForZones(camera)}
+          />
+        )}
 
-          {/* VIEW: LIVE VIEW */}
-          {currentView === 'live' && (
-            <LiveViewPage
-              authToken={token || ''}
-              onNavigatePlayback={() => setCurrentView('playback')}
-            />
-          )}
+        {/* 5. Events */}
+        {currentView === 'events' && (
+          <EventsView
+            cameras={cameras}
+            events={events}
+            onSelectCamera={(id) => {
+              setFocusedCameraId(id);
+              setCurrentView('camera');
+            }}
+          />
+        )}
 
-          {/* VIEW: PLAYBACK */}
-          {currentView === 'playback' && (
+        {/* 6. Recordings (Synchronized Multi-Lane Playback) */}
+        {currentView === 'recordings' && (
+          <div className="flex-1 h-full flex flex-col overflow-hidden">
             <PlaybackPage
               authToken={token || ''}
               onNavigateLive={() => setCurrentView('live')}
             />
-          )}
+          </div>
+        )}
 
-          {/* VIEW: CAMERAS */}
-          {currentView === 'cameras' && (
-            <div style={{ padding: '24px', maxWidth: '1280px', margin: '0 auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#f8fafc' }}>Camera Roster & Status</h2>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
-                    Live stream diagnostics and hardware reachability
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    onClick={() => {
-                      fetchCameras();
-                      refreshHealth();
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '8px 12px',
-                      backgroundColor: '#1e293b',
-                      border: '1px solid #334155',
-                      borderRadius: '6px',
-                      color: '#cbd5e1',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <RefreshCw size={14} /> Refresh
-                  </button>
-                  {isAdmin && (
-                    <button
-                      onClick={() => setIsAddCameraModalOpen(true)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '8px 14px',
-                        backgroundColor: '#0284c7',
-                        border: 'none',
-                        borderRadius: '6px',
-                        color: '#fff',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <Plus size={16} /> Add Camera
-                    </button>
-                  )}
-                </div>
-              </div>
+        {/* 7. Health */}
+        {currentView === 'health' && (
+          <HealthView
+            cameras={cameras}
+            healthMap={healthMap}
+            onlineCount={onlineCount}
+            offlineCount={offlineCount}
+            onRefreshHealth={refreshHealth}
+            onSelectCamera={(id) => {
+              setFocusedCameraId(id);
+              setCurrentView('camera');
+            }}
+          />
+        )}
 
-              {cameras.length === 0 ? (
-                <div style={{ padding: '48px', backgroundColor: '#1e293b', borderRadius: '8px', border: '1px dashed #475569', textAlign: 'center' }}>
-                  <Camera size={36} style={{ margin: '0 auto 12px auto', color: '#64748b' }} />
-                  <p style={{ margin: 0, fontSize: '15px', color: '#f8fafc', fontWeight: 600 }}>No Cameras Configured</p>
-                  <p style={{ margin: '6px 0 16px 0', fontSize: '13px', color: '#94a3b8' }}>
-                    Onboard an ONVIF or RTSP camera to initiate streaming and recording.
-                  </p>
-                  {isAdmin && (
-                    <button
-                      onClick={() => setIsAddCameraModalOpen(true)}
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#0284c7',
-                        border: 'none',
-                        borderRadius: '6px',
-                        color: '#fff',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Add First Camera
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '16px' }}>
-                  {cameras.map((cam) => {
-                    const health = healthMap[cam.id];
-                    const isOnline = health?.status === 'ONLINE';
-                    const isDegraded = health?.status === 'DEGRADED';
-                    const isOffline = health?.status === 'OFFLINE';
+        {/* 8. Settings */}
+        {currentView === 'settings' && (
+          <SettingsView
+            isAdmin={isAdmin}
+            onOpenOperationalSettings={() => setIsOperationalSettingsOpen(true)}
+            onOpenNotificationSettings={() => setIsNotificationModalOpen(true)}
+            onOpenUserManagement={() => setIsUserModalOpen(true)}
+            onOpenAuditLogs={() => setIsAuditModalOpen(true)}
+            onOpenBackupRestore={() => setIsBackupModalOpen(true)}
+          />
+        )}
+      </main>
 
-                    return (
-                      <div
-                        key={cam.id}
-                        style={{
-                          backgroundColor: '#1e293b',
-                          border: '1px solid #334155',
-                          borderRadius: '8px',
-                          padding: '16px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between',
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                            <div>
-                              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#f8fafc' }}>{cam.name}</h3>
-                              <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#94a3b8', fontFamily: 'monospace' }}>
-                                {cam.ipAddress}:{cam.rtspPort || 554}
-                              </p>
-                            </div>
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                fontSize: '10px',
-                                fontWeight: 700,
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                backgroundColor: isOnline ? 'rgba(34,197,94,0.15)' : isDegraded ? 'rgba(250,204,21,0.15)' : 'rgba(239,68,68,0.15)',
-                                color: isOnline ? '#4ade80' : isDegraded ? '#facc15' : '#f87171',
-                                border: `1px solid ${isOnline ? '#22c55e' : isDegraded ? '#facc15' : '#ef4444'}`,
-                              }}
-                            >
-                              <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: isOnline ? '#4ade80' : isDegraded ? '#facc15' : '#f87171' }} />
-                              {health?.status || 'ONLINE'}
-                            </span>
-                          </div>
-
-                          <div style={{ backgroundColor: '#0f172a', borderRadius: '6px', padding: '10px', margin: '12px 0', fontSize: '12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', color: '#94a3b8' }}>
-                              <span>Stream Path:</span>
-                              <code style={{ color: '#38bdf8' }}>{cam.streamPath}</code>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', color: '#94a3b8' }}>
-                              <span>Round-trip RTT:</span>
-                              <span style={{ color: '#f8fafc' }}>{health?.latencyMs !== null && health?.latencyMs !== undefined ? `${health.latencyMs} ms` : '12 ms'}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8' }}>
-                              <span>Ingest Bitrate:</span>
-                              <span style={{ color: '#f8fafc' }}>{health?.bitrateKbps !== null && health?.bitrateKbps !== undefined ? `${health.bitrateKbps} kbps` : '2400 kbps'}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #334155', paddingTop: '12px' }}>
-                          <button
-                            onClick={() => setCurrentView('live')}
-                            style={{ flex: 1, padding: '6px', backgroundColor: '#0284c7', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
-                          >
-                            Live
-                          </button>
-                          <button
-                            onClick={() => setCurrentView('playback')}
-                            style={{ flex: 1, padding: '6px', backgroundColor: '#334155', border: 'none', borderRadius: '4px', color: '#cbd5e1', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
-                          >
-                            Playback
-                          </button>
-                          <button
-                            onClick={() => setSelectedCameraForZones(cam)}
-                            style={{ padding: '6px 8px', backgroundColor: '#334155', border: 'none', borderRadius: '4px', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}
-                            title="Configure Motion Exclusion Zones"
-                          >
-                            <Sliders size={14} />
-                          </button>
-                          {isAdmin && (
-                            <button
-                              onClick={() => handleDeleteCamera(cam.id, cam.name)}
-                              style={{ padding: '6px 8px', backgroundColor: 'rgba(239, 68, 68, 0.2)', border: '1px solid #ef4444', borderRadius: '4px', color: '#fca5a5', fontSize: '11px', cursor: 'pointer' }}
-                              title="Delete Camera"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+      {/* ================= ⌘K COMMAND PALETTE ================= */}
+      {isQuickSearchOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center pt-24 p-4"
+          onClick={() => setIsQuickSearchOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg bg-[#111318] border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center px-4 border-b border-white/10">
+              <Search className="w-4 h-4 text-zinc-500 mr-2 shrink-0" />
+              <input
+                type="text"
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Jump to camera, view, or action..."
+                className="w-full bg-transparent py-3.5 text-xs text-white placeholder-zinc-500 focus:outline-none font-sans"
+              />
+              <button
+                type="button"
+                onClick={() => setIsQuickSearchOpen(false)}
+                className="text-zinc-500 hover:text-white text-xs p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          )}
 
-          {/* VIEW: EVENTS & ALERTS */}
-          {currentView === 'events' && (
-            <div style={{ padding: '24px', maxWidth: '1280px', margin: '0 auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#f8fafc' }}>Audit Events & Motion Alerts</h2>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>Comprehensive operational event journal</p>
-                </div>
+            <div className="p-2 max-h-80 overflow-y-auto space-y-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentView('overview');
+                  setIsQuickSearchOpen(false);
+                }}
+                className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-white/10 text-xs text-zinc-200 transition-colors"
+              >
+                <span>Overview Dashboard</span>
+                <span className="text-[10px] font-mono text-zinc-500">Jump</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentView('live');
+                  setIsQuickSearchOpen(false);
+                }}
+                className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-white/10 text-xs text-zinc-200 transition-colors"
+              >
+                <span>Live View</span>
+                <span className="text-[10px] font-mono text-zinc-500">Jump</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentView('events');
+                  setIsQuickSearchOpen(false);
+                }}
+                className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-white/10 text-xs text-zinc-200 transition-colors"
+              >
+                <span>Events & Incidents</span>
+                <span className="text-[10px] font-mono text-zinc-500">Jump</span>
+              </button>
+
+              {/* Cameras List */}
+              <div className="px-2 py-1 mt-2 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+                Cameras ({filteredCameras.length})
+              </div>
+              {filteredCameras.map((cam) => (
                 <button
-                  onClick={fetchEvents}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 12px',
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #334155',
-                    borderRadius: '6px',
-                    color: '#cbd5e1',
-                    fontSize: '12px',
-                    cursor: 'pointer',
+                  key={cam.id}
+                  type="button"
+                  onClick={() => {
+                    setFocusedCameraId(cam.id);
+                    setCurrentView('camera');
+                    setIsQuickSearchOpen(false);
                   }}
+                  className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-white/10 text-xs text-zinc-200 transition-colors"
                 >
-                  <RefreshCw size={14} /> Refresh Log
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span className="font-medium">{cam.name}</span>
+                    <span className="text-[10px] font-mono text-zinc-500">{cam.ipAddress}</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-zinc-500">Open Focus</span>
                 </button>
-              </div>
-
-              <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#0f172a', borderBottom: '1px solid #334155', color: '#94a3b8' }}>
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Timestamp</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Severity</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Event Type</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Source</th>
-                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {events.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
-                          No event logs recorded.
-                        </td>
-                      </tr>
-                    ) : (
-                      events.map((evt) => {
-                        const isCritical = evt.severity === 'critical';
-                        const isWarning = evt.severity === 'warning';
-                        return (
-                          <tr key={evt.id} style={{ borderBottom: '1px solid #334155' }}>
-                            <td style={{ padding: '12px 16px', color: '#94a3b8', fontFamily: 'monospace' }}>
-                              {new Date(evt.timestamp).toLocaleString()}
-                            </td>
-                            <td style={{ padding: '12px 16px' }}>
-                              <span
-                                style={{
-                                  fontSize: '11px',
-                                  fontWeight: 600,
-                                  padding: '2px 8px',
-                                  borderRadius: '4px',
-                                  backgroundColor: isCritical ? 'rgba(239,68,68,0.2)' : isWarning ? 'rgba(250,204,21,0.2)' : 'rgba(56,189,248,0.2)',
-                                  color: isCritical ? '#f87171' : isWarning ? '#facc15' : '#38bdf8',
-                                }}
-                              >
-                                {evt.severity.toUpperCase()}
-                              </span>
-                            </td>
-                            <td style={{ padding: '12px 16px', color: '#f8fafc', fontWeight: 500 }}>{evt.type}</td>
-                            <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>{evt.source}</td>
-                            <td style={{ padding: '12px 16px', color: '#94a3b8', fontSize: '12px' }}>
-                              {evt.metadata ? JSON.stringify(evt.metadata) : '-'}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              ))}
             </div>
-          )}
+          </div>
+        </div>
+      )}
 
-          {/* VIEW: SETTINGS */}
-          {currentView === 'settings' && (
-            <div style={{ padding: '24px', maxWidth: '1280px', margin: '0 auto' }}>
-              <div style={{ marginBottom: '24px' }}>
-                <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#f8fafc' }}>System Settings</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
-                  Recording rules, notification integrations, and license capabilities
-                </p>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-                {/* User & Access Management */}
-                <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                    <Users size={20} style={{ color: '#0284c7' }} />
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#f8fafc' }}>Users & Permissions</h3>
-                  </div>
-                  <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
-                    Manage operator credentials, role-based access control (Admin, Operator, Viewer), and per-camera permission ACLs.
-                  </p>
-                  <button
-                    onClick={() => setIsUserModalOpen(true)}
-                    disabled={!isAdmin}
-                    style={{
-                      padding: '8px 14px',
-                      backgroundColor: isAdmin ? '#0284c7' : '#334155',
-                      border: 'none',
-                      borderRadius: '6px',
-                      color: isAdmin ? '#fff' : '#64748b',
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      cursor: isAdmin ? 'pointer' : 'not-allowed',
-                    }}
-                  >
-                    {isAdmin ? 'Manage Users' : 'Admin Required'}
-                  </button>
-                </div>
-
-                {/* Notifications & Webhooks */}
-                <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                    <Bell size={20} style={{ color: '#f59e0b' }} />
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#f8fafc' }}>Alerts & Webhooks</h3>
-                  </div>
-                  <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
-                    Configure automated WhatsApp messaging, token-bucket dispatch limits, and HMAC-signed outbound integration webhooks.
-                  </p>
-                  <button
-                    onClick={() => setIsNotificationModalOpen(true)}
-                    style={{
-                      padding: '8px 14px',
-                      backgroundColor: '#0284c7',
-                      border: 'none',
-                      borderRadius: '6px',
-                      color: '#fff',
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Configure Alerts
-                  </button>
-                </div>
-
-                {/* Recording Policies */}
-                <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                    <Film size={20} style={{ color: '#a855f7' }} />
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#f8fafc' }}>Recording Policies & Storage</h3>
-                  </div>
-                  <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '12px' }}>
-                    24/7 Continuous, Motion Ring Buffer, or 7-Day Visual Calendar Schedule with FIFO quota auto-purge.
-                  </p>
-                  <div style={{ fontSize: '12px', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
-                    <div><strong>Active Modes:</strong> Continuous / Motion-Buffered / Weekly Grid</div>
-                    <div><strong>Storage Management:</strong> 15-day target retention with FIFO auto-purge at 90%</div>
-                    <div><strong>Evidence Protection:</strong> Bookmarked segments strictly preserved</div>
-                  </div>
-                  <button
-                    onClick={() => setIsOperationalSettingsOpen(true)}
-                    style={{
-                      padding: '8px 14px',
-                      backgroundColor: '#0284c7',
-                      border: 'none',
-                      borderRadius: '6px',
-                      color: '#fff',
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Configure Policies & Schedule Grid
-                  </button>
-                </div>
-
-                {/* License & Capabilities */}
-                <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                    <ShieldCheck size={20} style={{ color: '#22c55e' }} />
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#f8fafc' }}>License & Capabilities</h3>
-                  </div>
-                  <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '12px' }}>
-                    Offline Ed25519 signature verified at node startup. Zero cloud telemetry dependencies.
-                  </p>
-                  <div style={{ fontSize: '12px', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
-                    <div><strong>Package Tier:</strong> Package 1 (Core) + Package 2 (Ext)</div>
-                    <div><strong>Camera Capacity:</strong> Up to 16 Cameras (Core Tier Headroom)</div>
-                    <div><strong>Camera Health:</strong> <span style={{ color: '#22c55e', fontWeight: 600 }}>Active (Included in Core!)</span></div>
-                  </div>
-                  <button
-                    onClick={() => setIsOperationalSettingsOpen(true)}
-                    style={{
-                      padding: '8px 14px',
-                      backgroundColor: '#1e293b',
-                      border: '1px solid #475569',
-                      borderRadius: '6px',
-                      color: '#f8fafc',
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    View Entitlement Summary
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </main>
-      </div>
-
-      {/* ==================== 3. MODALS & DRAWERS ==================== */}
+      {/* ================= MODALS & DRAWERS ================= */}
       <UserManagementModal
         isOpen={isUserModalOpen}
         onClose={() => setIsUserModalOpen(false)}
@@ -1051,7 +600,7 @@ export const App: React.FC = () => {
         token={token}
         isAdmin={isAdmin}
         cameras={cameras.map((c) => ({ id: c.id, name: c.name }))}
-        onSettingsSaved={loadCameras}
+        onSettingsSaved={fetchCameras}
       />
 
       {selectedCameraForZones && (
@@ -1064,18 +613,6 @@ export const App: React.FC = () => {
         />
       )}
 
-      <EventNotificationDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        events={events}
-        onClearEvents={() => setEvents([])}
-        onSelectEvent={(evt) => {
-          setIsDrawerOpen(false);
-          setCurrentView('events');
-        }}
-      />
-
-      {/* 6-Step Robust Camera Onboarding Wizard */}
       <CameraOnboardingWizardModal
         isOpen={isAddCameraModalOpen}
         onClose={() => setIsAddCameraModalOpen(false)}
@@ -1085,7 +622,6 @@ export const App: React.FC = () => {
         }}
       />
 
-      {/* First-Boot Initial Provisioning Wizard */}
       <FirstBootWizardModal
         isOpen={isFirstBootModalOpen}
         onCompleted={() => {
@@ -1095,12 +631,39 @@ export const App: React.FC = () => {
         token={token || ''}
       />
 
-      {/* Security Audit Trail Viewer */}
       <AuditLogViewerModal
         isOpen={isAuditModalOpen}
         onClose={() => setIsAuditModalOpen(false)}
         token={token || ''}
       />
+
+      <BackupRestoreModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        token={token || ''}
+      />
+
+      {isBookmarkModalOpen && bookmarkCameraId && (
+        <BookmarkModal
+          isOpen={isBookmarkModalOpen}
+          onClose={() => setIsBookmarkModalOpen(false)}
+          onSaved={() => setIsBookmarkModalOpen(false)}
+          cameraId={bookmarkCameraId}
+          cameraName={cameras.find((c) => c.id === bookmarkCameraId)?.name || 'Camera'}
+          timestamp={new Date()}
+          authToken={token || ''}
+        />
+      )}
+
+      {isExportModalOpen && exportCameraId && (
+        <ClipExportModal
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          cameraId={exportCameraId}
+          cameraName={cameras.find((c) => c.id === exportCameraId)?.name || 'Camera'}
+          authToken={token || ''}
+        />
+      )}
     </div>
   );
 };

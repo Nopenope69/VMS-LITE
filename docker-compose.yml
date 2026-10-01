@@ -46,6 +46,8 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: basic_vms_postgres
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-vms_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-vms_password}

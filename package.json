@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
+    "dev:mock": "USE_MOCK_DB=true tsx watch src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",

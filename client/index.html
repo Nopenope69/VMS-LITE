@@ -1,10 +1,38 @@
 <!DOCTYPE html>
-<html lang="en">
+<html class="dark" lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#0f172a" />
-    <title>Basic VMS - Lightweight Video Management System</title>
+    <meta name="theme-color" content="#090a0f" />
+    <title>PRISM · Physical Security OS | Basic VMS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+      if (typeof tailwind !== 'undefined') {
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              fontFamily: {
+                sans: ['-apple-system', 'BlinkMacSystemFont', '"Inter"', 'sans-serif'],
+                mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+              },
+              colors: {
+                brand: {
+                  DEFAULT: '#090a0f',
+                  surface: '#111318',
+                  card: '#151821',
+                  border: 'rgba(255, 255, 255, 0.08)'
+                }
+              }
+            }
+          }
+        };
+      }
+    </script>
     <style>
       *, *::before, *::after {
         box-sizing: border-box;
@@ -14,11 +42,12 @@
         padding: 0;
         width: 100%;
         height: 100%;
-        background-color: #0f172a;
-        color: #f8fafc;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: #090a0f;
+        color: #e2e8f0;
+        font-family: -apple-system, BlinkMacSystemFont, "Inter", "Geist", "SF Pro Display", sans-serif;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+        overscroll-behavior: none;
         overflow: hidden;
       }
       #root {
@@ -27,24 +56,49 @@
         display: flex;
         flex-direction: column;
       }
+      .tabular-nums {
+        font-variant-numeric: tabular-nums;
+      }
+      .glass-bar {
+        background: rgba(12, 14, 20, 0.85);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+      }
+      .hud-chip {
+        background: rgba(10, 12, 18, 0.76);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+      }
+      .alert-glass {
+        background: rgba(14, 17, 24, 0.90);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+      }
+      .dock-glass {
+        background: rgba(13, 16, 23, 0.88);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08);
+      }
       /* Custom scrollbars for CCTV monitoring console */
       ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
       }
       ::-webkit-scrollbar-track {
-        background: #1e293b;
+        background: #090a0f;
       }
       ::-webkit-scrollbar-thumb {
-        background: #475569;
+        background: rgba(255, 255, 255, 0.12);
         border-radius: 3px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #64748b;
+        background: rgba(255, 255, 255, 0.22);
       }
     </style>
   </head>
-  <body>
+  <body class="selection:bg-emerald-500/20 selection:text-emerald-300">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

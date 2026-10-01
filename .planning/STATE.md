@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.0
-milestone_name: "Deployable MVP (Days 45 → 75)"
+milestone: v3.1
+milestone_name: "VMS-LITE Premium SaaS Redesign"
 status: completed
-stopped_at: "Completed Milestone v3.0 (Phases 13 through 21). Day 75 Scope Freeze & Field Acceptance Gate Passed."
-last_updated: "2026-09-27T12:34:00.000Z"
-last_activity: "2026-09-27 -- Completed Phase 21 (Accelerated 72-Hour Soak Acceptance Suite, Network Glitch Simulation, Ring Buffer Promotion, Tamper-Evident Evidence Verification, and Installer Litmus CLI)"
+stopped_at: "Completed VMS-LITE SaaS Redesign (Sidebar + 5 Core Screens + Intelligent DB Auto-Fallback + Error Boundary)"
+last_updated: "2026-10-01T13:22:00.000Z"
+last_activity: "2026-10-01 -- Completed VMS-LITE SaaS UI/UX redesign (Linear/Raycast aesthetic, Overview, Live, Focused Camera, Events, Health, Cameras, Settings), database auto-fallback resilience, and ErrorBoundary."
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 17
-  completed_plans: 17
+  total_phases: 10
+  completed_phases: 10
+  total_plans: 19
+  completed_plans: 19
   percent: 100
 ---
 
@@ -21,14 +21,17 @@ progress:
 See: `.planning/MVP-ROADMAP.md` and `.planning/PROJECT.md`
 
 **Core value:** Sub-30-minute installer deployment with reliable CP Plus parity (live view, scheduled recording, 24h timeline playback, native ONVIF motion alerts) built on permissively licensed infrastructure (MediaMTX) with zero VigilOne domain entanglement.  
-**Current focus:** Production release readiness & deployment.
+**Current focus:** VMS-LITE Modern SaaS UI/UX complete, ready for field deployments.
 
 ## Current Position
 
-Phase: Phase 21 (Field Validation & 72-Hour Acceptance Gate) — COMPLETED
-Plan: 1/1 Plan Complete
-Status: Milestone v3.0 Complete
-Last activity: 2026-09-27 -- Phase 21 completed. All 21 phases across Milestones v1.0, v2.0, and v3.0 are 100% complete.
+Phase: VMS-LITE SaaS Redesign & Production Resilience — COMPLETED
+Status: Milestone v3.1 Complete
+Last activity: 2026-10-01 -- Completed VMS-LITE redesign:
+- Clean SaaS left sidebar (Overview, Live, Cameras, Events, Recordings, Health, Settings)
+- 5 core views: Overview, Live Grid with direct camera focus, Focused Camera view with timeline scrubber and invisible stream switching, Events with radar indicators and camera jump, and Health monitoring dashboard.
+- Zero-configuration auto-fallback to in-memory mock database when PostgreSQL is not running.
+- Client ErrorBoundary and safe DOM mounting.
 
 Progress: [██████████] 100%
 

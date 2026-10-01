@@ -9,6 +9,7 @@ export interface LiveGridProps {
   assignedSlots: (CameraStreamInfo | null)[];
   onAssignSlot: (slotIndex: number, camera: CameraStreamInfo) => void;
   onClearSlot: (slotIndex: number) => void;
+  onNavigatePlayback?: (cameraId: string) => void;
   activeMotionCameraIds?: Set<string>;
   canControlPtz?: boolean | ((cameraId: string) => boolean);
   iceServers?: RTCIceServer[];
@@ -20,6 +21,7 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
   assignedSlots,
   onAssignSlot,
   onClearSlot,
+  onNavigatePlayback,
   activeMotionCameraIds,
   canControlPtz = true,
   iceServers,
@@ -55,11 +57,11 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
       case '1x1':
         return 'grid-cols-1 grid-rows-1';
       case '2x2':
-        return 'grid-cols-1 md:grid-cols-2 auto-rows-fr';
+        return 'grid-cols-1 lg:grid-cols-2 auto-rows-fr';
       case '3x3':
         return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 auto-rows-fr';
       default:
-        return 'grid-cols-2';
+        return 'grid-cols-1 lg:grid-cols-2 auto-rows-fr';
     }
   };
 
@@ -71,7 +73,7 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
       : canControlPtz;
 
     return (
-      <div className="w-full h-full p-2.5 bg-[#090d16] flex items-center justify-center">
+      <div className="w-full h-full p-3 md:p-4 bg-brand flex items-center justify-center">
         <LiveCameraTile
           slotIndex={maximizedSlotIndex}
           camera={camera}
@@ -79,6 +81,7 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
           onAssignCamera={onAssignSlot}
           onClearSlot={onClearSlot}
           onMaximizeSlot={() => setMaximizedSlotIndex(null)}
+          onNavigatePlayback={onNavigatePlayback}
           isMaximized={true}
           forceSubStream={false} // Fullscreen solo uses high-res main stream
           hasMotionAlert={Boolean(camera && activeMotionCameraIds?.has(camera.cameraId))}
@@ -95,8 +98,8 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
 
   return (
     <div
-      className={`grid w-full h-full gap-2.5 p-2.5 bg-[#090d16] overflow-auto ${getGridClasses(layout)}`}
-      style={{ minHeight: '400px' }}
+      className={`grid w-full h-full gap-3 md:gap-3.5 p-3 md:p-4 bg-brand overflow-auto ${getGridClasses(layout)}`}
+      style={{ minHeight: '380px' }}
     >
       {slotsToRender.map((cam, idx) => {
         const isPtzAllowed = typeof canControlPtz === 'function'
@@ -104,7 +107,7 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
           : canControlPtz;
 
         return (
-          <div key={`grid-slot-${idx}`} className="w-full h-full min-h-[220px]">
+          <div key={`grid-slot-${idx}`} className="w-full h-full min-h-[240px]">
             <LiveCameraTile
               slotIndex={idx}
               camera={cam}
@@ -112,6 +115,7 @@ export const LiveGrid: React.FC<LiveGridProps> = ({
               onAssignCamera={onAssignSlot}
               onClearSlot={onClearSlot}
               onMaximizeSlot={(slot) => setMaximizedSlotIndex(slot)}
+              onNavigatePlayback={onNavigatePlayback}
               isMaximized={false}
               forceSubStream={forceSubStream}
               hasMotionAlert={Boolean(cam && activeMotionCameraIds?.has(cam.cameraId))}

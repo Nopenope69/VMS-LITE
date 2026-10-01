@@ -62,20 +62,20 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="shortcuts-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in"
     >
-      <div className="w-full max-w-3xl bg-[#111827] border border-[#1f2937] rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-3xl alert-glass border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1f2937] bg-[#090d16]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] glass-bar">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#4fc3f7]/15 border border-[#4fc3f7]/30 flex items-center justify-center">
-              <Keyboard className="w-4 h-4 text-[#4fc3f7]" />
+            <div className="w-8 h-8 rounded-lg hud-chip flex items-center justify-center text-emerald-400">
+              <Keyboard className="w-4 h-4" />
             </div>
             <div>
-              <h2 id="shortcuts-modal-title" className="text-sm sm:text-base font-bold text-slate-100 font-sans">
+              <h2 id="shortcuts-modal-title" className="text-sm sm:text-base font-semibold text-zinc-100 font-sans">
                 CCTV Keyboard Shortcuts & Jog-Shuttle Engine
               </h2>
-              <p className="text-[11px] text-slate-400 font-mono">
+              <p className="text-[11px] text-zinc-400 font-mono">
                 Direct hardware-style operator hotkeys for high-speed surveillance operations
               </p>
             </div>
@@ -84,29 +84,29 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close shortcuts modal"
-            className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-[#1f2937] rounded-lg transition-colors"
+            className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-white/5 rounded-lg transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Two-Column Body */}
-        <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#090d16]/30">
+        <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#090a0f]/60">
           {/* Column 1: Live Monitoring */}
-          <div className="flex flex-col rounded-lg border border-[#1f2937] bg-[#111827]/80 p-4">
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[#1f2937] text-xs font-bold uppercase tracking-wider text-[#4fc3f7]">
+          <div className="flex flex-col rounded-xl border border-white/[0.08] hud-chip p-4">
+            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-white/5 text-xs font-semibold uppercase tracking-wider text-emerald-400">
               <Video className="w-4 h-4" />
               <span>Live Monitoring Hotkeys</span>
             </div>
             <ul className="space-y-2.5">
               {LIVE_SHORTCUTS.map((item, i) => (
                 <li key={i} className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-slate-300 font-sans text-xs">{item.description}</span>
+                  <span className="text-zinc-300 font-sans text-xs">{item.description}</span>
                   <div className="flex items-center gap-1 shrink-0 ml-3">
                     {item.keys.map((k, ki) => (
                       <kbd
                         key={ki}
-                        className="px-2 py-0.5 bg-[#090d16] border border-[#1f2937] rounded text-slate-200 font-bold text-[11px] shadow-sm"
+                        className="px-2 py-0.5 hud-chip rounded text-zinc-200 font-mono text-[11px] shadow-sm"
                       >
                         {k}
                       </kbd>
@@ -118,20 +118,20 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
           </div>
 
           {/* Column 2: Playback & Timeline */}
-          <div className="flex flex-col rounded-lg border border-[#1f2937] bg-[#111827]/80 p-4">
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[#1f2937] text-xs font-bold uppercase tracking-wider text-[#4fc3f7]">
+          <div className="flex flex-col rounded-xl border border-white/[0.08] hud-chip p-4">
+            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-white/5 text-xs font-semibold uppercase tracking-wider text-emerald-400">
               <Film className="w-4 h-4" />
               <span>Playback & Jog-Shuttle Hotkeys</span>
             </div>
             <ul className="space-y-2.5">
               {PLAYBACK_SHORTCUTS.map((item, i) => (
                 <li key={i} className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-slate-300 font-sans text-xs">{item.description}</span>
+                  <span className="text-zinc-300 font-sans text-xs">{item.description}</span>
                   <div className="flex items-center gap-1 shrink-0 ml-3">
                     {item.keys.map((k, ki) => (
                       <kbd
                         key={ki}
-                        className="px-2 py-0.5 bg-[#090d16] border border-[#1f2937] rounded text-slate-200 font-bold text-[11px] shadow-sm"
+                        className="px-2 py-0.5 hud-chip rounded text-zinc-200 font-mono text-[11px] shadow-sm"
                       >
                         {k}
                       </kbd>
@@ -144,15 +144,15 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-3 bg-[#090d16] border-t border-[#1f2937] flex items-center justify-between text-xs text-slate-400 font-sans">
+        <div className="px-6 py-3 glass-bar border-t border-white/[0.08] flex items-center justify-between text-xs text-zinc-400 font-sans">
           <div className="flex items-center gap-1.5 text-[11px]">
-            <Info className="w-3.5 h-3.5 text-[#4fc3f7]" />
+            <Info className="w-3.5 h-3.5 text-emerald-400" />
             <span>Keymap safety: Hotkeys are paused while entering text into input fields.</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 bg-[#1f2937] hover:bg-[#374151] text-slate-200 font-semibold text-xs rounded-md transition-colors"
+            className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-xs rounded-lg transition-colors"
           >
             Got It
           </button>

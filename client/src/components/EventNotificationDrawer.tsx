@@ -44,21 +44,21 @@ export const EventNotificationDrawer: React.FC<EventNotificationDrawerProps> = (
     switch (severity) {
       case 'critical':
         return (
-          <span className="flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-950/90 px-2 py-0.5 rounded border border-red-800">
+          <span className="flex items-center gap-1 text-[10px] font-medium text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
             <AlertTriangle className="w-3 h-3" />
             CRITICAL
           </span>
         );
       case 'warning':
         return (
-          <span className="flex items-center gap-1 text-[10px] font-bold text-gray-950 bg-[#fb923c] px-2 py-0.5 rounded shadow-sm">
+          <span className="flex items-center gap-1 text-[10px] font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
             <Activity className="w-3 h-3" />
             MOTION
           </span>
         );
       default:
         return (
-          <span className="flex items-center gap-1 text-[10px] font-semibold text-[#4fc3f7] bg-[#4fc3f7]/15 px-2 py-0.5 rounded border border-[#4fc3f7]/30">
+          <span className="flex items-center gap-1 text-[10px] font-medium text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">
             <Info className="w-3 h-3" />
             INFO
           </span>
@@ -68,12 +68,12 @@ export const EventNotificationDrawer: React.FC<EventNotificationDrawerProps> = (
 
   const getEventIcon = (type: string) => {
     if (type.startsWith('camera.')) {
-      return <Video className="w-4 h-4 text-[#4fc3f7]" />;
+      return <Video className="w-4 h-4 text-emerald-400" />;
     }
     if (type.startsWith('storage.')) {
-      return <HardDrive className="w-4 h-4 text-[#fb923c]" />;
+      return <HardDrive className="w-4 h-4 text-amber-400" />;
     }
-    return <Activity className="w-4 h-4 text-[#fb923c]" />;
+    return <Activity className="w-4 h-4 text-amber-400" />;
   };
 
   const formatTimestamp = (ts: string) => {
@@ -86,13 +86,13 @@ export const EventNotificationDrawer: React.FC<EventNotificationDrawerProps> = (
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-[#111827] border-l border-[#1f2937] shadow-2xl flex flex-col font-sans select-none animate-in slide-in-from-right duration-200">
+    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm alert-glass border-l border-white/10 shadow-2xl flex flex-col font-sans select-none animate-in slide-in-from-right duration-200">
       {/* Drawer Header */}
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#1f2937] bg-[#090d16]">
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/[0.08] glass-bar">
         <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-[#4fc3f7]" />
-          <h2 className="text-sm font-bold text-slate-100 tracking-wide">INCIDENT & ALERT FEED</h2>
-          <span className="text-xs bg-[#4fc3f7]/20 text-[#4fc3f7] px-2 py-0.5 rounded-full font-mono font-bold border border-[#4fc3f7]/40">
+          <Activity className="w-4 h-4 text-emerald-400" />
+          <h2 className="text-xs font-semibold text-zinc-100 tracking-wide uppercase">Incidents & Alert Feed</h2>
+          <span className="text-[11px] hud-chip text-emerald-400 px-2 py-0.5 rounded-full font-mono font-medium">
             {events.length}
           </span>
         </div>
@@ -100,22 +100,22 @@ export const EventNotificationDrawer: React.FC<EventNotificationDrawerProps> = (
         <button
           type="button"
           onClick={onClose}
-          className="p-1.5 text-slate-400 hover:text-white rounded-md hover:bg-[#1f2937] transition-colors"
+          className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-white/5 transition-colors"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* Filter Tabs & Clear Action */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-[#090d16]/60 border-b border-[#1f2937] text-xs">
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between px-4 py-2.5 glass-bar border-b border-white/[0.08] text-xs">
+        <div className="flex items-center bg-zinc-950/60 p-0.5 rounded-lg border border-white/[0.07]">
           <button
             type="button"
             onClick={() => setFilter('all')}
-            className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
               filter === 'all'
-                ? 'bg-[#4fc3f7] text-[#090d16]'
-                : 'bg-[#1f2937] text-slate-300 hover:text-white'
+                ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             All
@@ -123,10 +123,10 @@ export const EventNotificationDrawer: React.FC<EventNotificationDrawerProps> = (
           <button
             type="button"
             onClick={() => setFilter('motion')}
-            className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
               filter === 'motion'
-                ? 'bg-[#fb923c] text-gray-950'
-                : 'bg-[#1f2937] text-slate-300 hover:text-white'
+                ? 'bg-zinc-800 text-amber-300 shadow-sm'
+                : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             Motion
@@ -134,10 +134,10 @@ export const EventNotificationDrawer: React.FC<EventNotificationDrawerProps> = (
           <button
             type="button"
             onClick={() => setFilter('system')}
-            className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
               filter === 'system'
-                ? 'bg-[#4fc3f7] text-[#090d16]'
-                : 'bg-[#1f2937] text-slate-300 hover:text-white'
+                ? 'bg-zinc-800 text-cyan-300 shadow-sm'
+                : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             System
@@ -149,7 +149,7 @@ export const EventNotificationDrawer: React.FC<EventNotificationDrawerProps> = (
             type="button"
             onClick={onClearEvents}
             title="Clear all alerts"
-            className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-400 transition-colors font-medium"
+            className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-rose-400 transition-colors font-medium"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>Clear</span>
@@ -160,34 +160,34 @@ export const EventNotificationDrawer: React.FC<EventNotificationDrawerProps> = (
       {/* Event List */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
         {filteredEvents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-center text-slate-500">
-            <CheckCheck className="w-9 h-9 mb-2 stroke-[1.5] text-[#4fc3f7]/50" />
-            <p className="text-xs font-medium text-slate-400">All clear — no active alerts</p>
+          <div className="flex flex-col items-center justify-center h-48 text-center text-zinc-500">
+            <CheckCheck className="w-8 h-8 mb-2 stroke-[1.5] text-emerald-400/60" />
+            <p className="text-xs font-medium text-zinc-400">All clear — no active alerts</p>
           </div>
         ) : (
           filteredEvents.map((evt) => (
             <div
               key={evt.id}
               onClick={() => onSelectEvent?.(evt)}
-              className="p-3 rounded-lg bg-[#090d16] border border-[#1f2937] hover:border-[#4fc3f7]/60 transition-all cursor-pointer group shadow-sm"
+              className="p-3 rounded-xl hud-chip border border-white/[0.08] hover:border-white/20 transition-all cursor-pointer group shadow-sm"
             >
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-2">
                   {getEventIcon(evt.type)}
-                  <span className="text-xs font-bold text-slate-100">
+                  <span className="text-xs font-semibold text-zinc-100">
                     {evt.metadata?.cameraName || evt.cameraId || 'System Alert'}
                   </span>
                 </div>
                 {getSeverityBadge(evt.severity)}
               </div>
 
-              <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                <span className="text-[#4fc3f7]">{evt.type}</span>
-                <span className="text-slate-400">{formatTimestamp(evt.timestamp)}</span>
+              <div className="flex items-center justify-between text-[11px] text-zinc-400 font-mono">
+                <span className="text-emerald-400">{evt.type}</span>
+                <span className="text-zinc-400">{formatTimestamp(evt.timestamp)}</span>
               </div>
 
               {evt.metadata?.topic && (
-                <p className="text-[11px] text-slate-400 font-mono truncate mt-1.5 bg-[#111827] px-2 py-1 rounded border border-[#1f2937]">
+                <p className="text-[10px] text-zinc-400 font-mono truncate mt-1.5 bg-black/40 px-2 py-1 rounded border border-white/5">
                   {evt.metadata.topic}
                 </p>
               )}

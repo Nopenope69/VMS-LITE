@@ -42,50 +42,50 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
   };
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-[#111827] border-t border-[#1f2937] text-slate-100 select-none">
+    <div className="glass-bar px-4 py-2.5 border-t border-white/[0.08] flex flex-wrap items-center justify-between gap-3 text-zinc-100 select-none">
       {/* Left: Date Picker & Current Playhead Time */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 bg-[#090d16] px-3 py-2 rounded-md border border-[#1f2937] text-xs">
-          <Calendar className="w-4 h-4 text-[#4fc3f7]" />
+      <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 hud-chip px-3 py-1.5 rounded-lg text-xs">
+          <Calendar className="w-3.5 h-3.5 text-zinc-400" />
           <input
             type="date"
             value={selectedDate}
             onChange={(e) => onChangeDate(e.target.value)}
-            className="bg-transparent text-slate-200 focus:outline-none cursor-pointer text-xs font-semibold"
+            className="bg-transparent text-zinc-200 focus:outline-none cursor-pointer text-xs font-medium"
           />
         </div>
 
-        <div className="flex items-center gap-2 font-mono text-sm font-bold text-[#4fc3f7] bg-[#090d16] px-3 py-2 rounded-md border border-[#1f2937] shadow-inner">
-          <Clock className="w-4 h-4 text-[#4fc3f7]" />
+        <div className="flex items-center gap-2 font-mono text-xs font-semibold text-emerald-400 hud-chip px-3 py-1.5 rounded-lg tabular-nums">
+          <Clock className="w-3.5 h-3.5 text-emerald-400" />
           <span>{formatDateTimeDisplay(currentTime)}</span>
         </div>
       </div>
 
-      {/* Center: Play, Pause, Step Buttons (PLAY-04 with Giant Touch Targets) */}
-      <div className="flex items-center gap-3">
+      {/* Center: Play, Pause, Step Buttons */}
+      <div className="flex items-center gap-2">
         {/* Step Backward -5s */}
         <button
           type="button"
           onClick={() => onStep(-5)}
           title="Step Backward 5s"
-          className="flex items-center gap-1.5 px-3.5 py-2 min-h-[40px] bg-[#090d16] hover:bg-[#1f2937] active:scale-95 border border-[#1f2937] hover:border-[#4fc3f7]/50 rounded-md text-xs font-semibold text-slate-200 transition-all shadow-sm"
+          className="flex items-center gap-1 px-3 py-1.5 hud-chip hover:bg-zinc-800 active:scale-95 rounded-lg text-xs font-mono text-zinc-300 transition-all"
         >
-          <RotateCcw className="w-4 h-4 text-[#4fc3f7]" />
+          <RotateCcw className="w-3.5 h-3.5 text-zinc-400" />
           <span>-5s</span>
         </button>
 
-        {/* Play / Pause Toggle (Giant 48x48 Ion Blue Button) */}
+        {/* Play / Pause Toggle */}
         <button
           type="button"
           onClick={onTogglePlay}
           disabled={isLoading}
-          title={isPlaying ? 'Pause Footage' : 'Play Footage'}
-          className="w-12 h-12 bg-[#4fc3f7] hover:bg-[#38bdf8] active:scale-95 disabled:opacity-50 text-[#090d16] rounded-full transition-all shadow-[0_0_15px_rgba(79,195,247,0.4)] flex items-center justify-center font-bold"
+          title={isPlaying ? 'Pause Footage (Space)' : 'Play Footage (Space)'}
+          className="w-10 h-10 bg-emerald-500 hover:bg-emerald-400 active:scale-95 disabled:opacity-50 text-zinc-950 rounded-full transition-all shadow-[0_0_16px_rgba(16,185,129,0.3)] flex items-center justify-center font-bold"
         >
           {isPlaying ? (
-            <Pause className="w-5 h-5 fill-current" />
+            <Pause className="w-4 h-4 fill-current" />
           ) : (
-            <Play className="w-5 h-5 fill-current ml-0.5" />
+            <Play className="w-4 h-4 fill-current ml-0.5" />
           )}
         </button>
 
@@ -94,22 +94,22 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
           type="button"
           onClick={() => onStep(5)}
           title="Step Forward 5s"
-          className="flex items-center gap-1.5 px-3.5 py-2 min-h-[40px] bg-[#090d16] hover:bg-[#1f2937] active:scale-95 border border-[#1f2937] hover:border-[#4fc3f7]/50 rounded-md text-xs font-semibold text-slate-200 transition-all shadow-sm"
+          className="flex items-center gap-1 px-3 py-1.5 hud-chip hover:bg-zinc-800 active:scale-95 rounded-lg text-xs font-mono text-zinc-300 transition-all"
         >
           <span>+5s</span>
-          <RotateCw className="w-4 h-4 text-[#4fc3f7]" />
+          <RotateCw className="w-3.5 h-3.5 text-zinc-400" />
         </button>
       </div>
 
       {/* Right: Variable Playback Speed & Clip Download */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
         {/* Speed Controls */}
         <div className="flex items-center gap-1.5">
-          <div className="flex items-center gap-1 text-xs text-slate-400 mr-1 font-medium">
-            <Gauge className="w-4 h-4 text-[#4fc3f7]" />
+          <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium">
+            <Gauge className="w-3.5 h-3.5 text-zinc-400" />
             <span className="hidden lg:inline">Speed:</span>
           </div>
-          <div className="flex items-center bg-[#090d16] p-1 rounded-md border border-[#1f2937]">
+          <div className="flex items-center bg-zinc-950/60 p-0.5 rounded-lg border border-white/[0.07]">
             {PLAYBACK_RATES.map((rate) => {
               const isSelected = playbackRate === rate;
               return (
@@ -117,10 +117,10 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
                   key={`rate-${rate}`}
                   type="button"
                   onClick={() => onChangePlaybackRate(rate)}
-                  className={`px-2.5 py-1 text-xs font-mono font-bold rounded transition-colors ${
+                  className={`px-2 py-0.5 text-xs font-mono font-medium rounded-md transition-all ${
                     isSelected
-                      ? 'bg-[#4fc3f7] text-[#090d16] shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-zinc-800 text-emerald-400 shadow-sm'
+                      : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   {rate}x
@@ -130,15 +130,15 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
           </div>
         </div>
 
-        {/* Solar Amber Export Clip Button */}
+        {/* Amber Export Clip Button */}
         {onExportClip && (
           <button
             type="button"
             onClick={onExportClip}
             title="Download this recording segment"
-            className="flex items-center gap-2 px-3.5 py-2 min-h-[40px] bg-[#fb923c] hover:bg-[#f97316] text-gray-950 font-bold text-xs rounded-md transition-all shadow-md active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 font-medium text-xs rounded-lg transition-all active:scale-95 shadow-sm"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Save Clip</span>
           </button>
         )}

@@ -81,17 +81,17 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-[#090d16] border border-[#1f2937] rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
+      <div className="w-full max-w-md alert-glass border border-white/10 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1f2937] bg-[#111827]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.08] glass-bar">
           <div className="flex items-center gap-2">
-            <Bookmark className="w-4 h-4 text-[#fb923c]" />
-            <h2 className="text-sm font-semibold text-slate-100">Add Timeline Bookmark</h2>
+            <Bookmark className="w-4 h-4 text-amber-400" />
+            <h2 className="text-sm font-semibold text-zinc-100">Add Timeline Bookmark</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 transition-colors p-1 rounded-md hover:bg-slate-800"
+            className="text-zinc-400 hover:text-zinc-200 transition-colors p-1 rounded-md hover:bg-white/5"
           >
             <X className="w-4 h-4" />
           </button>
@@ -100,54 +100,54 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
         {/* Content Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {errorMsg && (
-            <div className="flex items-start gap-2.5 p-3 bg-red-950/40 border border-red-800/80 rounded-lg text-red-200 text-xs">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5 p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-300 text-xs">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
               <span>{errorMsg}</span>
             </div>
           )}
 
           {/* Timestamp Indicator */}
-          <div className="flex items-center gap-3 p-2.5 bg-[#111827] rounded-lg border border-[#1f2937] text-xs text-slate-300 font-mono">
-            <Clock className="w-4 h-4 text-[#4fc3f7]" />
+          <div className="flex items-center gap-3 p-2.5 hud-chip rounded-lg text-xs text-zinc-300 font-mono">
+            <Clock className="w-4 h-4 text-emerald-400" />
             <div>
-              <span className="text-slate-400 text-[10px] uppercase block font-sans">Timestamp</span>
-              <span className="font-semibold text-slate-100">{timestamp.toLocaleString()}</span>
+              <span className="text-zinc-500 text-[10px] uppercase block font-sans">Timestamp</span>
+              <span className="font-semibold text-zinc-200">{timestamp.toLocaleString()}</span>
             </div>
           </div>
 
           {/* Title */}
           <div className="space-y-1">
-            <label className="text-xs text-slate-300 font-medium">Bookmark Title</label>
+            <label className="text-xs text-zinc-300 font-medium">Bookmark Title</label>
             <input
               type="text"
               placeholder="e.g. Unidentified vehicle at gate"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
-              className="w-full bg-[#111827] border border-[#1f2937] rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#4fc3f7]"
+              className="w-full bg-zinc-900/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-400/80 transition-colors"
             />
           </div>
 
           {/* Category Select */}
           <div className="space-y-1">
-            <label className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
-              <Tag className="w-3.5 h-3.5 text-slate-400" /> Category
+            <label className="text-xs text-zinc-300 font-medium flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5 text-zinc-400" /> Category
             </label>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { id: 'incident', label: 'Incident', color: 'border-[#fb923c] text-[#fb923c]' },
-                { id: 'visitor', label: 'Visitor', color: 'border-[#10b981] text-[#10b981]' },
-                { id: 'activity', label: 'Activity', color: 'border-[#4fc3f7] text-[#4fc3f7]' },
-                { id: 'maintenance', label: 'Maintenance', color: 'border-slate-400 text-slate-400' },
+                { id: 'incident', label: 'Incident', color: 'border-amber-400/60 text-amber-300 bg-amber-400/10' },
+                { id: 'visitor', label: 'Visitor', color: 'border-emerald-400/60 text-emerald-300 bg-emerald-400/10' },
+                { id: 'activity', label: 'Activity', color: 'border-cyan-400/60 text-cyan-300 bg-cyan-400/10' },
+                { id: 'maintenance', label: 'Maintenance', color: 'border-zinc-400/60 text-zinc-300 bg-zinc-400/10' },
               ].map((cat) => (
                 <button
                   key={cat.id}
                   type="button"
                   onClick={() => setCategory(cat.id)}
-                  className={`py-2 px-3 rounded-lg border text-xs font-semibold text-left transition-all ${
+                  className={`py-2 px-3 rounded-lg border text-xs font-medium text-left transition-all ${
                     category === cat.id
-                      ? `bg-[#111827] ${cat.color} ring-1 ring-inset shadow-[0_0_8px_rgba(255,255,255,0.05)]`
-                      : 'bg-[#111827]/40 border-[#1f2937] text-slate-400 hover:border-slate-700'
+                      ? `${cat.color} ring-1 ring-inset`
+                      : 'hud-chip text-zinc-400 hover:text-zinc-200 hover:border-white/20'
                   }`}
                 >
                   {cat.label}
@@ -158,13 +158,13 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
 
           {/* Description */}
           <div className="space-y-1">
-            <label className="text-xs text-slate-300 font-medium">Notes / Description (Optional)</label>
+            <label className="text-xs text-zinc-300 font-medium">Notes / Description (Optional)</label>
             <textarea
               rows={3}
               placeholder="Add incident observations or notes for shift handover..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-[#111827] border border-[#1f2937] rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#4fc3f7] resize-none"
+              className="w-full bg-zinc-900/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-400/80 transition-colors resize-none"
             />
           </div>
 
@@ -173,14 +173,14 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs text-slate-400 hover:text-slate-200"
+              className="px-4 py-2 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-5 py-2 bg-[#fb923c] text-slate-950 font-bold rounded-lg text-xs hover:bg-[#f97316] disabled:opacity-50 transition-colors flex items-center gap-1.5"
+              className="px-4 py-2 bg-emerald-500 text-zinc-950 font-semibold rounded-lg text-xs hover:bg-emerald-400 disabled:opacity-50 transition-colors flex items-center gap-1.5"
             >
               {isSubmitting ? (
                 <>

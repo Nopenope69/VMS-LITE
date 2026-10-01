@@ -13,6 +13,7 @@ export type StatusListener = (connected: boolean) => void;
 
 export interface EventsWsClientOptions {
   wsUrl?: string;
+  url?: string;
   token?: string;
   reconnectIntervalMs?: number;
   maxReconnectIntervalMs?: number;
@@ -39,7 +40,7 @@ export class EventsWsClient {
       defaultWsUrl = `${proto}//${window.location.host}/api/events/feed`;
     }
 
-    this.wsUrl = opts.wsUrl || defaultWsUrl;
+    this.wsUrl = opts.wsUrl || opts.url || defaultWsUrl;
     this.token = opts.token || '';
     this.reconnectIntervalMs = opts.reconnectIntervalMs || 1000;
     this.maxReconnectIntervalMs = opts.maxReconnectIntervalMs || 15000;
@@ -115,6 +116,13 @@ export class EventsWsClient {
     return () => {
       this.eventListeners.delete(listener);
     };
+  }
+
+  /**
+   * Alias for subscribe (for compatibility).
+   */
+  onMessage(listener: EventListener): () => void {
+    return this.subscribe(listener);
   }
 
   /**
