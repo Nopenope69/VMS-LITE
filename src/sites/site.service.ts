@@ -33,7 +33,7 @@ export interface SiteSummaryDto {
   cameraCount: number;
   health: SiteHealthCounts;
   /** Worst state across the site's cameras */
-  status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'EMPTY';
+  status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN' | 'EMPTY';
 }
 
 export class SiteError extends Error {
@@ -109,6 +109,8 @@ export class SiteService {
         ? 'CRITICAL'
         : health.degraded > 0
         ? 'DEGRADED'
+        : health.online === 0
+        ? 'UNKNOWN' // nothing confirmed yet (just booted / health not checked)
         : 'HEALTHY';
     return {
       id: site.id,

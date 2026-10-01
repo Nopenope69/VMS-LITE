@@ -29,6 +29,17 @@ import { BookmarkModal } from './components/BookmarkModal.js';
 import { ClipExportModal } from './components/ClipExportModal.js';
 import { BackupRestoreModal } from './components/BackupRestoreModal.js';
 import { EventsWsClient, EventPayload } from './utils/events-ws-client.js';
+import { SitesModal } from './components/SitesModal.js';
+import { ALL_SITES, SiteFilter, SiteSummary, matchesSiteFilter } from './types/sites.js';
+
+const SITE_FILTER_KEY = 'vms_site_filter';
+function readStoredSiteFilter(): SiteFilter {
+  try {
+    return localStorage.getItem(SITE_FILTER_KEY) || ALL_SITES;
+  } catch {
+    return ALL_SITES;
+  }
+}
 
 export type ViewType =
   | 'overview'
@@ -43,6 +54,7 @@ export type ViewType =
 export interface CameraRecord {
   id: string;
   name: string;
+  siteId?: string | null;
   ipAddress: string;
   mediaMtxPath?: string;
   /** Authenticated media-proxy URLs from /api/streaming/config */
@@ -60,7 +72,7 @@ export interface CameraRecord {
 }
 
 export const App: React.FC = () => {
-  const { user, token, role, isAdmin, isOperator, isLoading: isAuthLoading, login, logout } = useAuth();
+  const { user, token, role, isAdmin, isOperator, isLoading: isAuthLoading, login, logout, handleUnauthorized } = useAuth();
 
   // Navigation state
   const [currentView, setCurrentView] = useState<ViewType>('overview');
@@ -88,6 +100,17 @@ export const App: React.FC = () => {
   const [cameras, setCameras] = useState<CameraRecord[]>([]);
   const [iceServers, setIceServers] = useState<RTCIceServer[]>([]);
   const [playbackCameraId, setPlaybackCameraId] = useState<string | null>(null);
+  const [sites, setSites] = useState<SiteSummary[]>([]);
+  const [siteFilter, setSiteFilterState] = useState<SiteFilter>(readStoredSiteFilter);
+  const [isSitesModalOpen, setIsSitesModalOpen] = useState<boolean>(false);
+  const setSiteFilter = useCallback((value: SiteFilter) => {
+    setSiteFilterState(value);
+    try {
+      localStorage.setItem(SITE_FILTER_KEY, value);
+    } catch {
+      // Storage unavailable (private mode); the filter still applies for this session
+    }
+  }, []);
   const [events, setEvents] = useState<EventPayload[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
@@ -125,7 +148,7 @@ export const App: React.FC = () => {
         fetch('/api/streaming/config', { headers }),
       ]);
       if (res.status === 401) {
-        logout();
+        handleUnauthorized(token);
         return;
       }
       if (res.ok) {
@@ -160,7 +183,7 @@ export const App: React.FC = () => {
     } catch (err) {
       console.warn('[App] Failed to fetch cameras:', err);
     }
-  }, [token, logout]);
+  }, [token, handleUnauthorized]);
 
   // Check initial first-boot setup status
   useEffect(() => {
@@ -255,16 +278,49 @@ export const App: React.FC = () => {
     }
   };
 
-  // Online / Offline count calculations
-  const onlineCount = useMemo(() => {
-    if (healthSummary) return healthSummary.onlineCount;
-    return cameras.filter((c) => {
-      const h = healthMap[c.id];
-      return h ? h.status === 'ONLINE' : c.status === 'ONLINE';
-    }).length;
-  }, [healthSummary, cameras, healthMap]);
+  // Sites (with live per-site health), refreshed with camera health
+  const fetchSites = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/sites', { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setSites((await res.json()).sites || []);
+    } catch (err) {
+      console.warn('[App] Failed to fetch sites:', err);
+    }
+  }, [token]);
 
-  const offlineCount = Math.max(0, cameras.length - onlineCount);
+  useEffect(() => {
+    if (!token) return;
+    fetchSites();
+    const timer = setInterval(fetchSites, 15000);
+    return () => clearInterval(timer);
+  }, [token, fetchSites]);
+
+  // A remembered filter for a site that no longer exists falls back to all sites
+  useEffect(() => {
+    if (siteFilter === ALL_SITES || sites.length === 0) return;
+    if (!sites.some((site) => (site.id ?? 'unassigned') === siteFilter)) setSiteFilter(ALL_SITES);
+  }, [sites, siteFilter, setSiteFilter]);
+
+  // Everything below works on the selected site's cameras
+  const siteCameras = useMemo(
+    () => cameras.filter((c) => matchesSiteFilter(c.siteId, siteFilter)),
+    [cameras, siteFilter]
+  );
+  const siteEvents = useMemo(() => {
+    if (siteFilter === ALL_SITES) return events;
+    const ids = new Set(siteCameras.map((c) => c.id));
+    // System events (no camera) stay visible
+    return events.filter((e) => !e.cameraId || ids.has(e.cameraId));
+  }, [events, siteCameras, siteFilter]);
+
+  // Online / Offline count calculations (live health, for the selected site)
+  const onlineCount = useMemo(
+    () => siteCameras.filter((c) => healthMap[c.id]?.status === 'ONLINE').length,
+    [siteCameras, healthMap]
+  );
+
+  const offlineCount = Math.max(0, siteCameras.length - onlineCount);
 
   // Active focused camera
   const focusedCamera = useMemo(() => {
@@ -272,8 +328,8 @@ export const App: React.FC = () => {
       const match = cameras.find((c) => c.id === focusedCameraId);
       if (match) return match;
     }
-    return cameras[0] || null;
-  }, [cameras, focusedCameraId]);
+    return siteCameras[0] || null;
+  }, [cameras, siteCameras, focusedCameraId]);
 
   // If loading auth session
   if (isAuthLoading) {
@@ -356,7 +412,7 @@ export const App: React.FC = () => {
   }
 
   // Filtered cameras for ⌘K Quick Search
-  const filteredCameras = cameras.filter((c) => {
+  const filteredCameras = siteCameras.filter((c) => {
     const q = searchQuery.toLowerCase();
     const name = (c.name || '').toLowerCase();
     const ip = (c.ipAddress || (c as any).ip || '').toLowerCase();
@@ -378,7 +434,10 @@ export const App: React.FC = () => {
           setCurrentView(view);
         }}
         onlineCount={onlineCount}
-        totalCount={cameras.length}
+        totalCount={siteCameras.length}
+        sites={sites}
+        siteFilter={siteFilter}
+        onSiteFilterChange={setSiteFilter}
         unreadEventsCount={unreadCount}
         userName={user?.username || 'Admin'}
         userRole={role || 'Administrator'}
@@ -390,8 +449,12 @@ export const App: React.FC = () => {
         {/* 1. Overview */}
         {currentView === 'overview' && (
           <OverviewView
-            cameras={cameras}
-            events={events}
+            cameras={siteCameras}
+            events={siteEvents}
+            healthMap={healthMap}
+            sites={sites}
+            siteFilter={siteFilter}
+            onSelectSite={setSiteFilter}
             onlineCount={onlineCount}
             offlineCount={offlineCount}
             onNavigate={(v) => setCurrentView(v)}
@@ -405,7 +468,7 @@ export const App: React.FC = () => {
         {/* 2. Live Grid */}
         {currentView === 'live' && (
           <LiveView
-            cameras={cameras
+            cameras={siteCameras
               .filter((c) => c.whepUrl || c.hlsUrl)
               .map((c) => ({
                 cameraId: c.id,
@@ -464,8 +527,22 @@ export const App: React.FC = () => {
         {/* 4. Cameras List */}
         {currentView === 'cameras' && (
           <CamerasListView
-            cameras={cameras}
+            cameras={siteCameras}
             healthMap={healthMap}
+            sites={sites}
+            groupBySite={siteFilter === ALL_SITES}
+            onMoveCamera={async (cameraId, siteId) => {
+              const res = await fetch(`/api/cameras/${cameraId}`, {
+                method: 'PATCH',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ siteId }),
+              });
+              if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                window.alert(data.message || 'Failed to move camera');
+              }
+              await Promise.all([fetchCameras(), fetchSites()]);
+            }}
             isAdmin={isAdmin}
             onSelectCamera={(id) => {
               setFocusedCameraId(id);
@@ -479,8 +556,8 @@ export const App: React.FC = () => {
         {/* 5. Events */}
         {currentView === 'events' && (
           <EventsView
-            cameras={cameras}
-            events={events}
+            cameras={siteCameras}
+            events={siteEvents}
             onSelectCamera={(id) => {
               setFocusedCameraId(id);
               setCurrentView('camera');
@@ -493,6 +570,7 @@ export const App: React.FC = () => {
           <div className="flex-1 h-full flex flex-col overflow-hidden">
             <PlaybackPage
               authToken={token || ''}
+              siteFilter={siteFilter}
               initialCameraId={playbackCameraId ?? undefined}
               onNavigateLive={() => setCurrentView('live')}
             />
@@ -502,7 +580,7 @@ export const App: React.FC = () => {
         {/* 7. Health */}
         {currentView === 'health' && (
           <HealthView
-            cameras={cameras}
+            cameras={siteCameras}
             healthMap={healthMap}
             onlineCount={onlineCount}
             offlineCount={offlineCount}
@@ -523,6 +601,7 @@ export const App: React.FC = () => {
             onOpenUserManagement={() => setIsUserModalOpen(true)}
             onOpenAuditLogs={() => setIsAuditModalOpen(true)}
             onOpenBackupRestore={() => setIsBackupModalOpen(true)}
+            onOpenSites={() => setIsSitesModalOpen(true)}
           />
         )}
       </main>
@@ -659,11 +738,26 @@ export const App: React.FC = () => {
       <CameraOnboardingWizardModal
         isOpen={isAddCameraModalOpen}
         onClose={() => setIsAddCameraModalOpen(false)}
+        sites={sites.filter((site) => site.id !== null)}
+        defaultSiteId={siteFilter !== ALL_SITES && siteFilter !== 'unassigned' ? siteFilter : null}
         onSuccess={() => {
           fetchCameras();
+          fetchSites();
           refreshHealth();
         }}
       />
+
+      {isAdmin && (
+        <SitesModal
+          isOpen={isSitesModalOpen}
+          sites={sites}
+          onClose={() => setIsSitesModalOpen(false)}
+          onChanged={() => {
+            fetchSites();
+            fetchCameras();
+          }}
+        />
+      )}
 
       <FirstBootWizardModal
         isOpen={isFirstBootModalOpen}

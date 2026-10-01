@@ -145,6 +145,18 @@ describe('Multi-site model', () => {
     expect(events.every((e: any) => e.cameraId === cams['South Dock'])).toBe(true);
   });
 
+  it('does not call a site healthy before any camera has been confirmed online', async () => {
+    const service = new SiteService(
+      {
+        site: { findMany: async () => [{ id: 's', name: 'S' }] },
+        camera: { findMany: async () => [{ id: 'c', siteId: 's' }] },
+      },
+      { getTelemetry: () => null }
+    );
+    const [site] = await service.listSummaries();
+    expect(site.status).toBe('UNKNOWN');
+  });
+
   it('refuses to delete a site that still has cameras', async () => {
     expect((await api('DELETE', `/api/sites/${southId}`, admin)).statusCode).toBe(409);
     const empty = (await api('POST', '/api/sites', admin, { name: 'Temp Site' })).json();

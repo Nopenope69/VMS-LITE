@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ExternalLink,
   CheckCircle2,
+  MapPin,
 } from 'lucide-react';
 import { AccountSecurityCard } from '../components/AccountSecurityCard.js';
 
@@ -22,6 +23,7 @@ export interface SettingsViewProps {
   onOpenUserManagement: () => void;
   onOpenAuditLogs: () => void;
   onOpenBackupRestore: () => void;
+  onOpenSites?: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -31,6 +33,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onOpenUserManagement,
   onOpenAuditLogs,
   onOpenBackupRestore,
+  onOpenSites,
 }) => {
   return (
     <div className="flex-1 w-full max-w-4xl mx-auto px-6 py-8 md:py-10 flex flex-col font-sans select-none overflow-y-auto">
@@ -102,6 +105,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             Security & Compliance
           </h2>
           <div className="space-y-2">
+            {/* Sites */}
+            {isAdmin && onOpenSites && (
+              <div
+                onClick={onOpenSites}
+                className="p-4 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.06] hover:border-white/15 transition-all cursor-pointer flex items-center justify-between group"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-white/10 flex items-center justify-center text-zinc-400 group-hover:text-emerald-400 transition-colors">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-white group-hover:text-emerald-300 transition-colors">Sites</div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      Locations whose cameras this server records: add, rename or remove sites.
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+              </div>
+            )}
+
             {/* User Management */}
             <div
               onClick={onOpenUserManagement}

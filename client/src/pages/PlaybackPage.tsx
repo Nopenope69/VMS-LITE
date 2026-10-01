@@ -31,6 +31,7 @@ import {
   TimelineSpan,
 } from '../hooks/usePlaybackSession.js';
 import { useAuth, CameraPermissionDto } from '../context/AuthContext.js';
+import { ALL_SITES, matchesSiteFilter } from '../types/sites.js';
 import { OperatorBanner } from '../components/OperatorBanner.js';
 import {
   PlaybackSyncProvider,
@@ -45,6 +46,8 @@ export interface PlaybackPageProps {
   authToken?: string;
   /** Camera to open first (e.g. "View recordings" from the camera view). */
   initialCameraId?: string;
+  /** Global site filter: only that site's cameras are offered */
+  siteFilter?: string;
   onNavigateLive?: () => void;
 }
 
@@ -362,6 +365,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   apiBaseUrl = '',
   authToken = '',
   initialCameraId,
+  siteFilter = ALL_SITES,
   onNavigateLive,
 }) => {
   const { token: authContextToken, user } = useAuth();
@@ -409,7 +413,10 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
       user?.cameraPermissions?.find((p: CameraPermissionDto) => p.cameraId === primaryCameraId)
         ?.canExportClips !== false);
 
-  // Fetch camera roster on mount (does not refetch when selectedCameraIds changes)
+  const selectedCameraIdsRef = useRef<string[]>(selectedCameraIds);
+  selectedCameraIdsRef.current = selectedCameraIds;
+
+  // Fetch camera roster on mount and when the site filter changes (not on selection changes)
   useEffect(() => {
     let isCancelled = false;
     const fetchCameras = async () => {
@@ -426,16 +433,19 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
         }
 
         const data = await res.json();
-        const list: CameraOption[] = Array.isArray(data)
-          ? data.map((c: any) => ({ id: c.id, name: c.name, mediaMtxPath: c.mediaMtxPath }))
-          : (data.cameras || []).map((c: any) => ({
-              id: c.id,
-              name: c.name,
-              mediaMtxPath: c.mediaMtxPath,
-            }));
+        const raw: any[] = Array.isArray(data) ? data : data.cameras || [];
+        const list: CameraOption[] = raw
+          .filter((c: any) => matchesSiteFilter(c.siteId, siteFilter))
+          .map((c: any) => ({ id: c.id, name: c.name, mediaMtxPath: c.mediaMtxPath }));
 
         if (!isCancelled) {
           setCameras(list);
+          // Changing site drops selections that are no longer offered
+          if (hasInitializedCamerasRef.current) {
+            const ids = new Set(list.map((c) => c.id));
+            const kept = selectedCameraIdsRef.current.filter((id) => ids.has(id));
+            setSelectedCameraIds(kept.length > 0 ? kept : list.slice(0, 1).map((c) => c.id));
+          }
           if (list.length > 0 && !hasInitializedCamerasRef.current) {
             hasInitializedCamerasRef.current = true;
             const first = list.find((c) => c.id === initialCameraId) ?? list[0];
@@ -454,7 +464,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [apiBaseUrl, effectiveToken, setSelectedCameraIds, initialCameraId]);
+  }, [apiBaseUrl, effectiveToken, setSelectedCameraIds, initialCameraId, siteFilter]);
 
   // Keep primaryCameraId valid when selected cameras change
   useEffect(() => {
