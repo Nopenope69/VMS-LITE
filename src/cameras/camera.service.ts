@@ -314,7 +314,9 @@ export class CameraService {
 
     await this.eventBus
       .emitEvent({
-        type: 'camera.online',
+        // 'added', not 'online': nothing has verified the stream yet. Real online/
+        // offline transitions come from the health monitor.
+        type: 'camera.added',
         source: 'camera.service',
         cameraId: record.id,
         metadata: {

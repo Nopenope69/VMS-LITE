@@ -4,6 +4,7 @@
 
 export const ALLOWED_WEBHOOK_EVENTS = [
   'motion.detected',
+  'camera.added',
   'camera.online',
   'camera.degraded',
   'camera.offline',

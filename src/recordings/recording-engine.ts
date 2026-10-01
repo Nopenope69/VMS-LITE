@@ -111,7 +111,7 @@ export class RecordingEngine implements IRecordingEngine {
       cameraLookup,
     });
 
-    eventBus.subscribe('camera.online', (evt: any) => {
+    const registerFromEvent = (evt: any) => {
       if (evt.cameraId && evt.metadata?.mediaMtxPath) {
         if ('registerCamera' in (repository as any)) {
           (repository as any).registerCamera({
@@ -121,7 +121,9 @@ export class RecordingEngine implements IRecordingEngine {
           });
         }
       }
-    });
+    };
+    eventBus.subscribe('camera.added', registerFromEvent);
+    eventBus.subscribe('camera.online', registerFromEvent);
 
     this.scheduler = new RecordingSchedulerCollaborator({
       repository,

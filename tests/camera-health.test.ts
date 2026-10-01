@@ -667,3 +667,14 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
     });
   });
 });
+
+describe('networkTarget (health probe address)', () => {
+  it('uses the stored IP, else the RTSP URL host/port, so URL-only cameras can go offline', async () => {
+    const { networkTarget } = await import('../src/health/camera-health.service.js');
+    expect(networkTarget({ ip: '10.0.0.5', port: 80 })).toEqual({ host: '10.0.0.5', port: 80 });
+    expect(networkTarget({ rtspUrl: 'rtsp://user:p%40ss@203.0.113.7:10554/stream1' })).toEqual({ host: '203.0.113.7', port: 10554 });
+    expect(networkTarget({ rtspUrl: 'rtsp://cam.branch.example/live' })).toEqual({ host: 'cam.branch.example', port: 554 });
+    expect(networkTarget({ rtspUrl: 'not a url' })).toBeNull();
+    expect(networkTarget({})).toBeNull();
+  });
+});

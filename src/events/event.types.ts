@@ -4,6 +4,7 @@ export const EventSeverityEnum = z.enum(['info', 'warning', 'critical']);
 export type EventSeverity = z.infer<typeof EventSeverityEnum>;
 
 export const CoreEventType = {
+  CAMERA_ADDED: 'camera.added',
   CAMERA_ONLINE: 'camera.online',
   CAMERA_DEGRADED: 'camera.degraded',
   CAMERA_OFFLINE: 'camera.offline',

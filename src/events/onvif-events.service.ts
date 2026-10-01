@@ -87,7 +87,8 @@ export class OnvifEventListenerService {
     if (this.isListening) return;
     this.isListening = true;
 
-    const unsubOnline = this.eventBus.subscribe('camera.online', async (event) => {
+    // New cameras and cameras recovering from an outage get (re)subscribed
+    const onAvailable = async (event: any) => {
       if (!event.cameraId) return;
       try {
         const input = await this.resolveCamera(event.cameraId, event.metadata as any);
@@ -97,7 +98,9 @@ export class OnvifEventListenerService {
       } catch (err: any) {
         console.warn(`[OnvifEventListenerService] Auto-subscribe failed for camera ${event.cameraId}:`, err.message);
       }
-    });
+    };
+    const unsubAdded = this.eventBus.subscribe('camera.added', onAvailable);
+    const unsubOnline = this.eventBus.subscribe('camera.online', onAvailable);
 
     // Subscribe cameras that already exist: nothing re-announces them after a restart
     if (!this.mockMode) {
@@ -124,7 +127,7 @@ export class OnvifEventListenerService {
       }
     });
 
-    this.eventUnsubscribers.push(unsubOnline, unsubOffline, unsubDeleted);
+    this.eventUnsubscribers.push(unsubAdded, unsubOnline, unsubOffline, unsubDeleted);
   }
 
   /**
