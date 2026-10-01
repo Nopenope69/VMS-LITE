@@ -27,6 +27,7 @@ import { systemRoutes } from './system/system.routes.js';
 import { shutdownRoutes } from './system/shutdown.routes.js';
 import { backupRoutes } from './system/backup.routes.js';
 import { setupRoutes } from './system/setup.routes.js';
+import { handoffRoutes } from './system/handoff.routes.js';
 import { auditRoutes } from './audit/audit.routes.js';
 import { storageTelemetryRoutes } from './system/storage-telemetry.routes.js';
 import { storageTelemetryService } from './system/storage-telemetry.service.js';
@@ -136,6 +137,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(shutdownRoutes, { prefix: '/api/system' });
   await app.register(backupRoutes, { prefix: '/api/system' });
   await app.register(setupRoutes, { prefix: '/api/system' });
+  await app.register(handoffRoutes, { prefix: '/api/system' });
   await app.register(storageTelemetryRoutes, { prefix: '/api/system/storage' });
   await app.register(auditRoutes, { prefix: '/api/audit' });
 
