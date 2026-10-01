@@ -23,6 +23,7 @@ import { notificationService } from './notifications/notification-dispatcher.ser
 import { smtpDispatcherService } from './notifications/smtp-dispatcher.service.js';
 import { webhookRoutes } from './webhooks/webhook.routes.js';
 import { settingsRoutes } from './settings/settings.routes.js';
+import { settingsService } from './settings/settings.service.js';
 import { systemRoutes } from './system/system.routes.js';
 import { shutdownRoutes } from './system/shutdown.routes.js';
 import { backupRoutes } from './system/backup.routes.js';
@@ -35,6 +36,7 @@ import { registerProcessSignalHandlers } from './system/shutdown.service.js';
 import { webhookDispatcherService } from './webhooks/webhook-dispatcher.service.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
 import { onvifEventListenerService as defaultOnvifEvents, OnvifEventListenerService } from './events/onvif-events.service.js';
+import { resolveJwtSecret } from './users/jwt-secret.js';
 import { recordingEngine as defaultRecordingEngine, RecordingEngine } from './recordings/recording-engine.js';
 
 export interface ServerOptions {
@@ -63,7 +65,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
 
   // JWT authentication plugin
   await app.register(fastifyJwt, {
-    secret: opts.jwtSecret || process.env.JWT_SECRET || 'dev-secret-basic-vms-super-secure',
+    secret: opts.jwtSecret || (await resolveJwtSecret()),
     sign: {
       expiresIn: '7d',
     },
@@ -173,6 +175,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
 
   // Attach background services when server is ready
   app.addHook('onReady', async () => {
+    await settingsService.load();
     await engine.start();
     onvifEvents.start();
     cameraHealthService.start();

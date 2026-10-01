@@ -11,6 +11,12 @@ describe('Setup Wizard Routes & Service', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
+    const { prisma } = await import('../src/db/prisma.js');
+    await prisma.user.deleteMany({ where: { username: 'admin' } });
+    await prisma.user.create({
+      data: { id: 'admin-uuid', username: 'admin', passwordHash: 'x', role: 'ADMIN' },
+    });
+
     adminToken = app.jwt.sign({
       id: 'admin-uuid',
       username: 'admin',

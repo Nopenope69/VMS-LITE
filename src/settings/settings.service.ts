@@ -12,6 +12,9 @@ import {
   gridToWindows,
   SCHEDULE_PRESETS,
 } from './settings.types.js';
+import { SystemSettingsStore } from './system-settings.store.js';
+
+const OPERATIONAL_SETTINGS_KEY = 'settings.operational';
 
 export interface SettingsServiceDependencies {
   prisma?: PrismaClient;
@@ -19,6 +22,7 @@ export interface SettingsServiceDependencies {
 
 export class SettingsService {
   private readonly prisma: PrismaClient;
+  private readonly store: SystemSettingsStore;
 
   // Active operational settings state
   private operationalSettings: OperationalSettings = {
@@ -33,28 +37,38 @@ export class SettingsService {
 
   constructor(deps: SettingsServiceDependencies = {}) {
     this.prisma = deps.prisma || defaultPrisma;
+    this.store = new SystemSettingsStore(this.prisma);
 
     // Attach bookmark preservation checker to StorageController
-    const storageController = recordingEngine.getStorageController();
-    storageController.setBookmarkChecker(async (segment) => {
+    recordingEngine.getStorageController().setBookmarkChecker(async (segment) => {
       return this.isSegmentBookmarked(segment);
     });
-    storageController.setRetentionDays(this.operationalSettings.retentionDays);
-    storageController.setThresholds(
+    this.applyToEngine();
+  }
+
+  /**
+   * Loads persisted operational settings (called at server start).
+   */
+  async load(): Promise<void> {
+    try {
+      const stored = await this.store.get<Partial<OperationalSettings>>(OPERATIONAL_SETTINGS_KEY, {});
+      this.operationalSettings = { ...this.operationalSettings, ...stored };
+    } catch (err) {
+      console.warn('[Settings] Failed to load persisted operational settings:', (err as Error).message);
+    }
+    this.applyToEngine();
+  }
+
+  private applyToEngine(): void {
+    const storage = recordingEngine.getStorageController();
+    storage.setRetentionDays(this.operationalSettings.retentionDays);
+    storage.setThresholds(
       this.operationalSettings.warningThresholdPercent,
       this.operationalSettings.criticalThresholdPercent
     );
-
-    // Sync motion buffer durations
-    try {
-      const ringBuffer = recordingEngine.getMotionRingBuffer();
-      ringBuffer.setWindowDurations(
-        this.operationalSettings.preBufferSeconds,
-        this.operationalSettings.postBufferSeconds
-      );
-    } catch {
-      // Safe fallback
-    }
+    recordingEngine
+      .getMotionRingBuffer()
+      .setWindowDurations(this.operationalSettings.preBufferSeconds, this.operationalSettings.postBufferSeconds);
   }
 
   /**
@@ -144,40 +158,10 @@ export class SettingsService {
   async updateOperationalSettings(
     input: UpdateOperationalSettingsInput
   ): Promise<OperationalSettings> {
-    this.operationalSettings = {
-      ...this.operationalSettings,
-      ...input,
-    };
-
-    const storage = recordingEngine.getStorageController();
-    if (input.retentionDays !== undefined) {
-      storage.setRetentionDays(input.retentionDays);
-    }
-    if (
-      input.warningThresholdPercent !== undefined ||
-      input.criticalThresholdPercent !== undefined
-    ) {
-      storage.setThresholds(
-        this.operationalSettings.warningThresholdPercent,
-        this.operationalSettings.criticalThresholdPercent
-      );
-    }
-
-    if (
-      input.preBufferSeconds !== undefined ||
-      input.postBufferSeconds !== undefined
-    ) {
-      try {
-        const ringBuffer = recordingEngine.getMotionRingBuffer();
-        ringBuffer.setWindowDurations(
-          this.operationalSettings.preBufferSeconds,
-          this.operationalSettings.postBufferSeconds
-        );
-      } catch {
-        // Ignored
-      }
-    }
-
+    const next = { ...this.operationalSettings, ...input };
+    await this.store.set(OPERATIONAL_SETTINGS_KEY, next);
+    this.operationalSettings = next;
+    this.applyToEngine();
     return { ...this.operationalSettings };
   }
 

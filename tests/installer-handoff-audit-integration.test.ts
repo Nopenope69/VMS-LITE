@@ -12,6 +12,12 @@ describe('Sub-Project D: Installer Handoff & Audit Security End-to-End', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
+    const { prisma } = await import('../src/db/prisma.js');
+    await prisma.user.deleteMany({ where: { username: 'admin' } });
+    await prisma.user.create({
+      data: { id: 'admin-uuid-001', username: 'admin', passwordHash: 'x', role: 'ADMIN' },
+    });
+
     adminToken = app.jwt.sign({
       id: 'admin-uuid-001',
       username: 'admin',

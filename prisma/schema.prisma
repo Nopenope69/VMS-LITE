@@ -268,3 +268,13 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+
+// Durable appliance-level configuration (operational settings, setup state,
+// generated secrets). Values are JSON so new keys need no migration.
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
