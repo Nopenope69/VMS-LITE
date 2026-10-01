@@ -25,6 +25,38 @@ Open `http://<appliance-ip>:3000` and sign in as `admin` / `admin123` (or
 Ports: `3000/tcp` (UI, API, authenticated video proxy) and `8189/udp` (WebRTC media).
 Everything else listens on localhost. Database migrations run automatically on start.
 
+## Multiple sites
+
+One VMS-Lite server records and shows cameras from many locations. Each site's
+cameras must be reachable from the server over RTSP, using one of:
+
+- **Site-to-site VPN** (WireGuard, IPsec, the site router's VPN): add cameras by
+  their LAN address at the site, e.g. `rtsp://user:pass@192.168.10.21:554/stream1`.
+- **Port forwarding** on the site router: `rtsp://user:pass@<site-public-ip>:<port>/...`.
+  Restrict the forwarded port to the server's IP.
+
+Camera streams are pulled over TCP, so each camera sends one stream over the WAN
+whoever is watching. Add a sub-stream URL when onboarding: multi-camera grids
+use it to save bandwidth for viewers.
+
+Create sites in **Settings → Sites** (the first-boot site name becomes the first
+site), pick the site when adding a camera, and move cameras between sites from
+the **Cameras** page. The site selector in the sidebar filters every page; the
+Overview shows health per site. Operators only see sites containing cameras they
+have been granted.
+
+## Licensing (vendor)
+
+```bash
+node scripts/license-tool.mjs keygen          # once; keep the private key offline
+# paste the printed public key into src/licensing/vendor-key.ts, then per customer:
+node scripts/license-tool.mjs issue --key ~/.basic-vms/license-private.key \
+  --edition extended --cameras 32 --days 365
+```
+
+Set the token as `BASIC_VMS_LICENSE` in the customer's `.env`. Without a valid
+license the appliance runs in evaluation mode (2 cameras).
+
 ## Develop
 
 ```bash

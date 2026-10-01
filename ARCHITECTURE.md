@@ -103,7 +103,16 @@ The control plane catalogues finished segments by scanning the shared recordings
 ### D. Deployment (docker-compose)
 `app` and `mediamtx` use host networking (real WebRTC host candidates, ONVIF multicast discovery); PostgreSQL and every MediaMTX HTTP listener are bound to localhost. Exposed ports: `3000/tcp` and `8189/udp`, plus TURN if the `turn` profile is enabled. Both containers run as uid 1000 so the app can prune what MediaMTX records. The JWT secret is taken from `JWT_SECRET`, or generated once and stored in the database.
 
-### E. Testing
+### E. Sites (multi-site)
+A `Site` groups cameras by location (`cameras.site_id`, nullable = unassigned). The central server pulls every site's cameras itself, so recording, retention and playback are unchanged. `GET /api/sites` returns per-site camera counts and health from the in-memory health telemetry. `?siteId=<id|unassigned>` filters cameras, streaming config and events. The UI's site selector filters every page client-side. The health monitor probes the RTSP URL's host when no IP is stored, so remote cameras can be reported offline.
+
+### F. Sessions
+JWTs carry the user's `tokenVersion` (`tv`). Every authenticated request (REST, WebSocket feed, media proxy) checks that the user still exists, has the same role and the same token version, through a 10s cache invalidated on change. Deleting a user, changing a role, resetting or changing a password, and "sign out everywhere" revoke existing tokens. The first-boot wizard revokes sessions opened with the factory password.
+
+### G. Licensing
+License tokens are verified with the vendor public key compiled into `src/licensing/vendor-key.ts`. In production `BASIC_VMS_PUBLIC_KEY` is ignored, so an operator cannot self-sign a license. Tokens are issued with `scripts/license-tool.mjs`.
+
+### H. Testing
 Unit and integration tests run against an in-memory Prisma mock (`tests/setup.ts`). Use the `InMemoryRecordingRepository` / mock-mode `MediaMtxClient` only in tests. Production code never falls back to them.
 
 ## 4. Licensing & Clean Boundaries
