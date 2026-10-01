@@ -39,6 +39,8 @@ import { EventNotificationDrawer } from './components/EventNotificationDrawer.js
 import { CameraOnboardingWizardModal } from './components/CameraOnboardingWizardModal.js';
 import { OperationalSettingsModal } from './components/OperationalSettingsModal.js';
 import { DashboardView } from './components/DashboardView.js';
+import { FirstBootWizardModal } from './components/FirstBootWizardModal.js';
+import { AuditLogViewerModal } from './components/AuditLogViewerModal.js';
 import { EventsWsClient, EventPayload } from './utils/events-ws-client.js';
 
 export type ViewType = 'dashboard' | 'live' | 'playback' | 'cameras' | 'events' | 'settings';
@@ -68,6 +70,8 @@ export const App: React.FC = () => {
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState<boolean>(false);
   const [isOperationalSettingsOpen, setIsOperationalSettingsOpen] = useState<boolean>(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
+  const [isFirstBootModalOpen, setIsFirstBootModalOpen] = useState<boolean>(false);
   const [selectedCameraForZones, setSelectedCameraForZones] = useState<CameraRecord | null>(null);
 
   // Camera Onboarding Wizard modal state
@@ -128,6 +132,19 @@ export const App: React.FC = () => {
       console.warn('[App] Failed to fetch cameras:', err);
     }
   }, [token]);
+
+  // Check initial first-boot setup status
+  useEffect(() => {
+    if (!token || !isAdmin) return;
+    fetch('/api/system/setup-status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.isFirstBoot || data.defaultPasswordActive) {
+          setIsFirstBootModalOpen(true);
+        }
+      })
+      .catch(() => {});
+  }, [token, isAdmin]);
 
   // Fetch recent events
   const fetchEvents = useCallback(async () => {
@@ -597,6 +614,7 @@ export const App: React.FC = () => {
               isAdmin={isAdmin}
               onNavigate={(view) => setCurrentView(view as ViewType)}
               onOpenSettingsModal={() => setIsOperationalSettingsOpen(true)}
+              onOpenAuditModal={() => setIsAuditModalOpen(true)}
             />
           )}
 
@@ -1065,6 +1083,23 @@ export const App: React.FC = () => {
           fetchCameras();
           refreshHealth();
         }}
+      />
+
+      {/* First-Boot Initial Provisioning Wizard */}
+      <FirstBootWizardModal
+        isOpen={isFirstBootModalOpen}
+        onCompleted={() => {
+          setIsFirstBootModalOpen(false);
+          fetchCameras();
+        }}
+        token={token || ''}
+      />
+
+      {/* Security Audit Trail Viewer */}
+      <AuditLogViewerModal
+        isOpen={isAuditModalOpen}
+        onClose={() => setIsAuditModalOpen(false)}
+        token={token || ''}
       />
     </div>
   );

@@ -17,6 +17,8 @@ import {
   Power,
   Archive,
   Globe,
+  FileText,
+  Shield,
 } from 'lucide-react';
 import { BackupRestoreModal } from './BackupRestoreModal.js';
 import { DriveTelemetryCard, DriveItem } from './DriveTelemetryCard.js';
@@ -79,6 +81,7 @@ export interface DashboardViewProps {
   isAdmin?: boolean;
   onNavigate: (view: 'live' | 'playback' | 'cameras' | 'events' | 'settings') => void;
   onOpenSettingsModal?: () => void;
+  onOpenAuditModal?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -86,6 +89,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   isAdmin = false,
   onNavigate,
   onOpenSettingsModal,
+  onOpenAuditModal,
 }) => {
   const [data, setData] = useState<DashboardData | null>(null);
   const [drives, setDrives] = useState<DriveItem[]>([]);
@@ -881,6 +885,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             >
               <Archive size={16} style={{ color: '#38bdf8' }} />
               <span>Backup & Restore Config</span>
+            </button>
+
+            {onOpenAuditModal && (
+              <button
+                onClick={onOpenAuditModal}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px 16px',
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '6px',
+                  color: '#f8fafc',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                }}
+              >
+                <Shield size={16} style={{ color: '#22c55e' }} />
+                <span>Security Audit Trail</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                window.open('/api/system/handoff-report', '_blank');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '12px 16px',
+                backgroundColor: '#0f172a',
+                border: '1px solid #334155',
+                borderRadius: '6px',
+                color: '#f8fafc',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '13px',
+              }}
+            >
+              <FileText size={16} style={{ color: '#f59e0b' }} />
+              <span>Installer Handoff Certificate</span>
             </button>
 
             <button

@@ -33,6 +33,7 @@ export class HandoffService {
 
     // 3. NTP Sync Status
     const ntp = await getNtpStatus();
+    const isNtpSynced = ntp.available && ntp.synchronized;
 
     // 4. Cameras
     let cameras: any[] = [];
@@ -130,7 +131,7 @@ export class HandoffService {
       <div><strong>Platform:</strong> ${platform}</div>
       <div><strong>Processor:</strong> ${cpuModel} (${cpuCores} Cores)</div>
       <div><strong>System Memory:</strong> ${totalMemoryGb} GB RAM</div>
-      <div><strong>NTP Time Synchronization:</strong> <span class="badge ${ntp.synchronized ? 'badge-ok' : 'badge-fail'}">${ntp.synchronized ? 'SYNCHRONIZED (UTC/IST)' : 'UNSYNCHRONIZED'}</span></div>
+      <div><strong>NTP Time Synchronization:</strong> <span class="badge ${isNtpSynced ? 'badge-ok' : 'badge-fail'}">${isNtpSynced ? 'SYNCHRONIZED (UTC/IST)' : 'UNSYNCHRONIZED'}</span></div>
     </div>
 
     <div class="card">
