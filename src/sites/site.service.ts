@@ -145,6 +145,7 @@ export class SiteService {
         409
       );
     }
+    await this.prisma.sitePermission.deleteMany({ where: { siteId: id } });
     await this.prisma.site.delete({ where: { id } });
     return site;
   }

@@ -214,6 +214,7 @@ export function createMockPrisma() {
     auditLog: new MockCollection<any>(),
     systemSetting: new MockCollection<any>(),
     site: new MockCollection<any>(),
+    sitePermission: new MockCollection<any>(),
     $disconnect: async () => {},
   };
   mock.$transaction = async (fn: any) => {

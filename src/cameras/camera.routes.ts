@@ -10,7 +10,7 @@ import {
   ProvisionPreviewSchema,
   CommitCameraSchema,
 } from './camera.types.js';
-import { prisma } from '../db/prisma.js';
+import { getVisibleCameraIds } from '../users/camera-access.js';
 import { SiteError, siteService } from '../sites/site.service.js';
 import { UpdateCameraSchema } from './camera.types.js';
 
@@ -289,15 +289,10 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     async (request, reply) => {
       const cameras = await cameraService.listCameras(parseSiteFilter((request.query as any)?.siteId));
 
-      if (request.user?.role === Role.OPERATOR) {
-        const permissions = await prisma.cameraPermission.findMany({
-          where: {
-            userId: request.user.id,
-            OR: [{ canViewLive: true }, { canViewPlayback: true }],
-          },
-          select: { cameraId: true },
-        });
-        const allowedIds = new Set(permissions.map((p: any) => p.cameraId));
+      // Operators: cameras granted directly or through a site grant
+      const visible = await getVisibleCameraIds(request.user);
+      if (visible) {
+        const allowedIds = new Set(visible);
         const filtered = cameras.filter((c) => allowedIds.has(c.id));
         return reply.send({
           count: filtered.length,

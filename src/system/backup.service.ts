@@ -16,6 +16,7 @@ export interface BackupManifest {
 
 export interface BackupConfig {
   sites?: any[]; // absent in backups made before multi-site support
+  sitePermissions?: any[];
   users: any[];
   cameras: any[];
   motionZones: any[];
@@ -138,6 +139,7 @@ function extractTarGz(archive: Buffer): Map<string, Buffer> {
 export async function createBackup(prisma: PrismaClient): Promise<Buffer> {
   // Query all config models
   const [
+    sitePermissions,
     sites,
     users,
     cameras,
@@ -148,6 +150,7 @@ export async function createBackup(prisma: PrismaClient): Promise<Buffer> {
     webhookEndpoints,
     notificationConfigs,
   ] = await Promise.all([
+    prisma.sitePermission.findMany(),
     prisma.site.findMany(),
     prisma.user.findMany(),
     prisma.camera.findMany(),
@@ -161,6 +164,7 @@ export async function createBackup(prisma: PrismaClient): Promise<Buffer> {
 
   const config: BackupConfig = {
     sites: sites.map((s) => ({ ...s })),
+    sitePermissions: sitePermissions.map((p) => ({ ...p })),
     users: users.map((u) => ({ ...u })),
     cameras: cameras.map((c) => ({ ...c })),
     motionZones: motionZones.map((z) => ({ ...z })),
@@ -183,6 +187,7 @@ export async function createBackup(prisma: PrismaClient): Promise<Buffer> {
     hostname: os.hostname(),
     modelCounts: {
       sites: sites.length,
+      sitePermissions: sitePermissions.length,
       users: users.length,
       cameras: cameras.length,
       motionZones: motionZones.length,
@@ -313,6 +318,7 @@ export async function restoreBackup(
     await restoreModelArray(tx, 'motionZone', config.motionZones, mode, summary);
     await restoreModelArray(tx, 'recordingSchedule', config.recordingSchedules, mode, summary);
     await restoreModelArray(tx, 'cameraPermission', config.cameraPermissions, mode, summary);
+    await restoreModelArray(tx, 'sitePermission', config.sitePermissions ?? [], mode, summary);
     await restoreModelArray(tx, 'bookmark', config.bookmarks, mode, summary);
     await restoreModelArray(tx, 'webhookEndpoint', config.webhookEndpoints, mode, summary);
     await restoreModelArray(tx, 'notificationConfig', config.notificationConfigs, mode, summary);

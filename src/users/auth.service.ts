@@ -138,6 +138,63 @@ export class AuthService {
     return results;
   }
 
+  async getSitePermissions(userId: string) {
+    return this.prisma.sitePermission.findMany({
+      where: { userId },
+      include: { site: { select: { id: true, name: true } } },
+    });
+  }
+
+  /**
+   * Replaces the user's site grants. A site whose flags are all false is removed,
+   * so the list sent by the UI is the complete desired state.
+   */
+  async setSitePermissions(
+    userId: string,
+    permissions: Array<{
+      siteId: string;
+      canViewLive?: boolean;
+      canViewPlayback?: boolean;
+      canControlPtz?: boolean;
+      canExportClips?: boolean;
+    }>
+  ) {
+    await this.requireUser(userId);
+    for (const p of permissions) {
+      if (!(await this.prisma.site.findUnique({ where: { id: p.siteId } }))) {
+        throw new UserAdminError(`Site with id '${p.siteId}' not found`, 400);
+      }
+    }
+    const wanted = new Set(permissions.map((p) => p.siteId));
+    const existing = await this.prisma.sitePermission.findMany({ where: { userId } });
+    for (const grant of existing) {
+      if (!wanted.has(grant.siteId)) {
+        await this.prisma.sitePermission.delete({ where: { id: grant.id } });
+      }
+    }
+    const results = [];
+    for (const p of permissions) {
+      const flags = {
+        canViewLive: Boolean(p.canViewLive),
+        canViewPlayback: Boolean(p.canViewPlayback),
+        canControlPtz: Boolean(p.canControlPtz),
+        canExportClips: Boolean(p.canExportClips),
+      };
+      if (!Object.values(flags).some(Boolean)) {
+        await this.prisma.sitePermission.deleteMany({ where: { userId, siteId: p.siteId } });
+        continue;
+      }
+      results.push(
+        await this.prisma.sitePermission.upsert({
+          where: { userId_siteId: { userId, siteId: p.siteId } },
+          create: { userId, siteId: p.siteId, ...flags },
+          update: flags,
+        })
+      );
+    }
+    return results;
+  }
+
   /** JWT claims for a user; `tv` ties the token to the user's current tokenVersion. */
   tokenClaims(user: Pick<User, 'id' | 'username' | 'role' | 'tokenVersion'>) {
     return { id: user.id, username: user.username, role: user.role, tv: user.tokenVersion ?? 0 };

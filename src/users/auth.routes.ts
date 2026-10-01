@@ -4,6 +4,7 @@ import { AuthService, MIN_PASSWORD_LENGTH, UserAdminError } from './auth.service
 import { authenticate, requireRole } from './rbac.guard.js';
 import { auditService } from '../audit/audit.service.js';
 import { LoginThrottle } from './login-throttle.js';
+import { getEffectiveCameraPermissions } from './camera-access.js';
 import { clearMediaCookie, setMediaCookie } from '../media/media-proxy.routes.js';
 
 const VALID_ROLES = new Set<string>(Object.values(Role));
@@ -79,12 +80,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
     const token = request.headers.authorization?.slice(7).trim();
     if (token) setMediaCookie(request, reply, token);
     // Lets the UI hide controls the user cannot use (licensing and operator grants)
+    // Effective per-camera rights (camera grants merged with site grants)
     const cameraPermissions =
-      request.user.role === Role.OPERATOR ? await authService.getUserPermissions(request.user.id) : undefined;
+      request.user.role === Role.OPERATOR ? await getEffectiveCameraPermissions(request.user.id) : undefined;
     return {
       user: {
         ...request.user,
-        cameraPermissions: cameraPermissions?.map((p: any) => ({
+        cameraPermissions: cameraPermissions?.map((p) => ({
           cameraId: p.cameraId,
           canViewLive: p.canViewLive,
           canViewPlayback: p.canViewPlayback,
@@ -371,6 +373,57 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
         const token = fastify.jwt.sign(authService.tokenClaims(user));
         setMediaCookie(request, reply, token);
         return { token, user: { id: user.id, username: user.username, role: user.role } };
+      } catch (err) {
+        return sendAdminError(reply, err);
+      }
+    }
+  );
+
+  // GET /api/auth/users/:id/site-permissions (Admin or self)
+  fastify.get<{ Params: { id: string } }>(
+    '/users/:id/site-permissions',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const { id } = request.params;
+      if (request.user.role !== Role.ADMIN && request.user.id !== id) {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+      const permissions = await authService.getSitePermissions(id);
+      return { userId: id, count: permissions.length, permissions };
+    }
+  );
+
+  // PUT /api/auth/users/:id/site-permissions  { permissions: [{ siteId, canViewLive, ... }] }
+  // Admin only; operator role is an Extended capability, like per-camera grants.
+  fastify.put<{
+    Params: { id: string };
+    Body: { permissions?: Array<{ siteId: string; canViewLive?: boolean; canViewPlayback?: boolean; canControlPtz?: boolean; canExportClips?: boolean }> };
+  }>(
+    '/users/:id/site-permissions',
+    { preHandler: [requireRole([Role.ADMIN])] },
+    async (request, reply) => {
+      if (!fastify.capabilities?.has('extended.operator_role')) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: "Missing required capability: 'extended.operator_role'",
+          capability: 'extended.operator_role',
+        });
+      }
+      const { permissions } = request.body || {};
+      if (!Array.isArray(permissions) || permissions.some((p) => !p || typeof p.siteId !== 'string')) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'permissions must be an array of { siteId, ...flags }' });
+      }
+      try {
+        const updated = await authService.setSitePermissions(request.params.id, permissions);
+        await auditService.log({
+          action: 'USER_SITE_PERMISSIONS_CHANGED',
+          userId: request.user.id,
+          username: request.user.username,
+          ipAddress: request.ip,
+          resource: `user:${request.params.id}`,
+          metadata: { sites: updated.map((p: any) => p.siteId) },
+        });
+        return { userId: request.params.id, updatedCount: updated.length, permissions: updated };
       } catch (err) {
         return sendAdminError(reply, err);
       }

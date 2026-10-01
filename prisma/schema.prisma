@@ -41,6 +41,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   cameraPermissions CameraPermission[]
+  sitePermissions   SitePermission[]
   bookmarks         Bookmark[]
   exportJobs        ExportJob[]
 
@@ -75,9 +76,30 @@ model Site {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  cameras Camera[]
+  cameras     Camera[]
+  permissions SitePermission[]
 
   @@map("sites")
+}
+
+/// Operator grant covering every camera at a site, including cameras added later.
+/// Effective camera rights = camera grant OR the grant of the camera's site.
+model SitePermission {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  siteId          String   @map("site_id")
+  site            Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  canViewLive     Boolean  @default(true)  @map("can_view_live")
+  canViewPlayback Boolean  @default(true)  @map("can_view_playback")
+  canControlPtz   Boolean  @default(false) @map("can_control_ptz")
+  canExportClips  Boolean  @default(false) @map("can_export_clips")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, siteId])
+  @@index([siteId])
+  @@map("site_permissions")
 }
 
 model Camera {
