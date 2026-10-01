@@ -4,6 +4,8 @@ import { eventBus } from './event-bus.js';
 import { EmitEventInput, EventQueryFilter } from './event.types.js';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { getVisibleCameraIds } from '../users/camera-access.js';
+import { parseSiteFilter } from '../cameras/camera.routes.js';
+import { cameraService } from '../cameras/camera.service.js';
 
 export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
   // GET /api/events
@@ -11,6 +13,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
     Querystring: {
       type?: string;
       cameraId?: string;
+      siteId?: string;
       since?: string;
       limit?: string;
       offset?: string;
@@ -27,12 +30,20 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
     };
 
     // Operators only see events of cameras they are granted
-    const visible = await getVisibleCameraIds(request.user);
-    if (visible) {
-      if (filter.cameraId && !visible.includes(filter.cameraId)) {
+    let allowed = await getVisibleCameraIds(request.user);
+
+    // ?siteId= restricts to that site's cameras (site-wide system events have no camera)
+    const siteFilter = parseSiteFilter(request.query.siteId);
+    if (siteFilter.siteId !== undefined) {
+      const siteCameraIds = (await cameraService.listCameras(siteFilter)).map((c) => c.id);
+      allowed = allowed ? allowed.filter((id) => siteCameraIds.includes(id)) : siteCameraIds;
+    }
+
+    if (allowed) {
+      if (filter.cameraId && !allowed.includes(filter.cameraId)) {
         return { events: [], count: 0 };
       }
-      filter.cameraIds = visible;
+      filter.cameraIds = allowed;
     }
 
     const events = await eventBus.queryEvents(filter);

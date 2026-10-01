@@ -11,6 +11,14 @@ import {
   CommitCameraSchema,
 } from './camera.types.js';
 import { prisma } from '../db/prisma.js';
+import { SiteError, siteService } from '../sites/site.service.js';
+import { UpdateCameraSchema } from './camera.types.js';
+
+/** ?siteId=<id> filters by site, ?siteId=unassigned selects cameras without one. */
+export function parseSiteFilter(raw: unknown): { siteId?: string | null } {
+  if (typeof raw !== 'string' || raw === '') return {};
+  return { siteId: raw === 'unassigned' ? null : raw };
+}
 
 export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
@@ -157,6 +165,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
       try {
         const input = CommitCameraSchema.parse(request.body);
+        await siteService.assertSiteExists(input.siteId);
         const camera = await cameraService.commitVerifiedCamera(input, cameraLimit);
         return reply.status(201).send(camera);
       } catch (err: any) {
@@ -166,6 +175,9 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
             message: err.message,
             cameraLimit: err.cameraLimit,
           });
+        }
+        if (err instanceof SiteError) {
+          return reply.status(err.statusCode).send({ error: 'InvalidSite', message: err.message });
         }
         if (err.name === 'ZodError') {
           return reply.status(400).send({
@@ -214,10 +226,12 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       try {
         if (body.rtspUrl) {
           const manualInput = ManualCameraSchema.parse(body);
+          await siteService.assertSiteExists(manualInput.siteId);
           const camera = await cameraService.onboardManualCamera(manualInput, cameraLimit);
           return reply.status(201).send(camera);
         } else {
           const onvifInput = OnboardCameraSchema.parse(body);
+          await siteService.assertSiteExists(onvifInput.siteId);
           const camera = await cameraService.onboardOnvifCamera(onvifInput, cameraLimit);
           return reply.status(201).send(camera);
         }
@@ -228,6 +242,9 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
             message: err.message,
             cameraLimit: err.cameraLimit,
           });
+        }
+        if (err instanceof SiteError) {
+          return reply.status(err.statusCode).send({ error: 'InvalidSite', message: err.message });
         }
         if (err.name === 'ZodError') {
           return reply.status(400).send({
@@ -270,7 +287,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       preHandler: [authenticate],
     },
     async (request, reply) => {
-      const cameras = await cameraService.listCameras();
+      const cameras = await cameraService.listCameras(parseSiteFilter((request.query as any)?.siteId));
 
       if (request.user?.role === Role.OPERATOR) {
         const permissions = await prisma.cameraPermission.findMany({
@@ -316,6 +333,36 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       }
 
       return reply.send(camera);
+    }
+  );
+
+  /**
+   * PATCH /api/cameras/:id
+   * Renames a camera or moves it to another site (Admin only)
+   */
+  app.patch<{ Params: { id: string } }>(
+    '/:id',
+    {
+      preHandler: [requireRole([Role.ADMIN])],
+    },
+    async (request, reply) => {
+      try {
+        const input = UpdateCameraSchema.parse(request.body ?? {});
+        await siteService.assertSiteExists(input.siteId);
+        const camera = await cameraService.updateCamera(request.params.id, input);
+        if (!camera) {
+          return reply.status(404).send({ error: 'NotFound', message: `Camera with id ${request.params.id} not found` });
+        }
+        return reply.send(camera);
+      } catch (err: any) {
+        if (err instanceof SiteError) {
+          return reply.status(err.statusCode).send({ error: 'InvalidSite', message: err.message });
+        }
+        if (err.name === 'ZodError') {
+          return reply.status(400).send({ error: 'ValidationError', message: 'Invalid camera update', details: err.errors });
+        }
+        throw err;
+      }
     }
   );
 

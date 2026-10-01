@@ -63,9 +63,29 @@ model Event {
   @@map("events")
 }
 
+/// A physical location (branch, warehouse, home...) whose cameras are pulled by this
+/// central server over the LAN, a VPN or port-forwarded RTSP.
+model Site {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  address   String?
+  /// IANA timezone of the location, for display (e.g. Asia/Kolkata)
+  timezone  String?
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  cameras Camera[]
+
+  @@map("sites")
+}
+
 model Camera {
   id              String   @id @default(uuid())
   name            String
+  /// Null = not assigned to a site yet
+  siteId          String?  @map("site_id")
+  site            Site?    @relation(fields: [siteId], references: [id], onDelete: Restrict)
   ip              String?
   port            Int?     @default(554)
   username        String?
@@ -93,6 +113,7 @@ model Camera {
   motionZones       MotionZone[]
 
   @@index([status])
+  @@index([siteId])
   @@map("cameras")
 }
 

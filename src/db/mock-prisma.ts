@@ -153,7 +153,7 @@ class MockCollection<T extends { id: string }> {
           if (!this.matchWhere(item, valObj)) return false;
           continue;
         }
-        if (valObj.not !== undefined && itemVal === valObj.not) return false;
+        if (valObj.not !== undefined && (itemVal ?? null) === valObj.not) return false;
         if (valObj.contains !== undefined && !String(itemVal ?? '').includes(valObj.contains)) return false;
         if (valObj.gte !== undefined) {
           const comp = this.toEpoch(itemVal);
@@ -189,7 +189,8 @@ class MockCollection<T extends { id: string }> {
         continue;
       }
 
-      if (item[key] !== val) {
+      // Prisma treats a missing optional column as null
+      if ((val === null ? item[key] ?? null : item[key]) !== val) {
         return false;
       }
     }
@@ -212,6 +213,7 @@ export function createMockPrisma() {
     event: new MockCollection<any>(),
     auditLog: new MockCollection<any>(),
     systemSetting: new MockCollection<any>(),
+    site: new MockCollection<any>(),
     $disconnect: async () => {},
   };
   mock.$transaction = async (fn: any) => {

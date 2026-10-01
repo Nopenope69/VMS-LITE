@@ -15,6 +15,7 @@ export interface BackupManifest {
 }
 
 export interface BackupConfig {
+  sites?: any[]; // absent in backups made before multi-site support
   users: any[];
   cameras: any[];
   motionZones: any[];
@@ -137,6 +138,7 @@ function extractTarGz(archive: Buffer): Map<string, Buffer> {
 export async function createBackup(prisma: PrismaClient): Promise<Buffer> {
   // Query all config models
   const [
+    sites,
     users,
     cameras,
     motionZones,
@@ -146,6 +148,7 @@ export async function createBackup(prisma: PrismaClient): Promise<Buffer> {
     webhookEndpoints,
     notificationConfigs,
   ] = await Promise.all([
+    prisma.site.findMany(),
     prisma.user.findMany(),
     prisma.camera.findMany(),
     prisma.motionZone.findMany(),
@@ -157,6 +160,7 @@ export async function createBackup(prisma: PrismaClient): Promise<Buffer> {
   ]);
 
   const config: BackupConfig = {
+    sites: sites.map((s) => ({ ...s })),
     users: users.map((u) => ({ ...u })),
     cameras: cameras.map((c) => ({ ...c })),
     motionZones: motionZones.map((z) => ({ ...z })),
@@ -178,6 +182,7 @@ export async function createBackup(prisma: PrismaClient): Promise<Buffer> {
     createdAt: new Date().toISOString(),
     hostname: os.hostname(),
     modelCounts: {
+      sites: sites.length,
       users: users.length,
       cameras: cameras.length,
       motionZones: motionZones.length,
@@ -245,7 +250,10 @@ export async function restoreBackup(
   };
 
   await prisma.$transaction(async (tx) => {
-    // Users first (no FK dependencies)
+    // Sites first: cameras reference them
+    await restoreModelArray(tx, 'site', config.sites ?? [], mode, summary);
+
+    // Users (no FK dependencies)
     summary.restored.users = 0;
     summary.skipped.users = 0;
     for (const user of config.users) {
@@ -345,6 +353,7 @@ function sanitizeCameraRecord(record: any): any {
   delete clean.bookmarks;
   delete clean.exportJobs;
   delete clean.motionZones;
+  delete clean.site;
   return clean;
 }
 
@@ -382,6 +391,7 @@ async function restoreModelArray(
       delete clean.bookmarks;
       delete clean.exportJobs;
       delete clean.motionZones;
+      delete clean.cameras;
 
       if (mode === 'overwrite') {
         await delegate.upsert({

@@ -134,6 +134,12 @@ export class SetupService {
       invalidateSessionCache(current.id);
     }
 
+    // The installation's first site takes the wizard's site name (no-op if sites exist)
+    if (input.siteName?.trim()) {
+      const { siteService } = await import('../sites/site.service.js');
+      await siteService.ensureInitialSite(input.siteName);
+    }
+
     const previous = await this.getSetupState();
     await this.store.set<SetupState>(SETUP_STATE_KEY, {
       completed: true,

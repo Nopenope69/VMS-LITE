@@ -17,6 +17,7 @@ import {
   ManualCameraInput,
   OnboardCameraInput,
   CommitCameraInput,
+  UpdateCameraInput,
 } from './camera.types.js';
 
 const PREVIEW_TTL_MS = 10 * 60 * 1000;
@@ -203,6 +204,7 @@ export class CameraService {
   async createCamera(dto: CreateCameraDto): Promise<CameraDto> {
     return this.provisionCamera({
       name: dto.name,
+      siteId: dto.siteId ?? null,
       ip: dto.ip || null,
       port: dto.port ?? 554,
       username: dto.username || null,
@@ -223,6 +225,7 @@ export class CameraService {
 
     const camera = await this.provisionCamera({
       name: input.name,
+      siteId: input.siteId ?? null,
       ip: input.ip || null,
       port: input.port || null,
       username: input.username || null,
@@ -252,6 +255,7 @@ export class CameraService {
    */
   private async provisionCamera(data: {
     name: string;
+    siteId?: string | null;
     rtspUrl: string;
     subStreamUrl?: string | null;
     ip?: string | null;
@@ -321,6 +325,7 @@ export class CameraService {
           manufacturer: record.manufacturer,
           mediaMtxPath: record.mediaMtxPath,
           subMediaMtxPath: record.subMediaMtxPath,
+          siteId: record.siteId ?? null,
         },
       })
       .catch(() => {});
@@ -368,6 +373,7 @@ export class CameraService {
 
     return this.provisionCamera({
       name: input.name,
+      siteId: input.siteId ?? null,
       ip: input.ip,
       port: input.port,
       username: input.username || null,
@@ -393,6 +399,7 @@ export class CameraService {
 
     return this.provisionCamera({
       name: input.name,
+      siteId: input.siteId ?? null,
       rtspUrl: input.rtspUrl,
       subStreamUrl: input.subStreamUrl || null,
     });
@@ -401,8 +408,9 @@ export class CameraService {
   /**
    * Retrieves all onboarded cameras.
    */
-  async listCameras(): Promise<CameraResponseDto[]> {
+  async listCameras(filter: { siteId?: string | null } = {}): Promise<CameraResponseDto[]> {
     const records = await this.prisma.camera.findMany({
+      where: filter.siteId !== undefined ? { siteId: filter.siteId } : undefined,
       orderBy: { createdAt: 'desc' },
     });
     return records.map((r) => this.toDto(r));
@@ -416,6 +424,23 @@ export class CameraService {
       where: { id },
     });
     return record ? this.toDto(record) : null;
+  }
+
+  /**
+   * Renames a camera and/or moves it to another site (null = unassigned).
+   * Stream configuration is untouched; the media path keeps its name.
+   */
+  async updateCamera(id: string, input: UpdateCameraInput): Promise<CameraResponseDto | null> {
+    const existing = await this.prisma.camera.findUnique({ where: { id } });
+    if (!existing) return null;
+    const record = await this.prisma.camera.update({
+      where: { id },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.siteId !== undefined ? { siteId: input.siteId } : {}),
+      },
+    });
+    return this.toDto(record);
   }
 
   /**
@@ -502,6 +527,7 @@ export class CameraService {
     return {
       id: record.id,
       name: record.name,
+      siteId: record.siteId ?? null,
       ip: record.ip,
       port: record.port,
       username: record.username,

@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { authenticate, requireCameraPermission } from '../users/rbac.guard.js';
 import { getVisibleCameraIds } from '../users/camera-access.js';
+import { parseSiteFilter } from '../cameras/camera.routes.js';
 import { cameraService } from '../cameras/camera.service.js';
 import {
   CameraStreamInfo,
@@ -69,6 +70,7 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     return {
       cameraId: cam.id,
       name: cam.name,
+      siteId: cam.siteId ?? null,
       mediaMtxPath: mainPath,
       subStreamPath: subPath,
       whepUrl: `${whepBase}/${mainPath}/whep`,
@@ -90,7 +92,7 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     async (request, reply) => {
       try {
         const visible = await getVisibleCameraIds(request.user);
-        const cameras = (await cameraService.listCameras()).filter(
+        const cameras = (await cameraService.listCameras(parseSiteFilter((request.query as any)?.siteId))).filter(
           (c) => !visible || visible.includes(c.id)
         );
         const userId = request.user?.id || 'vms_client';
