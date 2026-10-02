@@ -52,6 +52,7 @@ type HealthCheckCamera = {
   port?: number | null;
   rtspUrl?: string | null;
   mediaMtxPath: string;
+  subMediaMtxPath?: string | null;
 };
 
 interface PendingTransition {
@@ -75,6 +76,30 @@ interface CameraInternalState {
   bytesReceived: number;
   networkCheck: NetworkCheckResult;
   reason?: string;
+  videoCodec: string | null;
+  hasSubStream: boolean;
+  subVideoCodec: string | null;
+  subLastBytes?: number;
+  subLastTimestamp?: number;
+  subBitrateKbps: number | null;
+}
+
+/** Video codecs MediaMTX can report for a track (it also lists audio tracks) */
+const VIDEO_CODECS = new Set(['H264', 'H265', 'AV1', 'VP9', 'VP8', 'M-JPEG', 'MPEG-4 Video', 'MPEG-1/2 Video']);
+
+export function videoCodecOf(tracks: string[] | undefined): string | null {
+  return tracks?.find((t) => VIDEO_CODECS.has(t)) ?? null;
+}
+
+/** kbps from two byte-counter samples; null on the first sample or a counter reset */
+function bitrateKbps(
+  bytes: number,
+  now: number,
+  last: { bytes?: number; at?: number }
+): number | null {
+  if (last.bytes === undefined || last.at === undefined || bytes < last.bytes) return null;
+  const seconds = Math.max(0.001, (now - last.at) / 1000);
+  return Math.round(((bytes - last.bytes) * 8) / (1000 * seconds));
 }
 
 /**
@@ -191,6 +216,10 @@ export class CameraHealthService {
         bitrateKbps: null,
         bytesReceived: 0,
         networkCheck: 'NOT_APPLICABLE',
+        videoCodec: null,
+        hasSubStream: false,
+        subVideoCodec: null,
+        subBitrateKbps: null,
       };
       this.cameraStates.set(camera.id, state);
     }
@@ -225,9 +254,31 @@ export class CameraHealthService {
       if (runtime) {
         streamReady = runtime.ready;
         bytesReceived = runtime.bytesReceived || 0;
+        state.videoCodec = videoCodecOf(runtime.tracks) ?? state.videoCodec;
       }
     } catch {
       streamReady = false;
+    }
+
+    // Sub-stream: codec (live grids play it) and bitrate (it crosses the site link too).
+    // Informational only; it does not affect the camera's health state.
+    state.hasSubStream = Boolean(camera.subMediaMtxPath);
+    if (camera.subMediaMtxPath) {
+      try {
+        const sub = await this.mediaMtxClient.getPathRuntime(camera.subMediaMtxPath);
+        const subBytes = sub?.bytesReceived || 0;
+        state.subVideoCodec = videoCodecOf(sub?.tracks) ?? state.subVideoCodec;
+        state.subBitrateKbps = sub?.ready
+          ? bitrateKbps(subBytes, now, { bytes: state.subLastBytes, at: state.subLastTimestamp })
+          : 0;
+        state.subLastBytes = subBytes;
+        state.subLastTimestamp = now;
+      } catch {
+        state.subBitrateKbps = null;
+      }
+    } else {
+      state.subVideoCodec = null;
+      state.subBitrateKbps = null;
     }
 
     // 3. Bitrate Math & Warm-up
@@ -349,18 +400,7 @@ export class CameraHealthService {
       }
     }
 
-    return {
-      cameraId: camera.id,
-      status: state.status,
-      latencyMs: state.latencyMs,
-      bitrateKbps: state.bitrateKbps,
-      bytesReceived: state.bytesReceived,
-      lastChecked: state.lastChecked,
-      consecutiveFailures: state.consecutiveFailures,
-      unhealthySince: state.unhealthySince ? new Date(state.unhealthySince).toISOString() : null,
-      networkCheck: state.networkCheck,
-      reason: state.reason,
-    };
+    return this.toTelemetry(camera.id, state);
   }
 
   /**
@@ -655,12 +695,7 @@ export class CameraHealthService {
     this.isPolling = false;
   }
 
-  /**
-   * Returns telemetry for a single camera.
-   */
-  getTelemetry(cameraId: string): CameraHealthTelemetry | null {
-    const state = this.cameraStates.get(cameraId);
-    if (!state) return null;
+  private toTelemetry(cameraId: string, state: CameraInternalState): CameraHealthTelemetry {
     return {
       cameraId,
       status: state.status,
@@ -672,7 +707,20 @@ export class CameraHealthService {
       unhealthySince: state.unhealthySince ? new Date(state.unhealthySince).toISOString() : null,
       networkCheck: state.networkCheck,
       reason: state.reason,
+      videoCodec: state.videoCodec,
+      hasSubStream: state.hasSubStream,
+      subVideoCodec: state.subVideoCodec,
+      subBitrateKbps: state.subBitrateKbps,
     };
+  }
+
+  /**
+   * Returns telemetry for a single camera.
+   */
+  getTelemetry(cameraId: string): CameraHealthTelemetry | null {
+    const state = this.cameraStates.get(cameraId);
+    if (!state) return null;
+    return this.toTelemetry(cameraId, state);
   }
 
   /**
@@ -691,18 +739,7 @@ export class CameraHealthService {
       else if (state.status === 'OFFLINE') offlineCount++;
       else if (state.status === 'UNKNOWN') unknownCount++;
 
-      cameras[id] = {
-        cameraId: id,
-        status: state.status,
-        latencyMs: state.latencyMs,
-        bitrateKbps: state.bitrateKbps,
-        bytesReceived: state.bytesReceived,
-        lastChecked: state.lastChecked,
-        consecutiveFailures: state.consecutiveFailures,
-        unhealthySince: state.unhealthySince ? new Date(state.unhealthySince).toISOString() : null,
-        networkCheck: state.networkCheck,
-        reason: state.reason,
-      };
+      cameras[id] = this.toTelemetry(id, state);
     }
 
     return {

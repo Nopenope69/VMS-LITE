@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { codecLabel, H265_LIVE_HINT, isBrowserUnfriendlyCodec, pickSubProfile } from '../utils/codec.js';
 import {
   X,
   Search,
@@ -45,6 +46,8 @@ export interface StreamProfile {
   height?: number;
   fps?: number;
   isMainStream?: boolean;
+  /** Video codec reported by ONVIF, e.g. H264 / H265 */
+  encoding?: string;
 }
 
 export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalProps> = ({
@@ -239,7 +242,8 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
 
       // Auto-select main & sub profiles
       const main = data.profiles?.find((p: StreamProfile) => p.isMainStream) || data.profiles?.[0];
-      const sub = data.profiles?.find((p: StreamProfile) => !p.isMainStream && p !== main);
+      // Live grids play the sub-stream: prefer an H.264 one (browsers rarely play H.265)
+      const sub = pickSubProfile<StreamProfile>(data.profiles || [], main);
 
       if (main) setSelectedMainRtsp(main.rtspUri);
       if (sub) setSelectedSubRtsp(sub.rtspUri);
@@ -753,6 +757,12 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
                               {p.isMainStream ? 'MAIN STREAM (HD)' : 'SUB STREAM'}
                             </span>
                           </div>
+                          <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '4px' }}>
+                            {codecLabel(p.encoding)}
+                            {p.width && p.height ? ` · ${p.width}×${p.height}` : ''}
+                            {p.fps ? ` · ${p.fps} fps` : ''}
+                            {p.rtspUri === selectedSubRtsp ? ' · used for live grids' : ''}
+                          </div>
                           <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace', marginTop: '4px', wordBreak: 'break-all' }}>
                             {p.rtspUri}
                           </div>
@@ -760,6 +770,27 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
                       );
                     })}
                   </div>
+                  {(() => {
+                    const live = profiles.find((p) => p.rtspUri === (selectedSubRtsp || selectedMainRtsp));
+                    if (!live || !isBrowserUnfriendlyCodec(live.encoding)) return null;
+                    return (
+                      <div
+                        role="alert"
+                        style={{
+                          marginTop: '10px',
+                          padding: '10px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #b45309',
+                          backgroundColor: 'rgba(180, 83, 9, 0.15)',
+                          color: '#fcd34d',
+                          fontSize: '12px',
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        <strong>H.265 stream:</strong> {H265_LIVE_HINT}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

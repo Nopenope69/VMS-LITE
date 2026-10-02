@@ -1,6 +1,13 @@
 import React from 'react';
 import { MapPin } from 'lucide-react';
-import { SITE_STATUS_STYLE, SiteSummary, UNASSIGNED_SITE } from '../types/sites.js';
+import {
+  formatBandwidth,
+  LINK_USAGE_STYLE,
+  linkUsageLevel,
+  SITE_STATUS_STYLE,
+  SiteSummary,
+  UNASSIGNED_SITE,
+} from '../types/sites.js';
 
 export interface SiteHealthCardsProps {
   sites: SiteSummary[];
@@ -48,9 +55,35 @@ export const SiteHealthCards: React.FC<SiteHealthCardsProps> = ({ sites, selecte
               {site.health.offline > 0 && <span className="text-red-400">{site.health.offline} offline</span>}
               {site.health.unknown > 0 && <span className="text-zinc-500">{site.health.unknown} checking</span>}
             </div>
+            <SiteLinkUsage site={site} />
           </button>
         );
       })}
+    </div>
+  );
+};
+
+/** Video received from the site, against its uplink capacity when one is set. */
+export const SiteLinkUsage: React.FC<{ site: SiteSummary }> = ({ site }) => {
+  if (site.bandwidthKbps === null || site.bandwidthKbps === undefined) return null;
+  const level = linkUsageLevel(site.linkUsage);
+  const style = level ? LINK_USAGE_STYLE[level] : LINK_USAGE_STYLE.ok;
+  return (
+    <div className="mt-2" data-testid="site-link-usage">
+      <div className={`flex items-center justify-between text-[11px] font-mono ${style.text}`}>
+        <span>↓ {formatBandwidth(site.bandwidthKbps)}</span>
+        {site.uplinkMbps ? (
+          <span>
+            {Math.round((site.linkUsage ?? 0) * 100)}% of {site.uplinkMbps} Mbps
+            {level === 'saturated' ? ' · link full' : ''}
+          </span>
+        ) : null}
+      </div>
+      {site.uplinkMbps ? (
+        <div className="mt-1 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+          <div className={`h-full ${style.bar}`} style={{ width: `${Math.min(100, (site.linkUsage ?? 0) * 100)}%` }} />
+        </div>
+      ) : null}
     </div>
   );
 };

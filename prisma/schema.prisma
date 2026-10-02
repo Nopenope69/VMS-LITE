@@ -76,6 +76,8 @@ model Site {
   /// IANA timezone of the location, for display (e.g. Asia/Kolkata)
   timezone  String?
   notes     String?
+  /// Upload capacity of the site's link to the server (Mbps), to show link usage
+  uplinkMbps Float?  @map("uplink_mbps")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

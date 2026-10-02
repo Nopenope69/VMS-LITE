@@ -203,13 +203,13 @@ export class MediaMtxClient {
    * Retrieves runtime path status and byte counters via GET /v3/paths/get/{name}.
    * Returns null when the path has no runtime state (not configured / no source).
    */
-  async getPathRuntime(name: string): Promise<{ ready: boolean; bytesReceived: number } | null> {
+  async getPathRuntime(name: string): Promise<{ ready: boolean; bytesReceived: number; tracks: string[] } | null> {
     const cleanName = encodeURIComponent(name.trim());
 
     if (this.mockMode) {
       const conf = this.mockPaths.get(cleanName);
       if (!conf) return null;
-      return { ready: true, bytesReceived: Math.floor(Date.now() * 125) }; // ~1 Mbps
+      return { ready: true, bytesReceived: Math.floor(Date.now() * 125), tracks: ['H264'] }; // ~1 Mbps
     }
 
     const response = await this.request('GET', `/v3/paths/get/${cleanName}`);
@@ -223,6 +223,8 @@ export class MediaMtxClient {
     return {
       ready: Boolean(data.ready),
       bytesReceived: Number(data.bytesReceived || 0),
+      // Codec names as MediaMTX reports them, e.g. ["H265", "MPEG-4 Audio"]
+      tracks: Array.isArray(data.tracks) ? data.tracks.map(String) : [],
     };
   }
 

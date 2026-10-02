@@ -15,6 +15,13 @@ export interface CameraHealthTelemetry {
   unhealthySince: string | null;
   networkCheck?: NetworkCheckResult;
   reason?: string;
+  /** Codec of the main stream as received, e.g. H264 / H265 */
+  videoCodec?: string | null;
+  /** The camera has a sub-stream (live grids play it) */
+  hasSubStream?: boolean;
+  /** Codec of the sub-stream; null until it has been pulled (it starts on demand) */
+  subVideoCodec?: string | null;
+  subBitrateKbps?: number | null;
 }
 
 export interface CameraHealthSummaryResponse {

@@ -59,6 +59,15 @@ Camera streams are pulled over TCP, so each camera sends one stream over the WAN
 whoever is watching. Add a sub-stream URL when onboarding: multi-camera grids
 use it to save bandwidth for viewers.
 
+Set the sub-stream to **H.264** on the camera. Many cameras default to H.265, which
+records fine but which most browsers cannot play live; the Cameras page flags
+cameras whose live stream is H.265.
+
+Give each site its upload capacity (**Settings → Sites → Uplink Mbps**) to see how
+full its link is: the Overview site cards and the Health page show the video each
+site is sending (main streams, plus sub-streams while someone watches a grid)
+against that capacity, amber from 80% and red from 95%.
+
 Create sites in **Settings → Sites** (the first-boot site name becomes the first
 site), pick the site when adding a camera, and move cameras between sites from
 the **Cameras** page. The site selector in the sidebar filters every page; the

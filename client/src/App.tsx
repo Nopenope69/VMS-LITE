@@ -30,7 +30,7 @@ import { ClipExportModal } from './components/ClipExportModal.js';
 import { BackupRestoreModal } from './components/BackupRestoreModal.js';
 import { EventsWsClient, EventPayload } from './utils/events-ws-client.js';
 import { SitesModal } from './components/SitesModal.js';
-import { ALL_SITES, SiteFilter, SiteSummary, matchesSiteFilter } from './types/sites.js';
+import { ALL_SITES, SiteFilter, SiteSummary, UNASSIGNED_SITE, matchesSiteFilter } from './types/sites.js';
 
 const SITE_FILTER_KEY = 'vms_site_filter';
 function readStoredSiteFilter(): SiteFilter {
@@ -592,6 +592,7 @@ export const App: React.FC = () => {
         {currentView === 'health' && (
           <HealthView
             cameras={siteCameras}
+            sites={sites.filter((s) => siteFilter === ALL_SITES || (s.id ?? UNASSIGNED_SITE) === siteFilter)}
             healthMap={healthMap}
             onlineCount={onlineCount}
             offlineCount={offlineCount}
