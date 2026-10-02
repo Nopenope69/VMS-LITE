@@ -17,7 +17,8 @@
     "build:client": "vite build --config client/vite.config.ts",
     "dev:client": "vite --config client/vite.config.ts",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p client",
-    "db:migrate": "prisma migrate deploy"
+    "db:migrate": "prisma migrate deploy",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
@@ -34,6 +35,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/forms": "^0.5.11",
     "@types/bcrypt": "^6.0.0",

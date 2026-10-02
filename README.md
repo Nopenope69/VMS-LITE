@@ -119,6 +119,12 @@ npm run dev:mock              # no database: in-memory demo data (not persisted)
 
 npm test                      # unit/integration tests (in-memory Prisma mock)
 npm run typecheck             # server + client
+
+# Browser end-to-end test (CI runs it on every PR): needs ffmpeg, a MediaMTX binary,
+# an empty database and the built app (npm run build && npm run build:client)
+MEDIAMTX_BIN=/path/to/mediamtx DATABASE_URL=postgresql://.../vms_e2e e2e/stack.sh start
+npm run test:e2e              # Google Chrome; or E2E_CHROMIUM_PATH=... E2E_PLAYBACK_DECODE=0
+e2e/stack.sh stop
 ```
 
 Schema changes: edit `prisma/schema.prisma`, then

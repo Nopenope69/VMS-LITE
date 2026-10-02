@@ -11,3 +11,8 @@ data/
 
 # Vendor license signing keys must never be committed
 *.key
+
+# Browser end-to-end test output
+e2e/.run/
+test-results/
+playwright-report/

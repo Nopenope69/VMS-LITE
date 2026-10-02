@@ -31,6 +31,7 @@ import { BackupRestoreModal } from './components/BackupRestoreModal.js';
 import { EventsWsClient, EventPayload } from './utils/events-ws-client.js';
 import { SitesModal } from './components/SitesModal.js';
 import { ALL_SITES, SiteFilter, SiteSummary, UNASSIGNED_SITE, matchesSiteFilter } from './types/sites.js';
+import { parsePlaybackLink } from './utils/playback-link.js';
 
 const SITE_FILTER_KEY = 'vms_site_filter';
 function readStoredSiteFilter(): SiteFilter {
@@ -74,8 +75,15 @@ export interface CameraRecord {
 export const App: React.FC = () => {
   const { user, token, role, isAdmin, isOperator, isLoading: isAuthLoading, login, logout, handleUnauthorized } = useAuth();
 
-  // Navigation state
-  const [currentView, setCurrentView] = useState<ViewType>('overview');
+  // Navigation state. /playback?cameraId=&t= (alert e-mails) opens Recordings at that moment.
+  const [initialPlaybackLink] = useState(() =>
+    typeof window === 'undefined' ? null : parsePlaybackLink(window.location.pathname, window.location.search)
+  );
+  const [currentView, setCurrentView] = useState<ViewType>(initialPlaybackLink ? 'recordings' : 'overview');
+  useEffect(() => {
+    // Consumed: a later reload starts from the console as usual
+    if (initialPlaybackLink) window.history.replaceState(null, '', '/');
+  }, [initialPlaybackLink]);
   const [focusedCameraId, setFocusedCameraId] = useState<string | null>(null);
   const [isQuickSearchOpen, setIsQuickSearchOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -99,7 +107,7 @@ export const App: React.FC = () => {
   // Data states
   const [cameras, setCameras] = useState<CameraRecord[]>([]);
   const [iceServers, setIceServers] = useState<RTCIceServer[]>([]);
-  const [playbackCameraId, setPlaybackCameraId] = useState<string | null>(null);
+  const [playbackCameraId, setPlaybackCameraId] = useState<string | null>(initialPlaybackLink?.cameraId ?? null);
   const [sites, setSites] = useState<SiteSummary[]>([]);
   const [siteEventTick, setSiteEventTick] = useState(0);
   const [siteFilter, setSiteFilterState] = useState<SiteFilter>(readStoredSiteFilter);
@@ -583,6 +591,7 @@ export const App: React.FC = () => {
               siteFilter={siteFilter}
               sites={sites}
               initialCameraId={playbackCameraId ?? undefined}
+              initialTimestampMs={initialPlaybackLink?.timestampMs ?? undefined}
               onNavigateLive={() => setCurrentView('live')}
             />
           </div>
