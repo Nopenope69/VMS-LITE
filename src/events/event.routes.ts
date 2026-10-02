@@ -32,7 +32,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
     // Operators only see events of cameras they are granted
     let allowed = await getVisibleCameraIds(request.user);
 
-    // ?siteId= restricts to that site's cameras (site-wide system events have no camera)
+    // ?siteId= restricts to that site's cameras (system events have no camera or site)
     const siteFilter = parseSiteFilter(request.query.siteId);
     if (siteFilter.siteId !== undefined) {
       const siteCameraIds = (await cameraService.listCameras(siteFilter)).map((c) => c.id);
@@ -44,6 +44,18 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
         return { events: [], count: 0 };
       }
       filter.cameraIds = allowed;
+      // Site-level events (site.offline/online) of the sites those cameras belong to
+      if (!filter.cameraId) {
+        const visible = new Set(allowed);
+        const cameras = await cameraService.listCameras();
+        filter.siteIds = [
+          ...new Set(cameras.filter((c) => visible.has(c.id) && c.siteId).map((c) => c.siteId as string)),
+        ];
+        // A selected site with no visible cameras yet still shows its own link events to unrestricted users
+        if (siteFilter.siteId && request.user.role !== 'OPERATOR' && !filter.siteIds.includes(siteFilter.siteId)) {
+          filter.siteIds.push(siteFilter.siteId);
+        }
+      }
     }
 
     const events = await eventBus.queryEvents(filter);

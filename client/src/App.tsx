@@ -101,6 +101,7 @@ export const App: React.FC = () => {
   const [iceServers, setIceServers] = useState<RTCIceServer[]>([]);
   const [playbackCameraId, setPlaybackCameraId] = useState<string | null>(null);
   const [sites, setSites] = useState<SiteSummary[]>([]);
+  const [siteEventTick, setSiteEventTick] = useState(0);
   const [siteFilter, setSiteFilterState] = useState<SiteFilter>(readStoredSiteFilter);
   const [isSitesModalOpen, setIsSitesModalOpen] = useState<boolean>(false);
   const setSiteFilter = useCallback((value: SiteFilter) => {
@@ -241,6 +242,10 @@ export const App: React.FC = () => {
       if (event.type === 'camera.offline' || event.type === 'camera.online') {
         refreshHealth();
       }
+      if (event.type === 'site.offline' || event.type === 'site.online') {
+        refreshHealth();
+        setSiteEventTick((t) => t + 1);
+      }
     });
 
     return () => {
@@ -296,6 +301,11 @@ export const App: React.FC = () => {
     return () => clearInterval(timer);
   }, [token, fetchSites]);
 
+  // Site link went down / came back: refresh site status right away
+  useEffect(() => {
+    if (siteEventTick > 0) fetchSites();
+  }, [siteEventTick, fetchSites]);
+
   // A remembered filter for a site that no longer exists falls back to all sites
   useEffect(() => {
     if (siteFilter === ALL_SITES || sites.length === 0) return;
@@ -310,8 +320,8 @@ export const App: React.FC = () => {
   const siteEvents = useMemo(() => {
     if (siteFilter === ALL_SITES) return events;
     const ids = new Set(siteCameras.map((c) => c.id));
-    // System events (no camera) stay visible
-    return events.filter((e) => !e.cameraId || ids.has(e.cameraId));
+    // Site events belong to their site; system events (no camera, no site) stay visible
+    return events.filter((e) => (e.siteId ? e.siteId === siteFilter : !e.cameraId || ids.has(e.cameraId)));
   }, [events, siteCameras, siteFilter]);
 
   // Online / Offline count calculations (live health, for the selected site)

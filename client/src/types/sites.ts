@@ -7,7 +7,8 @@ export interface SiteSummary {
   notes: string | null;
   cameraCount: number;
   health: { total: number; online: number; degraded: number; offline: number; unknown: number };
-  status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN' | 'EMPTY';
+  /** OFFLINE = site link down (no camera reachable) */
+  status: 'OFFLINE' | 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN' | 'EMPTY';
 }
 
 /** Global site filter: a site id, every site, or cameras without a site. */
@@ -22,6 +23,7 @@ export function matchesSiteFilter(cameraSiteId: string | null | undefined, filte
 }
 
 export const SITE_STATUS_STYLE: Record<SiteSummary['status'], { dot: string; text: string; label: string }> = {
+  OFFLINE: { dot: 'bg-red-500', text: 'text-red-400', label: 'Site unreachable' },
   HEALTHY: { dot: 'bg-emerald-400', text: 'text-emerald-400', label: 'Healthy' },
   DEGRADED: { dot: 'bg-amber-400', text: 'text-amber-400', label: 'Degraded' },
   CRITICAL: { dot: 'bg-red-500', text: 'text-red-400', label: 'Cameras offline' },

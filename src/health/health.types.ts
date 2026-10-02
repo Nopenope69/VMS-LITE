@@ -50,4 +50,6 @@ export interface CameraHealthEventMetadata {
   outageDurationMs?: number | null;
   networkCheck?: NetworkCheckResult;
   timestamp: string; // ISO-8601
+  /** Set when the transition is part of a site link outage (site id); alert channels send the site alert instead */
+  siteOutage?: string;
 }

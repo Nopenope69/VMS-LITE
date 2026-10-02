@@ -209,8 +209,16 @@ export class WebSocketFeedService {
         })
         .catch(() => {});
     }
-    // System-wide events (storage, etc.) have no camera and are visible to everyone
-    return !event.cameraId || client.visibleCameraIds.has(event.cameraId);
+    if (event.cameraId) {
+      return client.visibleCameraIds.has(event.cameraId);
+    }
+    // Site-level events list the site's cameras: visible to whoever can see one of them
+    if (event.siteId) {
+      const siteCameras = (event.metadata as { cameraIds?: unknown })?.cameraIds;
+      return Array.isArray(siteCameras) && siteCameras.some((id) => client.visibleCameraIds!.has(String(id)));
+    }
+    // System-wide events (storage, etc.) are visible to everyone
+    return true;
   }
 
   /**

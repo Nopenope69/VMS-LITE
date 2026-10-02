@@ -20,6 +20,8 @@ import net from 'node:net';
 import { CameraService, cameraService as defaultCameraService } from '../cameras/camera.service.js';
 import { MediaMtxClient, mediaMtxClient as defaultMediaMtx } from '../mediamtx/mediamtx.client.js';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
+import { prisma } from '../db/prisma.js';
+import { SiteCameraSample, SiteLinkState, SiteOutageDetector, SiteOutageTransition } from './site-outage.js';
 import {
   CameraHealthEventMetadata,
   CameraHealthStatus,
@@ -33,6 +35,31 @@ export interface CameraHealthDependencies {
   cameraService?: CameraService;
   mediaMtxClient?: IMediaMtxRuntimeAdapter;
   eventBus?: EventBus;
+  /** Site id -> name, for site alerts */
+  resolveSiteNames?: (siteIds: string[]) => Promise<Map<string, string>>;
+}
+
+async function defaultResolveSiteNames(siteIds: string[]): Promise<Map<string, string>> {
+  const sites = await prisma.site.findMany({ where: { id: { in: siteIds } }, select: { id: true, name: true } });
+  return new Map(sites.map((s: { id: string; name: string }) => [s.id, s.name]));
+}
+
+type HealthCheckCamera = {
+  id: string;
+  name: string;
+  siteId?: string | null;
+  ip?: string | null;
+  port?: number | null;
+  rtspUrl?: string | null;
+  mediaMtxPath: string;
+};
+
+interface PendingTransition {
+  camera: { id: string; name: string };
+  newStatus: CameraHealthStatus;
+  previousStatus: CameraHealthStatus;
+  state: CameraInternalState;
+  outageDurationMs: number | null;
 }
 
 interface CameraInternalState {
@@ -87,10 +114,18 @@ export class CameraHealthService {
   private cameraStates: Map<string, CameraInternalState> = new Map();
   private unsubscribeCameraDeleted: (() => void) | null = null;
 
+  private readonly resolveSiteNames: (siteIds: string[]) => Promise<Map<string, string>>;
+  private readonly siteDetector = new SiteOutageDetector();
+  /** Camera transitions buffered during a poll cycle, emitted after the site evaluation */
+  private pendingTransitions: PendingTransition[] | null = null;
+  /** Cameras whose offline/degraded alert was attributed to a site outage (camera -> site) */
+  private readonly siteSuppressed = new Map<string, string>();
+
   constructor(deps: CameraHealthDependencies = {}) {
     this.cameraService = deps.cameraService || defaultCameraService;
     this.mediaMtxClient = deps.mediaMtxClient || defaultMediaMtx;
     this.eventBus = deps.eventBus || defaultEventBus;
+    this.resolveSiteNames = deps.resolveSiteNames || defaultResolveSiteNames;
   }
 
   /**
@@ -141,14 +176,7 @@ export class CameraHealthService {
   /**
    * Evaluates camera health across dual planes (TCP + MediaMTX) and updates state machine.
    */
-  async checkCamera(camera: {
-    id: string;
-    name: string;
-    ip?: string | null;
-    port?: number | null;
-    rtspUrl?: string | null;
-    mediaMtxPath: string;
-  }): Promise<CameraHealthTelemetry> {
+  async checkCamera(camera: HealthCheckCamera): Promise<CameraHealthTelemetry> {
     const now = Date.now();
     let state = this.cameraStates.get(camera.id);
 
@@ -343,8 +371,21 @@ export class CameraHealthService {
     newStatus: CameraHealthStatus,
     previousStatus: CameraHealthStatus,
     state: CameraInternalState,
-    outageDurationMs?: number | null
+    outageDurationMs?: number | null,
+    siteOutage?: string
   ): Promise<void> {
+    if (this.pendingTransitions && siteOutage === undefined) {
+      // Inside a poll cycle: decided after the site evaluation (see finishCycle)
+      this.pendingTransitions.push({
+        camera: { id: camera.id, name: camera.name },
+        newStatus,
+        previousStatus,
+        state: { ...state },
+        outageDurationMs: outageDurationMs ?? null,
+      });
+      return;
+    }
+
     const eventType =
       newStatus === 'ONLINE'
         ? 'camera.online'
@@ -367,6 +408,7 @@ export class CameraHealthService {
       outageDurationMs: outageDurationMs ?? null,
       networkCheck: state.networkCheck,
       timestamp: new Date().toISOString(),
+      ...(siteOutage ? { siteOutage } : {}),
     };
 
     await this.eventBus.emitEvent<CameraHealthEventMetadata>({
@@ -427,20 +469,145 @@ export class CameraHealthService {
         }
       }
 
-      await this.runWithConcurrencyLimit(
-        activeCameras,
-        this.MAX_CONCURRENT_CAMERA_CHECKS,
-        async (camera) => {
-          try {
-            await this.checkCamera(camera);
-          } catch {
-            // Individual camera check error does not abort entire batch
+      for (const cameraId of [...this.siteSuppressed.keys()]) {
+        if (!activeIds.has(cameraId)) this.siteSuppressed.delete(cameraId);
+      }
+
+      this.pendingTransitions = [];
+      try {
+        await this.runWithConcurrencyLimit(
+          activeCameras,
+          this.MAX_CONCURRENT_CAMERA_CHECKS,
+          async (camera) => {
+            try {
+              await this.checkCamera(camera);
+            } catch {
+              // Individual camera check error does not abort entire batch
+            }
           }
-        }
-      );
+        );
+      } finally {
+        const pending = this.pendingTransitions;
+        this.pendingTransitions = null;
+        await this.finishCycle(activeCameras, pending);
+      }
     } finally {
       this.isPolling = false;
     }
+  }
+
+  /**
+   * Site outage evaluation at the end of a poll cycle: announces site.offline /
+   * site.online, then emits the cycle's camera transitions. Camera offline/degraded
+   * transitions at a site that is down (or about to be declared down) are tagged
+   * `siteOutage` so alert channels send the one site alert instead. If a suspected
+   * outage turns out to be individual cameras, their alerts are sent then.
+   */
+  private async finishCycle(cameras: HealthCheckCamera[], pending: PendingTransition[]): Promise<void> {
+    const siteOf = new Map(cameras.map((c) => [c.id, c.siteId ?? null]));
+    const samples: SiteCameraSample[] = [];
+    for (const camera of cameras) {
+      const state = this.cameraStates.get(camera.id);
+      if (!state) continue;
+      samples.push({
+        cameraId: camera.id,
+        siteId: camera.siteId ?? null,
+        status: state.status,
+        networkChecked: state.networkCheck !== 'NOT_APPLICABLE',
+        unreachable: state.networkCheck === 'FAILED',
+      });
+    }
+    const siteTransitions = this.siteDetector.evaluate(samples);
+
+    const down = siteTransitions.filter((t) => t.type === 'site.offline');
+    const up = siteTransitions.filter((t) => t.type === 'site.online');
+    const names = await this.siteNames(siteTransitions.map((t) => t.siteId));
+
+    for (const transition of down) {
+      await this.emitSiteEvent(transition, names);
+    }
+
+    const pendingIds = new Set(pending.map((p) => p.camera.id));
+    const nameOf = new Map(cameras.map((c) => [c.id, c.name]));
+
+    // Suspected outage cleared: cameras still failing get their own alert now
+    for (const [cameraId, siteId] of [...this.siteSuppressed.entries()]) {
+      if (this.siteDetector.getState(siteId) !== 'UP') continue;
+      this.siteSuppressed.delete(cameraId);
+      const state = this.cameraStates.get(cameraId);
+      if (pendingIds.has(cameraId) || !state || (state.status !== 'OFFLINE' && state.status !== 'DEGRADED')) continue;
+      await this.emitTransitionEvent(
+        { id: cameraId, name: nameOf.get(cameraId) ?? cameraId },
+        state.status,
+        state.status,
+        state,
+        null,
+        ''
+      );
+    }
+
+    for (const t of pending) {
+      const siteId = siteOf.get(t.camera.id) ?? null;
+      const failing = t.newStatus === 'OFFLINE' || t.newStatus === 'DEGRADED';
+      const attributed = failing && siteId !== null && this.siteDetector.getState(siteId) !== 'UP';
+      if (attributed) {
+        this.siteSuppressed.set(t.camera.id, siteId!);
+      } else {
+        this.siteSuppressed.delete(t.camera.id);
+      }
+      await this.emitTransitionEvent(
+        t.camera,
+        t.newStatus,
+        t.previousStatus,
+        t.state,
+        t.outageDurationMs,
+        attributed ? siteId! : ''
+      );
+    }
+
+    for (const transition of up) {
+      await this.emitSiteEvent(transition, names);
+    }
+  }
+
+  private async siteNames(siteIds: string[]): Promise<Map<string, string>> {
+    if (siteIds.length === 0) return new Map();
+    try {
+      return await this.resolveSiteNames(siteIds);
+    } catch {
+      return new Map();
+    }
+  }
+
+  private async emitSiteEvent(transition: SiteOutageTransition, names: Map<string, string>): Promise<void> {
+    const offline = transition.type === 'site.offline';
+    await this.eventBus.emitEvent({
+      siteId: transition.siteId,
+      type: transition.type,
+      source: 'camera-health.service',
+      severity: offline ? 'critical' : 'info',
+      metadata: {
+        siteId: transition.siteId,
+        siteName: names.get(transition.siteId) ?? 'Unknown site',
+        cameraIds: transition.cameraIds,
+        cameraCount: transition.cameraIds.length,
+        reason: offline
+          ? 'No camera at this site is reachable (site link, VPN or router down)'
+          : 'Site reachable again',
+        outageDurationMs: transition.outageDurationMs,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+
+  /** Link state of a site, as of the last health cycle */
+  getSiteLinkState(siteId: string | null | undefined): SiteLinkState {
+    return this.siteDetector.getState(siteId);
+  }
+
+  /** Sites whose link is currently down */
+  getDownSites(): Array<{ siteId: string; since: string }> {
+    return this.siteDetector.getDownSites();
   }
 
   /**
@@ -554,6 +721,9 @@ export class CameraHealthService {
    */
   reset(): void {
     this.cameraStates.clear();
+    this.siteDetector.reset();
+    this.siteSuppressed.clear();
+    this.pendingTransitions = null;
     this.isPolling = false;
   }
 }

@@ -67,6 +67,7 @@ export class EventBus extends EventEmitter {
       const created = await this.prisma.event.create({
         data: {
           cameraId: input.cameraId ?? null,
+          siteId: input.siteId ?? null,
           timestamp,
           type: input.type,
           source: input.source,
@@ -78,6 +79,7 @@ export class EventBus extends EventEmitter {
       record = {
         id: created.id,
         cameraId: created.cameraId,
+        siteId: created.siteId ?? null,
         timestamp: created.timestamp,
         type: created.type,
         source: created.source,
@@ -90,6 +92,7 @@ export class EventBus extends EventEmitter {
       record = {
         id: `local-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         cameraId: input.cameraId ?? null,
+        siteId: input.siteId ?? null,
         timestamp,
         type: input.type,
         source: input.source,
@@ -157,6 +160,10 @@ export class EventBus extends EventEmitter {
       where.cameraId = filter.cameraId;
     } else if (filter.cameraIds) {
       where.cameraId = { in: filter.cameraIds };
+      if (filter.siteIds?.length) {
+        delete where.cameraId;
+        where.OR = [{ cameraId: { in: filter.cameraIds } }, { siteId: { in: filter.siteIds } }];
+      }
     }
     if (filter.since) {
       where.timestamp = {
@@ -175,6 +182,7 @@ export class EventBus extends EventEmitter {
       return events.map((e) => ({
         id: e.id,
         cameraId: e.cameraId,
+        siteId: e.siteId ?? null,
         timestamp: e.timestamp,
         type: e.type,
         source: e.source,

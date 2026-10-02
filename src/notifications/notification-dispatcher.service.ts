@@ -18,6 +18,7 @@ import {
   UpdateNotificationConfigInput,
   WhatsAppCloudCredentials,
 } from './notification.types.js';
+import { SITE_ALERT_EVENTS, channelWantsEvent, isCoveredBySiteAlert, siteAlertDetails } from './site-alerts.js';
 
 export class MockNotificationDispatcher implements INotificationDispatcher {
   readonly providerName = 'mock';
@@ -424,7 +425,7 @@ export class NotificationService {
 
     await this.getConfig();
 
-    const allowedEvents = ['motion.detected', 'camera.offline', 'camera.degraded', 'camera.tamper'];
+    const allowedEvents = ['motion.detected', 'camera.offline', 'camera.degraded', 'camera.tamper', ...SITE_ALERT_EVENTS];
 
     const unsubscribers = allowedEvents.map((eventType) =>
       this.eventBus.subscribe(eventType, async (event) => {
@@ -459,16 +460,45 @@ export class NotificationService {
     if (!config.enabled) return;
 
     // Filter event against configured events
-    if (!config.events.includes(event.type)) {
+    if (!channelWantsEvent(config.events, event.type) || isCoveredBySiteAlert(event)) {
       return;
     }
 
+    const isSiteEvent = Boolean(event.siteId) && event.type.startsWith('site.');
     const cameraId = event.cameraId || 'system';
-    const rateLimitKey = `${cameraId}:${event.type}`;
+    const rateLimitKey = isSiteEvent ? `site:${event.siteId}:${event.type}` : `${cameraId}:${event.type}`;
 
     const dispatcher = this.getDispatcher(config.provider);
     const rateResult = this.rateLimiter.tryAcquire(rateLimitKey, config.cooldownSeconds);
     if (!rateResult.allowed) {
+      return;
+    }
+
+    if (isSiteEvent) {
+      const site = siteAlertDetails(event);
+      const timestamp = this.formatIstTimestamp(new Date(event.timestamp || Date.now()));
+      let messageText = `${event.type === 'site.offline' ? '🔴' : '🟢'} *VMS ALERT: ${site.title}*\n`;
+      messageText += `• *Site:* ${site.siteName}\n`;
+      messageText += `• *Cameras:* ${site.cameraCount}\n`;
+      if (site.duration) messageText += `• *Down for:* ${site.duration}\n`;
+      messageText += `• *Time:* ${timestamp}\n`;
+      if (event.type === 'site.offline') {
+        messageText += 'No camera at this site is reachable. Check the site router, internet link or VPN.\n';
+      }
+      for (const phone of config.recipientPhones) {
+        try {
+          await dispatcher.send({
+            recipientPhone: phone,
+            eventType: event.type,
+            cameraId: 'system',
+            cameraName: site.siteName,
+            timestamp,
+            messageText,
+          });
+        } catch {
+          // Individual phone delivery error does not abort loop
+        }
+      }
       return;
     }
 

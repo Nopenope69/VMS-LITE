@@ -69,6 +69,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         return 'Vehicle detected';
       case 'camera.offline':
         return 'Camera offline';
+      case 'site.offline':
+        return 'Site unreachable';
+      case 'site.online':
+        return 'Site back online';
       case 'camera.added':
         return 'Camera added';
       case 'camera.online':
@@ -213,6 +217,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             {recentEvents.map((evt) => {
               const camName =
                 evt.metadata?.cameraName ||
+                evt.metadata?.siteName ||
                 cameras.find((c) => c.id === evt.cameraId)?.name ||
                 evt.cameraId ||
                 'Appliance';

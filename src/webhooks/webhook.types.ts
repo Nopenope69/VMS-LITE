@@ -9,6 +9,8 @@ export const ALLOWED_WEBHOOK_EVENTS = [
   'camera.degraded',
   'camera.offline',
   'camera.tamper',
+  'site.offline',
+  'site.online',
 ] as const;
 
 export type AllowedWebhookEvent = (typeof ALLOWED_WEBHOOK_EVENTS)[number];

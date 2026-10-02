@@ -1,6 +1,8 @@
 export interface EventPayload {
   id: string;
   cameraId: string | null;
+  /** Site-level events (site.offline / site.online) */
+  siteId?: string | null;
   timestamp: string;
   type: string;
   source: string;
