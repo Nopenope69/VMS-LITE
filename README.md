@@ -59,6 +59,15 @@ Camera streams are pulled over TCP, so each camera sends one stream over the WAN
 whoever is watching. Add a sub-stream URL when onboarding: multi-camera grids
 use it to save bandwidth for viewers.
 
+Set the sub-stream to **H.264** on the camera. Many cameras default to H.265, which
+records fine but which most browsers cannot play live; the Cameras page flags
+cameras whose live stream is H.265.
+
+Give each site its upload capacity (**Settings → Sites → Uplink Mbps**) to see how
+full its link is: the Overview site cards and the Health page show the video each
+site is sending (main streams, plus sub-streams while someone watches a grid)
+against that capacity, amber from 80% and red from 95%.
+
 Create sites in **Settings → Sites** (the first-boot site name becomes the first
 site), pick the site when adding a camera, and move cameras between sites from
 the **Cameras** page. The site selector in the sidebar filters every page; the
@@ -75,6 +84,20 @@ cameras fail, they are alerted individually as before.
 Operators can be granted a whole site in **Settings → User Accounts**: the grant
 covers every camera at that site, including cameras added later, on top of any
 per-camera grants. Operators only see the sites and cameras they are granted.
+
+## Updating an installed appliance
+
+```bash
+cd /opt/basic-vms              # wherever the appliance was installed
+./deploy/update.sh             # latest version of the installed branch
+./deploy/update.sh --ref v1.2.0   # or a specific tag/branch/commit
+```
+
+It refuses to run over local file changes, dumps the database to `backups/` first,
+updates the code, rebuilds and restarts (database migrations run automatically) and
+waits for the app to report healthy. Recordings are not touched. If the new version
+does not come up, `./deploy/update.sh --rollback` restores the previous code and the
+pre-update database.
 
 ## Backups
 
@@ -110,6 +133,13 @@ npm run dev:mock              # no database: in-memory demo data (not persisted)
 
 npm test                      # unit/integration tests (in-memory Prisma mock)
 npm run typecheck             # server + client
+
+# Browser end-to-end test (CI runs it on every PR): needs ffmpeg, a MediaMTX binary,
+# an empty database and the built app (npm run build && npm run build:client)
+MEDIAMTX_BIN=/path/to/mediamtx DATABASE_URL=postgresql://.../vms_e2e e2e/stack.sh start
+npm run test:e2e              # Google Chrome; or E2E_CHROMIUM_PATH=... E2E_PLAYBACK_DECODE=0
+                              # (start the stack with E2E_CAMERA_CODEC=vp9 for Chromium without H.264)
+e2e/stack.sh stop
 ```
 
 Schema changes: edit `prisma/schema.prisma`, then

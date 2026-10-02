@@ -80,3 +80,66 @@ jobs:
             sbom.json
             third_party/notices/THIRD_PARTY_NOTICES.md
             third_party/licenses/
+
+  e2e:
+    name: Browser end-to-end (login, live view, playback)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vms_user
+          POSTGRES_PASSWORD: vms_password
+          POSTGRES_DB: vms_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vms_user -d vms_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js 22 LTS
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies and build
+        run: |
+          npm ci
+          npx prisma generate
+          npm run build
+          npm run build:client
+
+      - name: Install ffmpeg and MediaMTX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          mkdir -p "$RUNNER_TEMP/mediamtx"
+          curl -fsSL https://github.com/bluenviron/mediamtx/releases/download/v1.11.0/mediamtx_v1.11.0_linux_amd64.tar.gz \
+            | tar -xz -C "$RUNNER_TEMP/mediamtx" mediamtx
+
+      # Google Chrome is preinstalled on the runner; Playwright uses it (channel: chrome)
+      - name: Start the stack (simulated camera, MediaMTX, app)
+        env:
+          MEDIAMTX_BIN: ${{ runner.temp }}/mediamtx/mediamtx
+          DATABASE_URL: postgresql://vms_user:vms_password@localhost:5432/vms_e2e?schema=public
+        run: e2e/stack.sh start
+
+      - name: Run browser test
+        run: npm run test:e2e
+
+      - name: Keep logs and traces of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: e2e-failure
+          path: |
+            test-results/
+            e2e/.run/logs/

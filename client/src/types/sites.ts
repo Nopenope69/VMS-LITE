@@ -7,6 +7,12 @@ export interface SiteSummary {
   notes: string | null;
   cameraCount: number;
   health: { total: number; online: number; degraded: number; offline: number; unknown: number };
+  /** Upload capacity of the site's link to the server, Mbps */
+  uplinkMbps?: number | null;
+  /** Video received from the site's cameras (main + sub-streams), kbps; null until measured */
+  bandwidthKbps?: number | null;
+  /** bandwidthKbps / uplink (0..1+), when the uplink is set */
+  linkUsage?: number | null;
   /** OFFLINE = site link down (no camera reachable) */
   status: 'OFFLINE' | 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN' | 'EMPTY';
 }
@@ -30,3 +36,20 @@ export const SITE_STATUS_STYLE: Record<SiteSummary['status'], { dot: string; tex
   UNKNOWN: { dot: 'bg-zinc-500', text: 'text-zinc-400', label: 'Checking…' },
   EMPTY: { dot: 'bg-zinc-600', text: 'text-zinc-500', label: 'No cameras' },
 };
+
+/** e.g. 850 kbps, 4.2 Mbps */
+export function formatBandwidth(kbps: number): string {
+  return kbps < 1000 ? `${Math.round(kbps)} kbps` : `${(kbps / 1000).toFixed(kbps < 10_000 ? 1 : 0)} Mbps`;
+}
+
+/** Link usage level: amber from 80%, red from 95% of the configured uplink */
+export function linkUsageLevel(usage: number | null | undefined): 'ok' | 'high' | 'saturated' | null {
+  if (usage === null || usage === undefined) return null;
+  return usage >= 0.95 ? 'saturated' : usage >= 0.8 ? 'high' : 'ok';
+}
+
+export const LINK_USAGE_STYLE = {
+  ok: { bar: 'bg-emerald-400', text: 'text-zinc-400' },
+  high: { bar: 'bg-amber-400', text: 'text-amber-400' },
+  saturated: { bar: 'bg-red-500', text: 'text-red-400' },
+} as const;

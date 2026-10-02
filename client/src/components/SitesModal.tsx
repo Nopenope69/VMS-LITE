@@ -13,14 +13,22 @@ export interface SitesModalProps {
 const inputCls =
   'bg-white/[0.04] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50';
 
+/** Empty input clears the uplink; anything else must be a positive number of Mbps */
+function parseUplink(value: string): number | null {
+  const n = Number(value);
+  return value.trim() && Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /** Admin management of sites (locations whose cameras this server pulls). */
 export const SitesModal: React.FC<SitesModalProps> = ({ isOpen, sites, onClose, onChanged }) => {
   const { token } = useAuth();
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
+  const [uplink, setUplink] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editAddress, setEditAddress] = useState('');
+  const [editUplink, setEditUplink] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -43,14 +51,21 @@ export const SitesModal: React.FC<SitesModalProps> = ({ isOpen, sites, onClose, 
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (await call('POST', '/api/sites', { name: name.trim(), address: address.trim() || null })) {
+    if (await call('POST', '/api/sites', { name: name.trim(), address: address.trim() || null, uplinkMbps: parseUplink(uplink) })) {
       setName('');
       setAddress('');
+      setUplink('');
     }
   };
 
   const saveEdit = async (id: string) => {
-    if (await call('PATCH', `/api/sites/${id}`, { name: editName.trim(), address: editAddress.trim() || null })) {
+    if (
+      await call('PATCH', `/api/sites/${id}`, {
+        name: editName.trim(),
+        address: editAddress.trim() || null,
+        uplinkMbps: parseUplink(editUplink),
+      })
+    ) {
       setEditingId(null);
     }
   };
@@ -80,6 +95,16 @@ export const SitesModal: React.FC<SitesModalProps> = ({ isOpen, sites, onClose, 
         <form onSubmit={create} className="flex flex-wrap gap-2 mb-5">
           <input className={`${inputCls} flex-1 min-w-[160px]`} placeholder="Site name (e.g. Noida Branch)" value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} />
           <input className={`${inputCls} flex-1 min-w-[200px]`} placeholder="Address (optional)" value={address} onChange={(e) => setAddress(e.target.value)} maxLength={300} />
+          <input
+            className={`${inputCls} w-[150px]`}
+            placeholder="Uplink Mbps (optional)"
+            title="Upload speed of the site's internet link, to show how full it is"
+            type="number"
+            min="0.1"
+            step="0.1"
+            value={uplink}
+            onChange={(e) => setUplink(e.target.value)}
+          />
           <button type="submit" className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-xs font-semibold flex items-center gap-1.5">
             <Plus className="w-3.5 h-3.5" /> Add site
           </button>
@@ -95,6 +120,16 @@ export const SitesModal: React.FC<SitesModalProps> = ({ isOpen, sites, onClose, 
                 <>
                   <input className={`${inputCls} flex-1`} value={editName} onChange={(e) => setEditName(e.target.value)} />
                   <input className={`${inputCls} flex-1`} value={editAddress} placeholder="Address" onChange={(e) => setEditAddress(e.target.value)} />
+                  <input
+                    className={`${inputCls} w-[110px]`}
+                    aria-label="Uplink Mbps"
+                    placeholder="Uplink Mbps"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={editUplink}
+                    onChange={(e) => setEditUplink(e.target.value)}
+                  />
                   <button type="button" onClick={() => saveEdit(site.id!)} className="p-1.5 text-emerald-400 hover:text-emerald-300" title="Save">
                     <Check className="w-4 h-4" />
                   </button>
@@ -109,6 +144,7 @@ export const SitesModal: React.FC<SitesModalProps> = ({ isOpen, sites, onClose, 
                     <div className="text-[11px] text-zinc-500 truncate">
                       {site.cameraCount} camera{site.cameraCount === 1 ? '' : 's'}
                       {site.address ? ` · ${site.address}` : ''}
+                      {site.uplinkMbps ? ` · ${site.uplinkMbps} Mbps uplink` : ''}
                     </div>
                   </div>
                   <button
@@ -117,6 +153,7 @@ export const SitesModal: React.FC<SitesModalProps> = ({ isOpen, sites, onClose, 
                       setEditingId(site.id);
                       setEditName(site.name);
                       setEditAddress(site.address ?? '');
+                      setEditUplink(site.uplinkMbps ? String(site.uplinkMbps) : '');
                     }}
                     className="p-1.5 text-zinc-400 hover:text-white"
                     title="Rename"

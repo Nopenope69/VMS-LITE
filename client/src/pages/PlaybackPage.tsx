@@ -47,6 +47,8 @@ export interface PlaybackPageProps {
   authToken?: string;
   /** Camera to open first (e.g. "View recordings" from the camera view). */
   initialCameraId?: string;
+  /** Moment to open at (UTC ms), e.g. from an alert e-mail link */
+  initialTimestampMs?: number;
   /** Global site filter: only that site's cameras are offered */
   siteFilter?: string;
   /** Known sites, for grouping timeline lanes and the camera picker */
@@ -368,6 +370,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   apiBaseUrl = '',
   authToken = '',
   initialCameraId,
+  initialTimestampMs,
   siteFilter = ALL_SITES,
   sites = [],
   onNavigateLive,
@@ -393,7 +396,17 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   } = usePlaybackSync();
 
   const [cameras, setCameras] = useState<CameraOption[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>(() => getTodayString());
+  const [selectedDate, setSelectedDate] = useState<string>(() =>
+    getTodayString(initialTimestampMs !== undefined ? new Date(initialTimestampMs) : new Date())
+  );
+
+  // Open at the requested moment once (deep link from an alert)
+  const appliedInitialTimestamp = useRef(false);
+  useEffect(() => {
+    if (appliedInitialTimestamp.current || initialTimestampMs === undefined) return;
+    appliedInitialTimestamp.current = true;
+    seekToTimestamp(initialTimestampMs);
+  }, [initialTimestampMs, seekToTimestamp]);
   const [primaryCameraId, setPrimaryCameraId] = useState<string>('');
   const [timelines, setTimelines] = useState<Record<string, TimelineSpan[]>>({});
   const [bookmarks, setBookmarks] = useState<Record<string, BookmarkItem[]>>({});

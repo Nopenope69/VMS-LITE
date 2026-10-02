@@ -16,6 +16,6 @@
     "jsx": "react-jsx",
     "types": ["node", "vitest/globals"]
   },
-  "include": ["index.ts", "src/**/*", "tests/**/*"],
+  "include": ["index.ts", "src/**/*", "tests/**/*", "e2e/**/*"],
   "exclude": ["node_modules", "dist"]
 }

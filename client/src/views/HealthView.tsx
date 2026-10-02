@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { CameraRecord } from '../App.js';
 import { CameraHealthTelemetry } from '../hooks/useCameraHealth.js';
+import { formatBandwidth, LINK_USAGE_STYLE, linkUsageLevel, SiteSummary } from '../types/sites.js';
+import { codecLabel, codecNotes } from '../utils/codec.js';
 
 export interface HealthViewProps {
   cameras: CameraRecord[];
@@ -24,6 +26,8 @@ export interface HealthViewProps {
   offlineCount: number;
   onRefreshHealth: () => Promise<void>;
   onSelectCamera: (cameraId: string) => void;
+  /** Sites in the current filter, for the link usage table */
+  sites?: SiteSummary[];
 }
 
 interface SystemDashboardData {
@@ -49,6 +53,7 @@ export const HealthView: React.FC<HealthViewProps> = ({
   offlineCount,
   onRefreshHealth,
   onSelectCamera,
+  sites = [],
 }) => {
   const [dashboardData, setDashboardData] = useState<SystemDashboardData | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -197,6 +202,48 @@ export const HealthView: React.FC<HealthViewProps> = ({
 
       <div className="h-px w-full bg-white/[0.07] mb-8" />
 
+      {/* Site links: video each site sends to this server, against its uplink */}
+      {sites.some((s) => s.id && s.cameraCount > 0) && (
+        <div className="space-y-4 mb-8">
+          <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Site Links</h2>
+          <div className="rounded-xl border border-white/[0.06] divide-y divide-white/[0.04]" data-testid="site-links">
+            {sites
+              .filter((s) => s.id && s.cameraCount > 0)
+              .map((site) => {
+                const level = linkUsageLevel(site.linkUsage);
+                const style = level ? LINK_USAGE_STYLE[level] : LINK_USAGE_STYLE.ok;
+                return (
+                  <div key={site.id} className="px-4 py-3 flex items-center gap-4 text-xs">
+                    <div className="w-40 truncate text-white font-medium">{site.name}</div>
+                    <div className="w-24 font-mono text-zinc-300 tabular-nums">
+                      {site.bandwidthKbps !== null && site.bandwidthKbps !== undefined
+                        ? formatBandwidth(site.bandwidthKbps)
+                        : '—'}
+                    </div>
+                    <div className="flex-1">
+                      {site.uplinkMbps ? (
+                        <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                          <div
+                            className={`h-full ${style.bar}`}
+                            style={{ width: `${Math.min(100, (site.linkUsage ?? 0) * 100)}%` }}
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-zinc-600">Set the uplink in Settings → Sites to see usage</span>
+                      )}
+                    </div>
+                    <div className={`w-36 text-right font-mono text-[11px] ${style.text}`}>
+                      {site.uplinkMbps
+                        ? `${Math.round((site.linkUsage ?? 0) * 100)}% of ${site.uplinkMbps} Mbps${level === 'saturated' ? ' · full' : ''}`
+                        : ''}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
       {/* Camera Fleet Connectivity Table */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -265,6 +312,22 @@ export const HealthView: React.FC<HealthViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-6">
+                      {/* Stream bitrate and codec */}
+                      {telemetry?.bitrateKbps !== null && telemetry?.bitrateKbps !== undefined && (
+                        <div className="hidden sm:block text-right">
+                          <div
+                            className={`text-xs font-mono tabular-nums ${
+                              codecNotes(telemetry).length ? 'text-amber-400' : 'text-zinc-400'
+                            }`}
+                            title={codecNotes(telemetry)[0]}
+                          >
+                            {formatBandwidth(telemetry.bitrateKbps + (telemetry.subBitrateKbps ?? 0))}
+                          </div>
+                          <div className="text-[10px] text-zinc-600 font-mono">
+                            {telemetry.videoCodec ? codecLabel(telemetry.videoCodec) : 'bitrate'}
+                          </div>
+                        </div>
+                      )}
                       {/* Latency & Bitrate if available */}
                       {telemetry?.latencyMs !== null && telemetry?.latencyMs !== undefined && (
                         <div className="hidden sm:block text-right">

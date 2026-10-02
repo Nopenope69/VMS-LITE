@@ -12,6 +12,8 @@ export const SiteInputSchema = z.object({
   address: z.string().trim().max(300).optional().nullable(),
   timezone: z.string().trim().max(64).optional().nullable(),
   notes: z.string().trim().max(1000).optional().nullable(),
+  /** Upload capacity of the site's link to this server, in Mbps */
+  uplinkMbps: z.number().positive().max(100_000).optional().nullable(),
 });
 export const SiteUpdateSchema = SiteInputSchema.partial();
 export type SiteInput = z.infer<typeof SiteInputSchema>;
@@ -32,6 +34,11 @@ export interface SiteSummaryDto {
   notes: string | null;
   cameraCount: number;
   health: SiteHealthCounts;
+  uplinkMbps: number | null;
+  /** Video the server is receiving from the site's cameras (main + sub-streams); null until measured */
+  bandwidthKbps: number | null;
+  /** bandwidthKbps / uplink capacity (0..1+), when the uplink is set */
+  linkUsage: number | null;
   /** OFFLINE = the site link is down (no camera reachable); otherwise the worst camera state */
   status: 'OFFLINE' | 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN' | 'EMPTY';
 }
@@ -96,8 +103,13 @@ export class SiteService {
 
   private summarize(site: any, cameraIds: string[]): SiteSummaryDto {
     const health: SiteHealthCounts = { total: cameraIds.length, online: 0, degraded: 0, offline: 0, unknown: 0 };
+    let bandwidthKbps: number | null = null;
     for (const id of cameraIds) {
-      const status = this.health.getTelemetry(id)?.status ?? 'UNKNOWN';
+      const telemetry = this.health.getTelemetry(id);
+      for (const kbps of [telemetry?.bitrateKbps, telemetry?.subBitrateKbps]) {
+        if (typeof kbps === 'number') bandwidthKbps = (bandwidthKbps ?? 0) + kbps;
+      }
+      const status = telemetry?.status ?? 'UNKNOWN';
       if (status === 'ONLINE') health.online++;
       else if (status === 'DEGRADED') health.degraded++;
       else if (status === 'OFFLINE') health.offline++;
@@ -125,6 +137,10 @@ export class SiteService {
       cameraCount: cameraIds.length,
       health,
       status,
+      uplinkMbps: site.uplinkMbps ?? null,
+      bandwidthKbps,
+      linkUsage:
+        bandwidthKbps !== null && site.uplinkMbps ? Math.round((bandwidthKbps / (site.uplinkMbps * 1000)) * 100) / 100 : null,
     };
   }
 

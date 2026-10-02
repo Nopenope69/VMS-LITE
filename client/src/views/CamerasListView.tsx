@@ -15,6 +15,7 @@ import {
 import { CameraRecord } from '../App.js';
 import { CameraHealthTelemetry } from '../hooks/useCameraHealth.js';
 import { SITE_STATUS_STYLE, SiteSummary, UNASSIGNED_SITE } from '../types/sites.js';
+import { codecLabel, codecNotes } from '../utils/codec.js';
 
 const HEALTH_BADGE: Record<string, { label: string; dot: string; text: string }> = {
   ONLINE: { label: 'Online', dot: 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]', text: 'text-emerald-400' },
@@ -154,6 +155,7 @@ export const CamerasListView: React.FC<CamerasListViewProps> = ({
           {groupCameras.map((camera) => {
             const telemetry = healthMap[camera.id];
             const badge = HEALTH_BADGE[telemetry?.status ?? 'UNKNOWN'] ?? HEALTH_BADGE.UNKNOWN;
+            const notes = codecNotes(telemetry);
 
             return (
               <div
@@ -191,6 +193,12 @@ export const CamerasListView: React.FC<CamerasListViewProps> = ({
                     {telemetry?.latencyMs && (
                       <span>Latency: {telemetry.latencyMs}ms</span>
                     )}
+                    {telemetry?.videoCodec && (
+                      <span>
+                        {codecLabel(telemetry.videoCodec)}
+                        {telemetry.subVideoCodec ? ` / sub ${codecLabel(telemetry.subVideoCodec)}` : ''}
+                      </span>
+                    )}
                   </div>
                   {isAdmin && onMoveCamera && assignableSites.length > 0 && (
                     <select
@@ -208,6 +216,16 @@ export const CamerasListView: React.FC<CamerasListViewProps> = ({
                     </select>
                   )}
                 </div>
+
+                {notes.map((note) => (
+                  <div
+                    key={note}
+                    role="note"
+                    className="mt-3 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-[11px] leading-relaxed text-amber-300"
+                  >
+                    {note}
+                  </div>
+                ))}
 
                 {/* Bottom Row: Actions */}
                 <div className="mt-4 pt-3 flex items-center justify-between">
