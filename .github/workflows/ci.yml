@@ -45,13 +45,14 @@ jobs:
       - name: Typecheck server and web client
         run: npm run typecheck
 
-      - name: Run automated test suite
-        run: npm test
-
       - name: Build server and web client
         run: |
           npm run build
           npm run build:client
+
+      # After the build: production-serving tests exercise the built client
+      - name: Run automated test suite
+        run: npm test
 
       - name: Apply migrations to PostgreSQL and check for schema drift
         env:
