@@ -25,6 +25,26 @@ Open `http://<appliance-ip>:3000` and sign in as `admin` / `admin123` (or
 Ports: `3000/tcp` (UI, API, authenticated video proxy) and `8189/udp` (WebRTC media).
 Everything else listens on localhost. Database migrations run automatically on start.
 
+### HTTPS
+
+Use HTTPS whenever the server is reached over the internet: without it, passwords
+and video cross the network unencrypted. Pass a domain to the installer:
+
+```bash
+# Public certificate from Let's Encrypt (the domain must resolve to this server,
+# ports 80 and 443 reachable from the internet)
+HTTPS_DOMAIN=vms.example.com HTTPS_EMAIL=ops@example.com ./deploy/install.sh
+
+# LAN / VPN-only install: certificate from Caddy's internal CA (browsers warn
+# until that CA is trusted)
+HTTPS_DOMAIN=192.168.1.50 ./deploy/install.sh
+```
+
+This starts Caddy (`deploy/Caddyfile`) on ports 443 and 80 (redirect) and keeps the
+app on localhost, so port 3000 is no longer reachable from the network. WebRTC media
+still uses `8189/udp` and is encrypted on its own. To switch an existing install,
+add the settings listed under "HTTPS" in `.env.example` and run `docker compose up -d`.
+
 ## Multiple sites
 
 One VMS-Lite server records and shows cameras from many locations. Each site's
@@ -55,6 +75,16 @@ cameras fail, they are alerted individually as before.
 Operators can be granted a whole site in **Settings → User Accounts**: the grant
 covers every camera at that site, including cameras added later, on top of any
 per-camera grants. Operators only see the sites and cameras they are granted.
+
+## Backups
+
+The server backs up its configuration (sites, cameras, users, permissions,
+schedules; not recordings) once a day and keeps the last 14 in the `basic_vms_data`
+volume. Admins list and download them with `GET /api/system/backups`, take one on
+demand with `POST /api/system/backup`, and restore with `POST /api/system/restore`.
+Copy backups off the appliance regularly: they protect against a broken database
+or a bad change, not against losing the disk. They contain password hashes and
+camera credentials, so store them securely.
 
 ## Licensing (vendor)
 

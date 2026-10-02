@@ -64,7 +64,9 @@ describe('Camera Health Telemetry & Diagnostics (Phase 12 - Plan 01 - EXT-06)', 
         }),
         connect: vi.fn(),
       };
-      vi.spyOn(net, 'Socket').mockImplementation(() => mockSocket as any);
+      vi.spyOn(net, 'Socket').mockImplementation(function () {
+        return mockSocket as any;
+      });
 
       const res = await service.pingTcp('192.168.1.100', 554, 2000);
       expect(res.error).toBeUndefined();

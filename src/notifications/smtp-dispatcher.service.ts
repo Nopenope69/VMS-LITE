@@ -2,7 +2,7 @@
  * Built-in SMTP Email Alerting Dispatcher Service (MVP-12)
  *
  * In-process, zero-cloud incident email dispatcher subscribing to EventBus.
- * Formats responsive HTML email alerts with IST timestamps and playback deep-links.
+ * Formats responsive HTML email alerts with local timestamps and playback deep-links.
  * Protected with TokenBucketRateLimiter to prevent mailbox flooding.
  */
 
@@ -12,6 +12,7 @@ import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
 import { TokenBucketRateLimiter, tokenBucketRateLimiter as defaultLimiter } from './token-bucket-rate-limiter.js';
 import { ISmtpTransport, MockSmtpTransport, NodeSocketSmtpClient, SmtpSendResult } from './smtp-client.js';
 import { SITE_ALERT_EVENTS, channelWantsEvent, isCoveredBySiteAlert, siteAlertDetails } from './site-alerts.js';
+import { formatLocalTimestamp } from '../system/time-format.js';
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '')
@@ -175,19 +176,9 @@ export class SmtpDispatcherService {
     return this.getConfig();
   }
 
-  formatIstTimestamp(date: Date = new Date()): string {
-    return (
-      new Intl.DateTimeFormat('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      }).format(date) + ' IST'
-    );
+  /** Alert time in the appliance timezone (TZ), with the zone shown */
+  formatLocalTimestamp(date: Date = new Date()): string {
+    return formatLocalTimestamp(date);
   }
 
   generateHtmlAlert(
@@ -197,7 +188,7 @@ export class SmtpDispatcherService {
     timestampIso: string,
     metadata?: any
   ): { subject: string; html: string } {
-    const istTime = this.formatIstTimestamp(new Date(timestampIso));
+    const localTime = this.formatLocalTimestamp(new Date(timestampIso));
     const baseUrl = (process.env.PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
     const isSiteEvent = eventType.startsWith('site.');
     const actionUrl = isSiteEvent
@@ -228,7 +219,7 @@ export class SmtpDispatcherService {
       subjectPrefix = '⚠️ Storage Pool Warning';
     }
 
-    const subject = `[Basic VMS] ${subjectPrefix} (${istTime})`;
+    const subject = `[Basic VMS] ${subjectPrefix} (${localTime})`;
 
     const html = `
 <!DOCTYPE html>
@@ -265,7 +256,7 @@ export class SmtpDispatcherService {
           </tr>
           <tr>
             <td style="padding: 6px 0; color: #94a3b8; font-weight: 500;">Timestamp:</td>
-            <td style="padding: 6px 0; color: #f1f5f9; font-weight: 600;">${istTime}</td>
+            <td style="padding: 6px 0; color: #f1f5f9; font-weight: 600;">${localTime}</td>
           </tr>
           ${
             metadata?.zoneName
@@ -331,8 +322,8 @@ export class SmtpDispatcherService {
       };
     }
 
-    const istTime = this.formatIstTimestamp();
-    const subject = `[Basic VMS] Test Email Notification (${istTime})`;
+    const localTime = this.formatLocalTimestamp();
+    const subject = `[Basic VMS] Test Email Notification (${localTime})`;
     const html = `
 <!DOCTYPE html>
 <html>
@@ -340,7 +331,7 @@ export class SmtpDispatcherService {
   <div style="max-width: 500px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 8px; border: 1px solid #334155;">
     <h2 style="color: #10b981; margin-top: 0;">✓ Basic VMS Email Dispatch Test</h2>
     <p>Your SMTP mail configuration is active and successfully authenticated.</p>
-    <p style="font-size: 13px; color: #94a3b8;">Sent on: <strong>${istTime}</strong></p>
+    <p style="font-size: 13px; color: #94a3b8;">Sent on: <strong>${localTime}</strong></p>
     <p style="font-size: 12px; color: #64748b;">Node Host: ${this.config.host}:${this.config.port}</p>
   </div>
 </body>

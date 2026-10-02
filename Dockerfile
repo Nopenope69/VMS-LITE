@@ -3,7 +3,7 @@
 # ----------------------------------------------------
 # Stage 1: build server + web client
 # ----------------------------------------------------
-FROM node:20-bookworm-slim AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ RUN npx prisma generate \
 # ----------------------------------------------------
 # Stage 2: runtime
 # ----------------------------------------------------
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 
 # ffmpeg: clip export; curl: healthcheck; openssl: Prisma; tzdata: schedule timezone (TZ)
 RUN apt-get update \
@@ -40,7 +40,8 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     RECORDINGS_PATH=/recordings \
     EXPORTS_PATH=/app/data/exports \
-    SNAPSHOTS_PATH=/app/data/snapshots
+    SNAPSHOTS_PATH=/app/data/snapshots \
+    BACKUPS_PATH=/app/data/backups
 
 WORKDIR /app
 
@@ -50,7 +51,7 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/client/dist ./client/dist
 
-RUN mkdir -p /recordings /app/data/exports /app/data/snapshots \
+RUN mkdir -p /recordings /app/data/exports /app/data/snapshots /app/data/backups \
   && chown -R node:node /recordings /app/data
 
 USER node

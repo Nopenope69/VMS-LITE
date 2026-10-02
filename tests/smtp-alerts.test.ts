@@ -56,8 +56,10 @@ describe('Built-in SMTP Email Alerting Subsystem (Phase 19 - Plan 01 - MVP-12)',
     expect(updated.hasPassword).toBe(true);
   });
 
-  it('formats high-contrast HTML email with IST timestamp, incident badge, and timeline playback deep link', () => {
+  it('formats high-contrast HTML email with local timestamp, incident badge, and timeline playback deep link', () => {
     const timestampIso = '2026-09-27T03:30:00.000Z';
+    const previousTz = process.env.TZ;
+    process.env.TZ = 'Asia/Kolkata';
     const alert = service.generateHtmlAlert(
       'motion.detected',
       'Warehouse Gate Camera',
@@ -68,7 +70,9 @@ describe('Built-in SMTP Email Alerting Subsystem (Phase 19 - Plan 01 - MVP-12)',
 
     expect(alert.subject).toContain('[Basic VMS]');
     expect(alert.subject).toContain('Motion Alert: Warehouse Gate Camera');
-    expect(alert.subject).toContain('IST');
+    expect(alert.subject).toContain('27 Sept 2026, 09:00:00 IST');
+    if (previousTz === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTz;
 
     // Verify HTML contents
     expect(alert.html).toContain('MOTION DETECTED');

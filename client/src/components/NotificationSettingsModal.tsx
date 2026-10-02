@@ -442,7 +442,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
                 <div>
                   <div className="text-sm font-semibold text-slate-200">Enable SMTP Email Alerting</div>
                   <div className="text-xs text-slate-400">
-                    Dispatches formatted incident emails with IST timestamps and playback links
+                    Dispatches formatted incident emails with local timestamps and playback links
                   </div>
                 </div>
                 <input

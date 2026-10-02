@@ -103,7 +103,7 @@ describe('WhatsApp Alerts & Outbound Webhooks (Phase 12 - Plan 02 - EXT-07, EXT-
   });
 
   describe('2. WhatsApp Alert Formatting & Signed Snapshot Delivery', () => {
-    it('formats IST timestamps and structured alert message with signed snapshot URL', () => {
+    it('formats local timestamps and structured alert message with signed snapshot URL', () => {
       const service = new NotificationService();
       const signedUrl = service.generateSignedSnapshotUrl('cam-101', 'https://vms.example.com');
 
@@ -111,8 +111,14 @@ describe('WhatsApp Alerts & Outbound Webhooks (Phase 12 - Plan 02 - EXT-07, EXT-
       expect(signedUrl).toContain('expires=');
       expect(signedUrl).toContain('sig=');
 
-      const istTime = service.formatIstTimestamp(new Date('2026-09-25T08:15:22.000Z'));
-      expect(istTime).toContain('IST');
+      const previousTz = process.env.TZ;
+      process.env.TZ = 'Asia/Kolkata';
+      const istTime = service.formatLocalTimestamp(new Date('2026-09-25T08:15:22.000Z'));
+      expect(istTime).toBe('25 Sept 2026, 13:45:22 IST');
+      process.env.TZ = 'Asia/Dubai';
+      expect(service.formatLocalTimestamp(new Date('2026-09-25T08:15:22.000Z'))).toBe('25 Sept 2026, 12:15:22 GST');
+      if (previousTz === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTz;
 
       const message = service.formatAlertMessage('motion.detected', 'Front Porch', istTime, signedUrl);
       expect(message).toContain('*VMS ALERT: Motion Detected*');

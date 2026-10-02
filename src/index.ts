@@ -23,6 +23,11 @@ async function main() {
     console.log('[Basic VMS] Created initial admin account "admin". Change the password at first login.');
   }
 
+  // The timezone picked in the first-boot wizard wins over the TZ default from .env
+  const { setupService } = await import('./system/setup.service.js');
+  await setupService.applyStoredTimeZone();
+  console.log(`[Basic VMS] Timezone: ${process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone}`);
+
   const app = await createServer();
   await app.listen({ port, host });
   console.log(`[Basic VMS] Control plane listening at http://${host}:${port}`);

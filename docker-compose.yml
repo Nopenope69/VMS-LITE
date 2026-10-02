@@ -5,11 +5,14 @@
 #     candidates and lets ONVIF WS-Discovery multicast reach cameras.
 #   - Exposed: 3000/tcp (UI, API, authenticated media proxy) and 8189/udp (WebRTC
 #     media); 3478 + relay ports if the optional TURN profile is enabled.
+#   - With the https profile, Caddy serves 443/tcp (and 80/tcp, redirecting) and
+#     the app listens on localhost only (APP_HOST=127.0.0.1).
 #   - Everything else (MediaMTX API/HLS/WHEP/playback/RTSP, PostgreSQL) listens
 #     on localhost only.
 #
 # Configure via .env (see .env.example). Start: docker compose up -d
 # With TURN for remote viewers behind strict NAT: docker compose --profile turn up -d
+# With HTTPS: set HTTPS_DOMAIN (+ HTTPS_TLS) and COMPOSE_PROFILES=https in .env
 
 x-recordings: &recordings
   type: volume
@@ -66,7 +69,10 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=${PORT:-3000}
-      - HOST=0.0.0.0
+      # 127.0.0.1 behind the HTTPS front end, so plain HTTP is not reachable from outside
+      - HOST=${APP_HOST:-0.0.0.0}
+      # true: trust X-Forwarded-* from a proxy on this host (the https profile)
+      - TRUST_PROXY=${TRUST_PROXY:-}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-vms_user}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${POSTGRES_DB:-basic_vms}?schema=public
       # Optional: a generated secret is persisted in the database when unset
       - JWT_SECRET=${JWT_SECRET:-}
@@ -90,6 +96,28 @@ services:
         condition: service_healthy
       mediamtx:
         condition: service_started
+    restart: unless-stopped
+
+  # Optional HTTPS front end (Let's Encrypt or an internal CA), see deploy/Caddyfile.
+  caddy:
+    image: caddy:2.8.4-alpine
+    profiles: ["https"]
+    network_mode: host
+    environment:
+      - HTTPS_DOMAIN=${HTTPS_DOMAIN:-}
+      - HTTPS_TLS=${HTTPS_TLS:-internal}
+      - PORT=${PORT:-3000}
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        test -n "$$HTTPS_DOMAIN" || { echo 'HTTPS_DOMAIN must be set in .env'; exit 1; };
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - vms_caddy_data:/data
+      - vms_caddy_config:/config
+    depends_on:
+      - app
     restart: unless-stopped
 
   # Optional STUN/TURN relay for remote viewers behind symmetric NAT / CGNAT.
@@ -117,3 +145,7 @@ volumes:
     name: basic_vms_recordings
   vms_data:
     name: basic_vms_data
+  vms_caddy_data:
+    name: basic_vms_caddy_data
+  vms_caddy_config:
+    name: basic_vms_caddy_config

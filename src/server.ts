@@ -43,6 +43,7 @@ import { resolveJwtSecret } from './users/jwt-secret.js';
 import { isSessionValid } from './users/session.js';
 import type { UserTokenPayload } from './users/rbac.guard.js';
 import { recordingEngine as defaultRecordingEngine, RecordingEngine } from './recordings/recording-engine.js';
+import { backupScheduler } from './system/backup-scheduler.js';
 
 let eventRetentionTimer: NodeJS.Timeout | null = null;
 
@@ -64,6 +65,19 @@ function stopEventRetention(): void {
   }
 }
 
+/**
+ * TRUST_PROXY: "true" trusts X-Forwarded-* only from a proxy on this host (the https
+ * profile's Caddy). Trusting every hop would let any client pick its own IP and
+ * sidestep the per-IP login throttle when the app port is reachable directly.
+ * Any other non-empty value is a comma-separated list of proxy IPs/CIDRs.
+ */
+export function trustProxySetting(value: string | undefined): false | string {
+  const setting = (value ?? '').trim();
+  if (!setting || setting === 'false') return false;
+  if (setting === 'true') return '127.0.0.1,::1';
+  return setting;
+}
+
 export interface ServerOptions {
   logger?: boolean;
   jwtSecret?: string;
@@ -77,7 +91,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   const app = fastify({
     logger: opts.logger ?? (process.env.NODE_ENV !== 'test'),
     // Behind Caddy/nginx: take the client IP from X-Forwarded-For (audit logs)
-    trustProxy: process.env.TRUST_PROXY === 'true',
+    trustProxy: trustProxySetting(process.env.TRUST_PROXY),
   });
 
   const wsFeed = opts.wsFeedService || webSocketFeedService;
@@ -216,6 +230,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
     await webhookDispatcherService.start();
     await smtpDispatcherService.start();
     startEventRetention();
+    if (process.env.NODE_ENV !== 'test') backupScheduler.start();
     await storageTelemetryService.start();
     wsFeed.attach(app.server, async (token: string) => {
       const payload = app.jwt.verify<UserTokenPayload>(token);
@@ -229,6 +244,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   // Clean up on server close
   app.addHook('onClose', async () => {
     stopEventRetention();
+    backupScheduler.stop();
     storageTelemetryService.stop();
     notificationService.stop();
     webhookDispatcherService.stop();

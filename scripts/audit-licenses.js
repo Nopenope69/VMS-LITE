@@ -118,6 +118,8 @@ function runAudit() {
   // Generate release inventory and notices (DEP-03)
   const licensesDir = path.join(rootDir, 'third_party', 'licenses');
   const noticesDir = path.join(rootDir, 'third_party', 'notices');
+  // Rebuilt from scratch so packages that left the dependency tree drop out
+  fs.rmSync(licensesDir, { recursive: true, force: true });
   fs.mkdirSync(licensesDir, { recursive: true });
   fs.mkdirSync(noticesDir, { recursive: true });
 

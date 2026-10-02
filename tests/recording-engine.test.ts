@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { EventBus } from '../src/events/event-bus.js';
 import { TestClock } from '../src/recordings/clock.js';
 import { RecordingEngine, RecordingEngineOptions } from '../src/recordings/recording-engine.js';
@@ -10,9 +10,9 @@ describe('RecordingEngine Architecture Tests', () => {
   let mediaMtx: MediaMtxClient;
   let eventBus: EventBus;
   let clock: TestClock;
-  let mockUnlink: ReturnType<typeof vi.fn>;
-  let mockStat: ReturnType<typeof vi.fn>;
-  let mockStatfs: ReturnType<typeof vi.fn>;
+  let mockUnlink: Mock<(filePath: string) => Promise<void>>;
+  let mockStat: Mock<(filePath: string) => Promise<{ size: number }>>;
+  let mockStatfs: Mock<(dirPath: string) => Promise<{ bsize: number | bigint; blocks: number | bigint; bfree: number | bigint }>>;
 
   const defaultBsize = 4096n;
   // 100 GB total

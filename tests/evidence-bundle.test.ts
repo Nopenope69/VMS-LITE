@@ -139,7 +139,7 @@ describe('Self-Verifying Evidence Export Package (Phase 20 - Plan 01 - MVP-13)',
     const audit = {
       exportId: 'exp-test-verify',
       generatedAt: new Date().toISOString(),
-      generatedAtIst: '27 Sep 2026, 07:30:00 IST',
+      generatedAtLocal: '27 Sep 2026, 07:30:00 IST',
       nodeVersion: 'Basic VMS v0.1.0',
       systemPlatform: 'darwin arm64',
       requestIp: '192.168.1.55',
