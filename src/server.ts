@@ -43,6 +43,7 @@ import { resolveJwtSecret } from './users/jwt-secret.js';
 import { isSessionValid } from './users/session.js';
 import type { UserTokenPayload } from './users/rbac.guard.js';
 import { recordingEngine as defaultRecordingEngine, RecordingEngine } from './recordings/recording-engine.js';
+import { backupScheduler } from './system/backup-scheduler.js';
 
 let eventRetentionTimer: NodeJS.Timeout | null = null;
 
@@ -229,6 +230,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
     await webhookDispatcherService.start();
     await smtpDispatcherService.start();
     startEventRetention();
+    if (process.env.NODE_ENV !== 'test') backupScheduler.start();
     await storageTelemetryService.start();
     wsFeed.attach(app.server, async (token: string) => {
       const payload = app.jwt.verify<UserTokenPayload>(token);
@@ -242,6 +244,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   // Clean up on server close
   app.addHook('onClose', async () => {
     stopEventRetention();
+    backupScheduler.stop();
     storageTelemetryService.stop();
     notificationService.stop();
     webhookDispatcherService.stop();

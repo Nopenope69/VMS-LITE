@@ -76,6 +76,16 @@ Operators can be granted a whole site in **Settings → User Accounts**: the gra
 covers every camera at that site, including cameras added later, on top of any
 per-camera grants. Operators only see the sites and cameras they are granted.
 
+## Backups
+
+The server backs up its configuration (sites, cameras, users, permissions,
+schedules; not recordings) once a day and keeps the last 14 in the `basic_vms_data`
+volume. Admins list and download them with `GET /api/system/backups`, take one on
+demand with `POST /api/system/backup`, and restore with `POST /api/system/restore`.
+Copy backups off the appliance regularly: they protect against a broken database
+or a bad change, not against losing the disk. They contain password hashes and
+camera credentials, so store them securely.
+
 ## Licensing (vendor)
 
 ```bash

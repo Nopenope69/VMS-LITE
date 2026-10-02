@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { createBackup, restoreBackup, RestoreMode } from './backup.service.js';
 import { prisma as defaultPrisma } from '../db/prisma.js';
+import { backupScheduler } from './backup-scheduler.js';
 
 export const backupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   // Support binary body uploads for restore
@@ -30,6 +31,35 @@ export const backupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply
         .header('Content-Type', 'application/gzip')
         .header('Content-Disposition', `attachment; filename="${filename}"`)
+        .header('Content-Length', archive.length)
+        .send(archive);
+    },
+  );
+
+  /**
+   * GET /api/system/backups
+   * Admin-only. Automatic daily backups kept on the appliance, newest first.
+   */
+  app.get('/backups', { preHandler: [authenticate, requireRole('ADMIN')] }, async () => {
+    const backups = await backupScheduler.list();
+    return { backups, count: backups.length };
+  });
+
+  /**
+   * GET /api/system/backups/:name
+   * Admin-only. Downloads one automatic backup archive.
+   */
+  app.get<{ Params: { name: string } }>(
+    '/backups/:name',
+    { preHandler: [authenticate, requireRole('ADMIN')] },
+    async (request, reply) => {
+      const archive = await backupScheduler.read(request.params.name);
+      if (!archive) {
+        return reply.status(404).send({ error: 'NotFound', message: 'Backup not found' });
+      }
+      return reply
+        .header('Content-Type', 'application/gzip')
+        .header('Content-Disposition', `attachment; filename="${request.params.name}"`)
         .header('Content-Length', archive.length)
         .send(archive);
     },
