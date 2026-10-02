@@ -62,26 +62,21 @@ Match the surrounding code's comment density; no model identifiers in commits.
 
 Merged into `main`: PR #1 (architecture fixes, multi-site, site permissions, site
 lanes), PR #2 (site-unreachable alert), PR #3 (Fastify 5, HTTPS, local alert
-times, Node 22, daily backups, dev advisories).
-
-On branch `claude/loving-carson-e8xm34`, pushed, **no PR yet**:
-- H.265 warnings + per-site link bandwidth (migration 0007 `sites.uplink_mbps`)
-- Browser end-to-end CI job + fix for the alert e-mail playback link
-- `deploy/update.sh`
+times, Node 22, daily backups, dev advisories), PR #4 (H.265 warnings, per-site
+link bandwidth, browser end-to-end CI job incl. recorded playback in Chrome,
+alert e-mail playback link fix, session-cache revocation race fix, `deploy/update.sh`).
+Both CI jobs (unit/typecheck/migrations/licenses, browser end-to-end) passed on PR #4's final commit.
 
 ## Next steps
 
-1. Open the PR for the branch above and watch CI: the e2e job's recorded-playback
-   decode check has only run with a Chromium that cannot play MP4, so its first
-   real run is in CI (Google Chrome on the GitHub runner).
-2. Owner's hardware pilot (planned 2026-10-03): real cameras, real VPN to a branch,
+1. Owner's hardware pilot (planned 2026-10-03): real cameras, real VPN to a branch,
    a week of recording, `deploy/install.sh` with HTTPS, then try `deploy/update.sh`.
    Fix whatever it finds. Advice given: set each camera's sub-stream to H.264 and
    enter each site's uplink speed.
-3. Owner generates the license key pair; embed the public key in `vendor-key.ts`.
-4. Not yet tested: full `docker compose up` on an x86 Linux appliance (host
+2. Owner generates the license key pair; embed the public key in `vendor-key.ts`.
+3. Not yet tested: full `docker compose up` on an x86 Linux appliance (host
    networking, Caddy container). `docker compose build` was verified on the owner's
    Apple Silicon Mac.
-5. Ideas not started: alert when a site link is saturated; per-site timezone in
+4. Ideas not started: alert when a site link is saturated; per-site timezone in
    alerts (sites have a `timezone` field, unused); check whether a live tile showing
    "No signal" recovers by itself when the camera comes back (not verified).
