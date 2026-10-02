@@ -16,3 +16,6 @@ data/
 e2e/.run/
 test-results/
 playwright-report/
+
+# Database dumps taken by deploy/update.sh
+backups/

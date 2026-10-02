@@ -85,6 +85,20 @@ Operators can be granted a whole site in **Settings → User Accounts**: the gra
 covers every camera at that site, including cameras added later, on top of any
 per-camera grants. Operators only see the sites and cameras they are granted.
 
+## Updating an installed appliance
+
+```bash
+cd /opt/basic-vms              # wherever the appliance was installed
+./deploy/update.sh             # latest version of the installed branch
+./deploy/update.sh --ref v1.2.0   # or a specific tag/branch/commit
+```
+
+It refuses to run over local file changes, dumps the database to `backups/` first,
+updates the code, rebuilds and restarts (database migrations run automatically) and
+waits for the app to report healthy. Recordings are not touched. If the new version
+does not come up, `./deploy/update.sh --rollback` restores the previous code and the
+pre-update database.
+
 ## Backups
 
 The server backs up its configuration (sites, cameras, users, permissions,
