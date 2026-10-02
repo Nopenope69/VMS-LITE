@@ -12,6 +12,9 @@ import {
 } from 'lucide-react';
 import { CameraRecord } from '../App.js';
 import { EventPayload } from '../utils/events-ws-client.js';
+import { CameraHealthTelemetry } from '../hooks/useCameraHealth.js';
+import { SiteHealthCards } from '../components/SiteHealthCards.js';
+import { SiteSummary } from '../types/sites.js';
 
 export interface OverviewViewProps {
   cameras: CameraRecord[];
@@ -20,6 +23,10 @@ export interface OverviewViewProps {
   offlineCount: number;
   onNavigate: (view: 'live' | 'cameras' | 'events' | 'recordings' | 'health') => void;
   onSelectCamera: (cameraId: string) => void;
+  healthMap?: Record<string, CameraHealthTelemetry>;
+  sites?: SiteSummary[];
+  siteFilter?: string;
+  onSelectSite?: (siteFilter: string) => void;
 }
 
 export const OverviewView: React.FC<OverviewViewProps> = ({
@@ -29,6 +36,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   offlineCount,
   onNavigate,
   onSelectCamera,
+  healthMap = {},
+  sites = [],
+  siteFilter,
+  onSelectSite,
 }) => {
   // Determine greeting based on current local hour
   const currentHour = new Date().getHours();
@@ -58,6 +69,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         return 'Vehicle detected';
       case 'camera.offline':
         return 'Camera offline';
+      case 'camera.added':
+        return 'Camera added';
       case 'camera.online':
         return 'Camera online';
       case 'recording.started':
@@ -113,6 +126,25 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
       {/* Thin Line Divider */}
       <div className="w-full h-px bg-white/[0.07] my-6" />
 
+      {/* Per-site health (multi-site installs) */}
+      {sites.length > 1 && onSelectSite && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Sites</h2>
+            {siteFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => onSelectSite('all')}
+                className="text-xs text-zinc-400 hover:text-white transition-colors"
+              >
+                Show all sites
+              </button>
+            )}
+          </div>
+          <SiteHealthCards sites={sites} selectedSite={siteFilter} onSelectSite={onSelectSite} />
+        </div>
+      )}
+
       {/* Camera Live Glance Grid */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
@@ -129,7 +161,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {cameras.slice(0, 4).map((cam) => {
-            const isOnline = cam.status === 'ONLINE' || !cam.status;
+            const isOnline = healthMap[cam.id]?.status === 'ONLINE';
             return (
               <div
                 key={cam.id}

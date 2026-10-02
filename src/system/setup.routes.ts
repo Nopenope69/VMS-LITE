@@ -1,6 +1,8 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { setupService } from './setup.service.js';
+import { AuthService } from '../users/auth.service.js';
+import { setMediaCookie } from '../media/media-proxy.routes.js';
 
 export const setupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
@@ -37,7 +39,13 @@ export const setupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     async (request, reply) => {
       try {
         const body = (request.body || {}) as any;
-        const result = await setupService.completeSetup(body, (request as any).user?.id);
+        const { user, ...result } = await setupService.completeSetup(body, (request as any).user?.id);
+        if (user) {
+          // The password change revoked existing sessions; hand the installer a new token
+          const token = app.jwt.sign(new AuthService().tokenClaims(user));
+          setMediaCookie(request, reply, token);
+          return reply.send({ ...result, token, user: { id: user.id, username: user.username, role: user.role } });
+        }
         return reply.send(result);
       } catch (err: any) {
         return reply.status(400).send({

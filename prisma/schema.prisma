@@ -35,10 +35,13 @@ model User {
   username     String   @unique
   passwordHash String
   role         Role     @default(VIEWER)
+  /// Bumped to invalidate every token issued to this user (role/password change, sign-out everywhere)
+  tokenVersion Int      @default(0) @map("token_version")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   cameraPermissions CameraPermission[]
+  sitePermissions   SitePermission[]
   bookmarks         Bookmark[]
   exportJobs        ExportJob[]
 
@@ -61,9 +64,50 @@ model Event {
   @@map("events")
 }
 
+/// A physical location (branch, warehouse, home...) whose cameras are pulled by this
+/// central server over the LAN, a VPN or port-forwarded RTSP.
+model Site {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  address   String?
+  /// IANA timezone of the location, for display (e.g. Asia/Kolkata)
+  timezone  String?
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  cameras     Camera[]
+  permissions SitePermission[]
+
+  @@map("sites")
+}
+
+/// Operator grant covering every camera at a site, including cameras added later.
+/// Effective camera rights = camera grant OR the grant of the camera's site.
+model SitePermission {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  siteId          String   @map("site_id")
+  site            Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  canViewLive     Boolean  @default(true)  @map("can_view_live")
+  canViewPlayback Boolean  @default(true)  @map("can_view_playback")
+  canControlPtz   Boolean  @default(false) @map("can_control_ptz")
+  canExportClips  Boolean  @default(false) @map("can_export_clips")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, siteId])
+  @@index([siteId])
+  @@map("site_permissions")
+}
+
 model Camera {
   id              String   @id @default(uuid())
   name            String
+  /// Null = not assigned to a site yet
+  siteId          String?  @map("site_id")
+  site            Site?    @relation(fields: [siteId], references: [id], onDelete: Restrict)
   ip              String?
   port            Int?     @default(554)
   username        String?
@@ -91,6 +135,7 @@ model Camera {
   motionZones       MotionZone[]
 
   @@index([status])
+  @@index([siteId])
   @@map("cameras")
 }
 
@@ -120,7 +165,7 @@ model Recording {
   cameraId     String   @map("camera_id")
   camera       Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
   mediaMtxPath String   @map("mediamtx_path")
-  filePath     String   @map("file_path")
+  filePath     String   @unique @map("file_path")
   fileName     String   @map("file_name")
   startTime    DateTime @map("start_time")
   endTime      DateTime @map("end_time")
@@ -268,3 +313,13 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+
+// Durable appliance-level configuration (operational settings, setup state,
+// generated secrets). Values are JSON so new keys need no migration.
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}

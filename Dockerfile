@@ -1,70 +1,64 @@
 # syntax=docker/dockerfile:1
 
 # ----------------------------------------------------
-# Stage 1: Build stage
+# Stage 1: build server + web client
 # ----------------------------------------------------
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
-# Install build prerequisites (including python/make for native modules if required)
-RUN apk add --no-cache python3 make g++
+# Toolchain for native modules (bcrypt) and OpenSSL for Prisma engines
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
-# Copy package manifests and prisma schema
 COPY package*.json ./
 COPY prisma ./prisma/
+RUN npm ci
 
-# Install all dependencies (including devDependencies for build)
-RUN npm install
-
-# Generate Prisma client
-RUN npx prisma generate
-
-# Copy application sources
-COPY tsconfig.json ./
+COPY tsconfig.json tsconfig.build.json index.ts ./
 COPY src ./src/
 COPY client ./client/
 
-# Build backend and client TypeScript
-RUN npm run build
-RUN npx tsc -p client/tsconfig.json --noEmit
+RUN npx prisma generate \
+  && npm run build \
+  && npm run build:client \
+  && npm prune --omit=dev
 
 # ----------------------------------------------------
-# Stage 2: Production runtime stage
+# Stage 2: runtime
 # ----------------------------------------------------
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
+
+# ffmpeg: clip export; curl: healthcheck; openssl: Prisma; tzdata: schedule timezone (TZ)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg curl openssl ca-certificates tzdata \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV NODE_ENV=production \
+    PORT=3000 \
+    HOST=0.0.0.0 \
+    RECORDINGS_PATH=/recordings \
+    EXPORTS_PATH=/app/data/exports \
+    SNAPSHOTS_PATH=/app/data/snapshots
 
 WORKDIR /app
 
-# Add curl for container health checks
-RUN apk add --no-cache curl
-
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV HOST=0.0.0.0
-
-# Copy package manifests and prisma schema
-COPY package*.json ./
-COPY prisma ./prisma/
-
-# Install production dependencies only
-RUN npm install --omit=dev
-
-# Generate Prisma client in production runtime
-RUN npx prisma generate
-
-# Copy built artifacts from builder stage
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/client ./client
+COPY --from=builder /app/client/dist ./client/dist
 
-# Create directories for recordings and data with node user ownership
-RUN mkdir -p /recordings /app/data && chown -R node:node /app /recordings
+RUN mkdir -p /recordings /app/data/exports /app/data/snapshots \
+  && chown -R node:node /recordings /app/data
 
 USER node
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
 
-CMD ["node", "dist/index.js"]
+# Apply pending database migrations, then start the control plane
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && exec node dist/index.js"]

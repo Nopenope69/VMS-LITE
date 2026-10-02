@@ -7,6 +7,7 @@ export interface IceServerConfig {
 export interface CameraStreamInfo {
   cameraId: string;
   name: string;
+  siteId?: string | null;
   mediaMtxPath: string;
   subStreamPath?: string | null;
   whepUrl: string;

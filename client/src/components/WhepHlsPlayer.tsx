@@ -11,6 +11,20 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { connectWhep, WhepSession } from '../utils/whep-client.js';
+import {
+  FAILURE_COPY,
+  StreamFailure,
+  classifyError,
+  classifyHttpFailure,
+  classifyMediaElementError,
+} from '../utils/stream-errors.js';
+import type HlsType from 'hls.js';
+
+/** Most specific explanation wins (a codec or permission problem explains a later HLS failure). */
+function pickFailure(a: StreamFailure | null, b: StreamFailure): StreamFailure {
+  const rank = { unsupported_codec: 4, forbidden: 3, no_stream: 2, unreachable: 1, unknown: 0 } as const;
+  return a && rank[a.kind] >= rank[b.kind] ? a : b;
+}
 import { captureVideoSnapshot } from '../utils/snapshot.js';
 
 export interface WhepHlsPlayerProps {
@@ -67,7 +81,14 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
     const [mode, setMode] = useState<'webrtc' | 'hls'>('webrtc');
     const [status, setStatus] = useState<'connecting' | 'connected' | 'fallback' | 'error'>('connecting');
     const [isMuted, setIsMuted] = useState<boolean>(true);
-    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [failure, setFailure] = useState<StreamFailure | null>(null);
+    const whepFailureRef = useRef<StreamFailure | null>(null);
+    const hlsRef = useRef<{ 0: HlsType | null; 1: HlsType | null }>({ 0: null, 1: null });
+
+    const destroyHls = (layer: 0 | 1) => {
+      hlsRef.current[layer]?.destroy();
+      hlsRef.current[layer] = null;
+    };
 
     // Client-side Digital Zoom (1.0x to 4.0x) & Pan (MVP-10)
     const [zoomScale, setZoomScale] = useState<number>(1.0);
@@ -91,6 +112,7 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
     const cleanSession = useCallback((layer: 0 | 1) => {
       isTearingDownRef.current[layer] = true;
       layerLoadIdRef.current[layer] = ++loadSequenceRef.current;
+      destroyHls(layer);
 
       if (layer === 0) {
         if (sessionRef0.current) {
@@ -185,8 +207,64 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
         videoEl.addEventListener('playing', handlePlaying);
         videoEl.addEventListener('loadeddata', handlePlaying);
 
-        videoEl.src = targetHlsUrl;
-        videoEl.play().catch(() => {});
+        const isCurrent = () => isMountedRef.current && layerLoadIdRef.current[layer] === currentLoadId;
+        const fail = (f: StreamFailure) => {
+          if (!isCurrent()) return;
+          console.warn(`[WhepHlsPlayer] HLS failed on layer ${layer}: ${f.kind}${f.detail ? ` (${f.detail})` : ''}`);
+          destroyHls(layer);
+          setStatus('error');
+          setFailure(pickFailure(whepFailureRef.current, f));
+        };
+
+        destroyHls(layer);
+        (async () => {
+          // Pre-check the playlist so HTTP problems (no stream, no permission) are not
+          // misreported later as decode errors by the media element
+          try {
+            const res = await fetch(targetHlsUrl, { credentials: 'same-origin' });
+            if (!res.ok) {
+              fail(classifyHttpFailure(res.status, await res.text().catch(() => '')));
+              return;
+            }
+          } catch (err) {
+            fail(classifyError(err));
+            return;
+          }
+          if (!isCurrent()) return;
+
+          if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+            // Safari / iOS / some Android browsers play HLS natively
+            videoEl.src = targetHlsUrl;
+            videoEl.play().catch(() => {});
+            return;
+          }
+
+          // Elsewhere (desktop Chrome, Firefox, Edge) use hls.js via MSE, loaded on demand
+          const { default: Hls } = await import('hls.js');
+          if (!isCurrent()) return;
+          if (!Hls.isSupported()) {
+            fail({ kind: 'unknown', detail: 'This browser supports neither WebRTC playback nor HLS' });
+            return;
+          }
+          const hls = new Hls({ lowLatencyMode: true, backBufferLength: 30 });
+          hlsRef.current[layer] = hls;
+          hls.on(Hls.Events.ERROR, (_event, data) => {
+            if (!data.fatal) return;
+            const code = (data.response as { code?: number } | undefined)?.code;
+            if (code) {
+              fail(classifyHttpFailure(code));
+            } else if (/codec|incompatible/i.test(data.details)) {
+              fail({ kind: 'unsupported_codec', detail: data.details });
+            } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              fail({ kind: 'unreachable', detail: data.details });
+            } else {
+              fail({ kind: 'unknown', detail: data.details });
+            }
+          });
+          hls.loadSource(targetHlsUrl);
+          hls.attachMedia(videoEl);
+          videoEl.play().catch(() => {});
+        })();
       },
       [cleanSession, onModeChange, updateForwardedRef]
     );
@@ -222,7 +300,9 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
         if (isInitial) {
           setStatus('connecting');
         }
-        setErrorMessage(null);
+        setFailure(null);
+        whepFailureRef.current = null;
+        destroyHls(layer);
 
         const videoEl = layer === 0 ? videoRef0.current : videoRef1.current;
         if (!videoEl) return;
@@ -297,6 +377,7 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
           videoEl.addEventListener('loadeddata', handlePlaying);
         } catch (err: any) {
           if (!isMountedRef.current || layerLoadIdRef.current[layer] !== loadId) return;
+          whepFailureRef.current = classifyError(err);
           console.warn(`[WhepHlsPlayer] WebRTC WHEP connection failed on layer ${layer}, falling back to HLS:`, err.message);
           loadHlsIntoLayer(layer, targetHlsUrl, isInitial, loadId);
         }
@@ -318,13 +399,14 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
         if (layerMode === 'webrtc') {
           // Attempt fallback to HLS for this layer
           loadHlsIntoLayer(layer, hlsUrl, false);
-        } else {
-          // HLS failed or already in HLS mode: Fail Loud!
+        } else if (!hlsRef.current[layer]) {
+          // Native HLS playback failed (hls.js reports its own errors)
+          const videoEl = layer === 0 ? videoRef0.current : videoRef1.current;
           setStatus('error');
-          setErrorMessage(`Unable to load video stream (${cameraName})`);
+          setFailure(pickFailure(whepFailureRef.current, classifyMediaElementError(videoEl?.error?.code)));
         }
       },
-      [hlsUrl, cameraName, loadHlsIntoLayer]
+      [hlsUrl, loadHlsIntoLayer]
     );
 
     // Initial load and URL changes with cross-fade
@@ -619,8 +701,13 @@ export const WhepHlsPlayer = forwardRef<HTMLVideoElement, WhepHlsPlayerProps>(
         {status === 'error' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#090d16]/95 border border-red-900/50 z-20 text-slate-100 p-4 text-center">
             <AlertTriangle className="w-10 h-10 text-[#fb923c] mb-2" />
-            <span className="text-sm font-bold text-slate-100 tracking-wide">NO SIGNAL - CAMERA OFFLINE</span>
-            <span className="text-xs text-slate-400 mt-1 max-w-xs">{errorMessage || 'Check camera network cable or PoE switch power'}</span>
+            <span className="text-sm font-bold text-slate-100 tracking-wide">
+              {FAILURE_COPY[failure?.kind ?? 'unknown'].title}
+            </span>
+            <span className="text-xs text-slate-400 mt-1 max-w-xs">
+              {FAILURE_COPY[failure?.kind ?? 'unknown'].hint}
+            </span>
+            <span className="text-[10px] text-slate-500 mt-1 font-mono">{cameraName}</span>
             <button
               type="button"
               onClick={handleReconnect}

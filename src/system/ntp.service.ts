@@ -89,7 +89,7 @@ function formatSystemTime(timeUSec: string | null): string {
  */
 export async function getNtpStatus(): Promise<NtpStatus> {
   try {
-    const { stdout } = await execFileAsync('timedatectl', ['show', '--no-pager']);
+    const { stdout } = await execFileAsync('timedatectl', ['show', '--no-pager'], { timeout: 3000 });
     const parsed = parseTimedatectlOutput(stdout);
 
     return {
@@ -99,15 +99,15 @@ export async function getNtpStatus(): Promise<NtpStatus> {
       systemTimeUtc: formatSystemTime(parsed.timeUSec),
     };
   } catch (err: any) {
-    // Graceful fallback: timedatectl not found (macOS, containers without systemd)
-    if (err?.code === 'ENOENT') {
-      return {
-        available: false,
-        reason: 'timedatectl not found on this system',
-      };
-    }
-
-    // All other errors are genuine failures — fail loud
-    throw new Error(`Failed to query NTP status: ${err.message ?? err}`);
+    // NTP status is informational. timedatectl is missing on macOS and in most
+    // containers, and fails without a systemd bus; report unavailable instead of
+    // failing the dashboard / handoff report.
+    return {
+      available: false,
+      reason:
+        err?.code === 'ENOENT'
+          ? 'timedatectl not found on this system'
+          : `timedatectl unavailable: ${String(err?.message ?? err).split('\n')[0]}`,
+    };
   }
 }

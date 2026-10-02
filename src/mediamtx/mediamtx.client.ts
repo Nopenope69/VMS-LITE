@@ -5,6 +5,22 @@ import {
   MediaMtxPathsListResponse,
 } from './mediamtx.types.js';
 
+export class MediaMtxUnavailableError extends Error {
+  public readonly code = 'MEDIAMTX_UNAVAILABLE';
+  constructor(message: string) {
+    super(message);
+    this.name = 'MediaMtxUnavailableError';
+  }
+}
+
+/**
+ * Thin client for the MediaMTX v3 control API.
+ *
+ * Network failures surface as MediaMtxUnavailableError. The in-memory path table is
+ * only used in explicit mock mode (unit tests); it is never a fallback for a down
+ * media server, because reporting success there hides real outages (cameras looked
+ * "online" and onboarding "succeeded" with MediaMTX stopped).
+ */
 export class MediaMtxClient {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
@@ -26,7 +42,6 @@ export class MediaMtxClient {
       throw new Error('RTSP URL must be a non-empty string');
     }
 
-    // Validate schema
     const protoMatch = rawUrl.match(/^(rtsps?:\/\/)/);
     if (!protoMatch) {
       throw new Error('Invalid RTSP scheme; must start with rtsp:// or rtsps://');
@@ -35,15 +50,14 @@ export class MediaMtxClient {
     const proto = protoMatch[1];
     const rest = rawUrl.slice(proto.length);
 
-    // In URLs, the last '@' before the host/path separator separates credentials from host
-    // (first find the path separator '/', if any)
+    // The last '@' before the first path separator splits credentials from host
     const slashIndex = rest.indexOf('/');
     const authority = slashIndex === -1 ? rest : rest.slice(0, slashIndex);
     const pathAndQuery = slashIndex === -1 ? '' : rest.slice(slashIndex);
 
     const atIndex = authority.lastIndexOf('@');
     if (atIndex === -1) {
-      return rawUrl; // No user credentials
+      return rawUrl;
     }
 
     const userInfo = authority.slice(0, atIndex);
@@ -58,15 +72,15 @@ export class MediaMtxClient {
       pass = userInfo.slice(firstColon + 1);
     }
 
-    const encodedUser = encodeURIComponent(decodeURIComponent(user));
-    const encodedPass = pass !== undefined ? encodeURIComponent(decodeURIComponent(pass)) : undefined;
+    const encodedUser = encodeURIComponent(safeDecode(user));
+    const encodedPass = pass !== undefined ? encodeURIComponent(safeDecode(pass)) : undefined;
 
     const creds = encodedPass !== undefined ? `${encodedUser}:${encodedPass}@` : `${encodedUser}@`;
     return `${proto}${creds}${hostPort}${pathAndQuery}`;
   }
 
   /**
-   * Sets or updates path configuration in MediaMTX via addPath.
+   * Sets or updates path configuration in MediaMTX.
    */
   async setPath(
     name: string,
@@ -76,7 +90,7 @@ export class MediaMtxClient {
   }
 
   /**
-   * Dynamically adds or configures a stream path in MediaMTX via POST /v3/config/paths/add/{name}
+   * Adds a path (POST /v3/config/paths/add/{name}); replaces it if it already exists.
    */
   async addPath(
     name: string,
@@ -84,13 +98,10 @@ export class MediaMtxClient {
     opts: Partial<MediaMtxPathConfig> = {}
   ): Promise<boolean> {
     const cleanName = encodeURIComponent(name.trim());
-    const sanitizedSource = this.sanitizeRtspUrl(rtspSource.trim());
-
     const config: MediaMtxPathConfig = {
-      source: sanitizedSource,
-      sourceOnDemand: opts.sourceOnDemand ?? false,
-      maxReaders: opts.maxReaders ?? 0,
+      sourceOnDemand: false,
       ...opts,
+      source: this.sanitizeRtspUrl(rtspSource.trim()),
     };
 
     if (this.mockMode) {
@@ -98,37 +109,15 @@ export class MediaMtxClient {
       return true;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const response = await fetch(`${this.baseUrl}/v3/config/paths/add/${cleanName}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(config),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      if (response.status === 200 || response.status === 201) {
-        return true;
-      }
-
-      // If already exists, update/patch
-      if (response.status === 400 || response.status === 409) {
-        return this.replacePath(cleanName, config);
-      }
-
-      return false;
-    } catch (err) {
-      clearTimeout(timeout);
-      // Fall back in mock mode if server unreachable
-      this.mockPaths.set(cleanName, config);
+    const response = await this.request('POST', `/v3/config/paths/add/${cleanName}`, config);
+    if (response.ok) {
       return true;
     }
+    // Path already exists: replace its configuration
+    if (response.status === 400 || response.status === 409) {
+      return this.replacePath(name, config);
+    }
+    throw new Error(`MediaMTX rejected path ${name}: HTTP ${response.status} ${await safeText(response)}`);
   }
 
   /**
@@ -142,24 +131,11 @@ export class MediaMtxClient {
       return true;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const response = await fetch(`${this.baseUrl}/v3/config/paths/replace/${cleanName}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-      return response.status === 200 || response.status === 201;
-    } catch (err) {
-      clearTimeout(timeout);
-      this.mockPaths.set(cleanName, config);
-      return true;
+    const response = await this.request('POST', `/v3/config/paths/replace/${cleanName}`, config);
+    if (!response.ok) {
+      throw new Error(`MediaMTX failed to replace path ${name}: HTTP ${response.status} ${await safeText(response)}`);
     }
+    return true;
   }
 
   /**
@@ -174,29 +150,15 @@ export class MediaMtxClient {
       return true;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const response = await fetch(`${this.baseUrl}/v3/config/paths/patch/${cleanName}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-      return response.status === 200 || response.status === 201;
-    } catch (err) {
-      clearTimeout(timeout);
-      const existing = this.mockPaths.get(cleanName) || { source: '' };
-      this.mockPaths.set(cleanName, { ...existing, ...patch });
-      return true;
+    const response = await this.request('PATCH', `/v3/config/paths/patch/${cleanName}`, patch);
+    if (!response.ok) {
+      throw new Error(`MediaMTX failed to patch path ${name}: HTTP ${response.status} ${await safeText(response)}`);
     }
+    return true;
   }
 
   /**
-   * Removes a stream path from MediaMTX via DELETE /v3/config/paths/delete/{name}
+   * Removes a path via DELETE /v3/config/paths/delete/{name}. Missing paths count as removed.
    */
   async removePath(name: string): Promise<boolean> {
     const cleanName = encodeURIComponent(name.trim());
@@ -206,70 +168,40 @@ export class MediaMtxClient {
       return true;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const response = await fetch(`${this.baseUrl}/v3/config/paths/delete/${cleanName}`, {
-        method: 'DELETE',
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-      // 200 OK or 404 Not Found both mean path is no longer present
-      return response.status === 200 || response.status === 404;
-    } catch (err) {
-      clearTimeout(timeout);
-      this.mockPaths.delete(cleanName);
+    const response = await this.request('DELETE', `/v3/config/paths/delete/${cleanName}`);
+    if (response.ok || response.status === 404) {
       return true;
     }
+    throw new Error(`MediaMTX failed to remove path ${name}: HTTP ${response.status}`);
   }
 
   /**
-   * Retrieves path configuration and stream status via GET /v3/config/paths/get/{name}
+   * Retrieves a path's configuration via GET /v3/config/paths/get/{name}; null if absent.
    */
   async getPath(name: string): Promise<MediaMtxPathInfo | null> {
     const cleanName = encodeURIComponent(name.trim());
 
     if (this.mockMode) {
       const conf = this.mockPaths.get(cleanName);
-      if (!conf) return null;
-      return {
-        name: cleanName,
-        conf,
-        ready: true,
-      };
+      return conf ? { name: cleanName, conf, ready: true } : null;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const response = await fetch(`${this.baseUrl}/v3/config/paths/get/${cleanName}`, {
-        method: 'GET',
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-      if (response.status === 404) {
-        return null;
-      }
-      if (response.ok) {
-        return (await response.json()) as MediaMtxPathInfo;
-      }
-      return null;
-    } catch (err) {
-      clearTimeout(timeout);
-      const conf = this.mockPaths.get(cleanName);
-      if (conf) {
-        return { name: cleanName, conf, ready: true };
-      }
+    const response = await this.request('GET', `/v3/config/paths/get/${cleanName}`);
+    if (response.status === 404) {
       return null;
     }
+    if (!response.ok) {
+      throw new Error(`MediaMTX failed to read path ${name}: HTTP ${response.status}`);
+    }
+    // The config endpoint returns the bare path configuration
+    const conf = (await response.json()) as MediaMtxPathConfig;
+    const runtime = await this.getPathRuntime(name).catch(() => null);
+    return { name: cleanName, conf, ready: runtime?.ready ?? false };
   }
 
   /**
-   * Retrieves runtime path status and byte counters via GET /v3/paths/get/{name} (EXT-06)
+   * Retrieves runtime path status and byte counters via GET /v3/paths/get/{name}.
+   * Returns null when the path has no runtime state (not configured / no source).
    */
   async getPathRuntime(name: string): Promise<{ ready: boolean; bytesReceived: number } | null> {
     const cleanName = encodeURIComponent(name.trim());
@@ -277,80 +209,71 @@ export class MediaMtxClient {
     if (this.mockMode) {
       const conf = this.mockPaths.get(cleanName);
       if (!conf) return null;
-      const now = Date.now();
-      const bytes = Math.floor(now * 125); // simulated ~1 Mbps in bytes
-      return {
-        ready: true,
-        bytesReceived: bytes,
-      };
+      return { ready: true, bytesReceived: Math.floor(Date.now() * 125) }; // ~1 Mbps
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const response = await fetch(`${this.baseUrl}/v3/paths/get/${cleanName}`, {
-        method: 'GET',
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-      if (response.status === 404) {
-        return null;
-      }
-      if (response.ok) {
-        const data = (await response.json()) as any;
-        return {
-          ready: Boolean(data.ready),
-          bytesReceived: Number(data.bytesReceived || 0),
-        };
-      }
-      return null;
-    } catch {
-      clearTimeout(timeout);
-      const conf = this.mockPaths.get(cleanName);
-      if (conf) {
-        return { ready: true, bytesReceived: 1000000 };
-      }
+    const response = await this.request('GET', `/v3/paths/get/${cleanName}`);
+    if (response.status === 404) {
       return null;
     }
+    if (!response.ok) {
+      throw new Error(`MediaMTX failed to read runtime for ${name}: HTTP ${response.status}`);
+    }
+    const data = (await response.json()) as any;
+    return {
+      ready: Boolean(data.ready),
+      bytesReceived: Number(data.bytesReceived || 0),
+    };
   }
 
   /**
-   * Lists all configured paths via GET /v3/config/paths/list
+   * Lists configured paths via GET /v3/config/paths/list
    */
   async listPaths(): Promise<MediaMtxPathInfo[]> {
     if (this.mockMode) {
-      const items: MediaMtxPathInfo[] = [];
-      for (const [name, conf] of this.mockPaths.entries()) {
-        items.push({ name, conf, ready: true });
-      }
-      return items;
+      return Array.from(this.mockPaths.entries()).map(([name, conf]) => ({ name, conf, ready: true }));
     }
 
+    const response = await this.request('GET', '/v3/config/paths/list?itemsPerPage=1000');
+    if (!response.ok) {
+      throw new Error(`MediaMTX failed to list paths: HTTP ${response.status}`);
+    }
+    const data = (await response.json()) as MediaMtxPathsListResponse & { items: any[] };
+    return (data.items || []).map((item: any) => ({ name: item.name, conf: item, ready: undefined }));
+  }
+
+  private async request(method: string, urlPath: string, body?: unknown): Promise<Response> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
     try {
-      const response = await fetch(`${this.baseUrl}/v3/config/paths/list`, {
-        method: 'GET',
+      return await fetch(`${this.baseUrl}${urlPath}`, {
+        method,
+        headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
-
-      clearTimeout(timeout);
-      if (response.ok) {
-        const data = (await response.json()) as MediaMtxPathsListResponse;
-        return data.items || [];
-      }
-      return [];
     } catch (err) {
+      const reason = (err as Error).name === 'AbortError' ? `timed out after ${this.timeoutMs}ms` : (err as Error).message;
+      throw new MediaMtxUnavailableError(`MediaMTX API at ${this.baseUrl} unreachable: ${reason}`);
+    } finally {
       clearTimeout(timeout);
-      return Array.from(this.mockPaths.entries()).map(([name, conf]) => ({
-        name,
-        conf,
-        ready: true,
-      }));
     }
+  }
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value; // Contains a literal '%' that is not an escape sequence
+  }
+}
+
+async function safeText(response: Response): Promise<string> {
+  try {
+    return (await response.text()).slice(0, 200);
+  } catch {
+    return '';
   }
 }
 

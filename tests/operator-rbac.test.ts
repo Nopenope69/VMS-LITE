@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { Role } from '@prisma/client';
 import { createServer } from '../src/server.js';
 import { prisma } from '../src/db/prisma.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Operator Role & Camera ACL RBAC (Phase 8)', () => {
   let app: FastifyInstance;
@@ -18,19 +19,19 @@ describe('Operator Role & Camera ACL RBAC (Phase 8)', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    operatorToken = app.jwt.sign({
+    operatorToken = await signAs(app, {
       id: testOperatorId,
       username: 'guard1',
       role: Role.OPERATOR,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-uuid',
       username: 'viewer1',
       role: Role.VIEWER,

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
 import { Role } from '@prisma/client';
+import { signAs } from './helpers/auth.js';
 
 describe('System Overview Landing Dashboard API (Phase 18 - Plan 02 - MVP-11)', () => {
   let app: FastifyInstance;
@@ -12,13 +13,13 @@ describe('System Overview Landing Dashboard API (Phase 18 - Plan 02 - MVP-11)', 
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-uuid',
       username: 'viewer',
       role: Role.VIEWER,

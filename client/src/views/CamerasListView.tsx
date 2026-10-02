@@ -14,6 +14,14 @@ import {
 } from 'lucide-react';
 import { CameraRecord } from '../App.js';
 import { CameraHealthTelemetry } from '../hooks/useCameraHealth.js';
+import { SITE_STATUS_STYLE, SiteSummary, UNASSIGNED_SITE } from '../types/sites.js';
+
+const HEALTH_BADGE: Record<string, { label: string; dot: string; text: string }> = {
+  ONLINE: { label: 'Online', dot: 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]', text: 'text-emerald-400' },
+  DEGRADED: { label: 'Degraded', dot: 'bg-amber-400', text: 'text-amber-400' },
+  OFFLINE: { label: 'Offline', dot: 'bg-red-500', text: 'text-red-400' },
+  UNKNOWN: { label: 'Checking…', dot: 'bg-zinc-600', text: 'text-zinc-500' },
+};
 
 export interface CamerasListViewProps {
   cameras: CameraRecord[];
@@ -22,6 +30,10 @@ export interface CamerasListViewProps {
   onSelectCamera: (cameraId: string) => void;
   onOpenAddCamera: () => void;
   onOpenMotionZones: (camera: CameraRecord) => void;
+  sites?: SiteSummary[];
+  /** Group cards under site headings (when all sites are shown) */
+  groupBySite?: boolean;
+  onMoveCamera?: (cameraId: string, siteId: string | null) => void;
 }
 
 export const CamerasListView: React.FC<CamerasListViewProps> = ({
@@ -31,7 +43,11 @@ export const CamerasListView: React.FC<CamerasListViewProps> = ({
   onSelectCamera,
   onOpenAddCamera,
   onOpenMotionZones,
+  sites = [],
+  groupBySite = false,
+  onMoveCamera,
 }) => {
+  const assignableSites = sites.filter((site) => site.id !== null);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const filteredCameras = useMemo(() => {
@@ -44,6 +60,17 @@ export const CamerasListView: React.FC<CamerasListViewProps> = ({
         (c.manufacturer && c.manufacturer.toLowerCase().includes(q))
     );
   }, [cameras, searchQuery]);
+
+  // Ordered groups: sites in API order, unassigned last
+  const groups = useMemo(() => {
+    if (!groupBySite || sites.length === 0) return [{ site: null as SiteSummary | null, cameras: filteredCameras }];
+    return sites
+      .map((site) => ({
+        site,
+        cameras: filteredCameras.filter((c) => (c.siteId ?? null) === site.id),
+      }))
+      .filter((g) => g.cameras.length > 0);
+  }, [groupBySite, sites, filteredCameras]);
 
   return (
     <div className="flex-1 w-full max-w-5xl mx-auto px-6 py-8 md:py-10 flex flex-col font-sans select-none overflow-y-auto">
@@ -108,10 +135,25 @@ export const CamerasListView: React.FC<CamerasListViewProps> = ({
           )}
         </div>
       ) : (
+        <div className="space-y-8">
+          {groups.map(({ site, cameras: groupCameras }) => (
+            <div key={site ? site.id ?? UNASSIGNED_SITE : 'all'}>
+              {site && (
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className={`text-xs font-semibold uppercase tracking-wider ${site.id ? 'text-zinc-300' : 'text-zinc-500 italic'}`}>
+                    {site.name}
+                    {site.address && <span className="ml-2 normal-case tracking-normal font-normal text-zinc-500">{site.address}</span>}
+                  </h2>
+                  <span className={`flex items-center gap-1.5 text-[11px] ${SITE_STATUS_STYLE[site.status].text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${SITE_STATUS_STYLE[site.status].dot}`} />
+                    {site.health.online}/{site.cameraCount} online
+                  </span>
+                </div>
+              )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredCameras.map((camera) => {
+          {groupCameras.map((camera) => {
             const telemetry = healthMap[camera.id];
-            const isOnline = telemetry ? telemetry.status === 'ONLINE' : camera.status === 'ONLINE';
+            const badge = HEALTH_BADGE[telemetry?.status ?? 'UNKNOWN'] ?? HEALTH_BADGE.UNKNOWN;
 
             return (
               <div
@@ -137,16 +179,8 @@ export const CamerasListView: React.FC<CamerasListViewProps> = ({
 
                   {/* Online Badge */}
                   <div className="flex items-center gap-1.5 text-[11px] font-medium">
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        isOnline
-                          ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]'
-                          : 'bg-zinc-600'
-                      }`}
-                    />
-                    <span className={isOnline ? 'text-emerald-400' : 'text-zinc-500'}>
-                      {isOnline ? 'Online' : 'Offline'}
-                    </span>
+                    <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} title={telemetry?.reason} />
+                    <span className={badge.text}>{badge.label}</span>
                   </div>
                 </div>
 
@@ -158,6 +192,21 @@ export const CamerasListView: React.FC<CamerasListViewProps> = ({
                       <span>Latency: {telemetry.latencyMs}ms</span>
                     )}
                   </div>
+                  {isAdmin && onMoveCamera && assignableSites.length > 0 && (
+                    <select
+                      aria-label="Site"
+                      value={camera.siteId ?? ''}
+                      onChange={(e) => onMoveCamera(camera.id, e.target.value || null)}
+                      className="bg-zinc-900 border border-white/10 rounded-md text-[11px] text-zinc-300 py-0.5 pl-2 pr-7"
+                    >
+                      <option value="">No site</option>
+                      {assignableSites.map((site) => (
+                        <option key={site.id!} value={site.id!}>
+                          {site.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {/* Bottom Row: Actions */}
@@ -184,6 +233,9 @@ export const CamerasListView: React.FC<CamerasListViewProps> = ({
               </div>
             );
           })}
+        </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

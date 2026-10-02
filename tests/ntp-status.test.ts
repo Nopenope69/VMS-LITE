@@ -87,7 +87,7 @@ describe('NTP Time-Sync Status', () => {
       ].join('\n');
 
       mockExecFile.mockImplementation(
-        (_cmd: string, _args: string[], cb: (err: null, stdout: string, stderr: string) => void) => {
+        (_cmd: string, _args: string[], _opts: unknown, cb: (err: null, stdout: string, stderr: string) => void) => {
           cb(null, fakeOutput, '');
         }
       );
@@ -104,6 +104,7 @@ describe('NTP Time-Sync Status', () => {
       expect(mockExecFile).toHaveBeenCalledWith(
         'timedatectl',
         ['show', '--no-pager'],
+        { timeout: 3000 },
         expect.any(Function)
       );
     });
@@ -112,7 +113,7 @@ describe('NTP Time-Sync Status', () => {
       const fakeOutput = 'NTP=no\nNTPSynchronized=no\n';
 
       mockExecFile.mockImplementation(
-        (_cmd: string, _args: string[], cb: (err: null, stdout: string, stderr: string) => void) => {
+        (_cmd: string, _args: string[], _opts: unknown, cb: (err: null, stdout: string, stderr: string) => void) => {
           cb(null, fakeOutput, '');
         }
       );
@@ -130,7 +131,7 @@ describe('NTP Time-Sync Status', () => {
       enoentError.code = 'ENOENT';
 
       mockExecFile.mockImplementation(
-        (_cmd: string, _args: string[], cb: (err: Error) => void) => {
+        (_cmd: string, _args: string[], _opts: unknown, cb: (err: Error) => void) => {
           cb(enoentError);
         }
       );
@@ -142,16 +143,20 @@ describe('NTP Time-Sync Status', () => {
       }
     });
 
-    it('throws on unexpected errors (fail-loud)', async () => {
+    it('reports unavailable on unexpected errors (e.g. no systemd bus)', async () => {
       const otherError = new Error('permission denied');
 
       mockExecFile.mockImplementation(
-        (_cmd: string, _args: string[], cb: (err: Error) => void) => {
+        (_cmd: string, _args: string[], _opts: unknown, cb: (err: Error) => void) => {
           cb(otherError);
         }
       );
 
-      await expect(getNtpStatus()).rejects.toThrow('Failed to query NTP status');
+      const result = await getNtpStatus();
+      expect(result.available).toBe(false);
+      if (!result.available) {
+        expect(result.reason).toContain('permission denied');
+      }
     });
   });
 });

@@ -86,7 +86,8 @@ export const HealthView: React.FC<HealthViewProps> = ({
   };
 
   // Storage metric calculation
-  const storagePercent = dashboardData?.storage?.usedPercent ?? 68;
+  // null until the dashboard has reported real usage (never show a placeholder number)
+  const storagePercent: number | null = dashboardData?.storage?.usedPercent ?? null;
 
   // Recording status
   const isRecordingHealthy = offlineCount === 0 || onlineCount > 0;
@@ -157,14 +158,16 @@ export const HealthView: React.FC<HealthViewProps> = ({
         <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.07] flex items-center gap-3">
           <span
             className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-              storagePercent > 90
+              storagePercent === null
+                ? 'bg-zinc-500'
+                : storagePercent > 90
                 ? 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.6)]'
                 : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
             }`}
           />
           <div>
             <div className="text-xs font-semibold text-zinc-100">
-              Storage {Math.round(storagePercent)}%
+              Storage {storagePercent === null ? '—' : `${Math.round(storagePercent)}%`}
             </div>
             <div className="text-[11px] text-zinc-500 font-mono mt-0.5">
               Auto-pruning enabled

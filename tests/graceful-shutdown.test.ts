@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi, beforeEach, afterEach } 
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
 import { Role } from '@prisma/client';
+import { signAs } from './helpers/auth.js';
 
 describe('Graceful Shutdown & Process Signal Handlers', () => {
   let app: FastifyInstance;
@@ -12,13 +13,13 @@ describe('Graceful Shutdown & Process Signal Handlers', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    operatorToken = app.jwt.sign({
+    operatorToken = await signAs(app, {
       id: 'operator-uuid',
       username: 'operator',
       role: Role.OPERATOR,

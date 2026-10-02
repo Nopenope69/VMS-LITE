@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { Role } from '@prisma/client';
 import { createServer } from '../src/server.js';
 import { eventBus } from '../src/events/event-bus.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Recording Catalog & Webhook Routes (/api/recordings)', () => {
   let app: FastifyInstance;
@@ -12,14 +13,25 @@ describe('Recording Catalog & Webhook Routes (/api/recordings)', () => {
   beforeAll(async () => {
     app = await createServer({ logger: false });
     await app.ready();
+    const { prisma: seedPrisma } = await import('../src/db/prisma.js');
+    if (!(await seedPrisma.camera.findUnique({ where: { id: 'cam_front_gate' } }))) {
+      await seedPrisma.camera.create({
+        data: { id: 'cam_front_gate', name: 'Front Gate', rtspUrl: 'rtsp://10.0.0.2/stream', mediaMtxPath: 'cam_front_gate', recordingMode: 'CONTINUOUS' },
+      });
+    }
+    if (!(await seedPrisma.camera.findUnique({ where: { id: 'cam_test_1' } }))) {
+      await seedPrisma.camera.create({
+        data: { id: 'cam_test_1', name: 'cam_test_1', rtspUrl: 'rtsp://10.0.0.1/stream', mediaMtxPath: 'cam_test_1', recordingMode: 'CONTINUOUS' },
+      });
+    }
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-id',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-id',
       username: 'viewer',
       role: Role.VIEWER,

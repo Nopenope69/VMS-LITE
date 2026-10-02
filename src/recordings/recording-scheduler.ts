@@ -107,27 +107,41 @@ export class RecordingSchedulerCollaborator {
   }
 
   /**
-   * Evaluates camera and dynamically patches MediaMTX if recording state has changed.
+   * Whether MediaMTX should write segments for this camera right now.
+   * MOTION_ONLY records continuously into the motion ring buffer, which keeps only
+   * segments around motion incidents; with record disabled it would have nothing to keep.
+   */
+  shouldRecordToDisk(config: CameraScheduleConfig, date: Date = this.clock.now()): boolean {
+    return config.mode === 'MOTION_ONLY' || this.isCameraActiveAt(config, date);
+  }
+
+  /**
+   * Evaluates a camera and reconciles MediaMTX with the desired state.
+   *
+   * Runs every scheduler tick and is idempotent: missing paths (after a MediaMTX
+   * restart or appliance reboot), changed RTSP sources and a drifted record flag are
+   * all corrected here, so the database stays the single source of truth.
    */
   async evaluateCamera(
     camera: CameraRecordSummary,
     date: Date = this.clock.now()
   ): Promise<boolean> {
     const schedule = await this.getCameraSchedule(camera.id);
-    const shouldRecord = this.isCameraActiveAt(schedule, date);
-    const currentState = this.recordingStates.get(camera.id);
+    const shouldRecord = this.shouldRecordToDisk(schedule, date);
+    const previous = this.recordingStates.get(camera.id);
 
-    if (currentState !== shouldRecord) {
+    try {
+      await this.reconcileMediaPaths(camera, shouldRecord, previous !== shouldRecord);
+    } catch (err) {
+      // Leave state unchanged so the next tick retries
+      console.warn(
+        `[RecordingScheduler] Failed to reconcile media paths for camera ${camera.id}: ${(err as Error).message}`
+      );
+      return previous ?? false;
+    }
+
+    if (previous !== shouldRecord) {
       this.recordingStates.set(camera.id, shouldRecord);
-
-      try {
-        await this.mediaMtx.patchPath(camera.mediaMtxPath, {
-          record: shouldRecord,
-        });
-      } catch (err: any) {
-        // MediaMTX offline in unit tests is tolerated
-      }
-
       await this.eventBus.emitEvent({
         type: shouldRecord ? 'recording.started' : 'recording.stopped',
         source: 'recording.engine',
@@ -142,6 +156,36 @@ export class RecordingSchedulerCollaborator {
     }
 
     return shouldRecord;
+  }
+
+  private async reconcileMediaPaths(
+    camera: CameraRecordSummary,
+    record: boolean,
+    stateChanged: boolean
+  ): Promise<void> {
+    if (!camera.rtspUrl) {
+      // Source unknown (legacy callers): only drive the record flag on transitions
+      if (stateChanged) {
+        await this.mediaMtx.patchPath(camera.mediaMtxPath, { record });
+      }
+      return;
+    }
+
+    const main = await this.mediaMtx.getPath(camera.mediaMtxPath);
+    const desiredSource = this.mediaMtx.sanitizeRtspUrl(camera.rtspUrl);
+    if (!main || main.conf?.source !== desiredSource) {
+      await this.mediaMtx.addPath(camera.mediaMtxPath, camera.rtspUrl, { sourceOnDemand: false, record });
+    } else if (main.conf?.record !== record) {
+      await this.mediaMtx.patchPath(camera.mediaMtxPath, { record });
+    }
+
+    if (camera.subStreamUrl) {
+      const subPath = camera.subMediaMtxPath || `${camera.mediaMtxPath}_sub`;
+      const sub = await this.mediaMtx.getPath(subPath);
+      if (!sub || sub.conf?.source !== this.mediaMtx.sanitizeRtspUrl(camera.subStreamUrl)) {
+        await this.mediaMtx.addPath(subPath, camera.subStreamUrl, { sourceOnDemand: true, record: false });
+      }
+    }
   }
 
   /**
@@ -163,7 +207,11 @@ export class RecordingSchedulerCollaborator {
   async evaluateAllCameras(date: Date = this.clock.now()): Promise<void> {
     const cameras = await this.repository.listAllCameras();
     for (const camera of cameras) {
-      await this.evaluateCamera(camera, date);
+      try {
+        await this.evaluateCamera(camera, date);
+      } catch (err) {
+        console.warn(`[RecordingScheduler] Evaluation failed for camera ${camera.id}: ${(err as Error).message}`);
+      }
     }
   }
 

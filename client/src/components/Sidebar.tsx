@@ -10,8 +10,10 @@ import {
   LogOut,
   ChevronRight,
   Shield,
+  MapPin,
 } from 'lucide-react';
 import { ViewType } from '../App.js';
+import { ALL_SITES, SiteSummary, UNASSIGNED_SITE } from '../types/sites.js';
 
 export interface SidebarProps {
   currentView: ViewType;
@@ -22,6 +24,9 @@ export interface SidebarProps {
   userName?: string;
   userRole?: string;
   onLogout?: () => void;
+  sites?: SiteSummary[];
+  siteFilter?: string;
+  onSiteFilterChange?: (value: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -33,6 +38,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   userName = 'Admin',
   userRole = 'Administrator',
   onLogout,
+  sites = [],
+  siteFilter = ALL_SITES,
+  onSiteFilterChange,
 }) => {
   const navItems: Array<{ id: ViewType; label: string; icon: React.ElementType; badge?: string | number }> = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -58,6 +66,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </span>
           </div>
         </div>
+
+        {/* Site selector: filters every view to one location */}
+        {sites.length > 0 && onSiteFilterChange && (
+          <div className="px-2 pt-2">
+            <label className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.07] text-xs text-zinc-300">
+              <MapPin className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              <select
+                aria-label="Site"
+                value={siteFilter}
+                onChange={(e) => onSiteFilterChange(e.target.value)}
+                className="flex-1 min-w-0 bg-transparent border-none p-0 text-xs text-zinc-200 focus:ring-0 cursor-pointer"
+              >
+                <option value={ALL_SITES} className="bg-zinc-900">
+                  All sites ({sites.reduce((n, site) => n + site.cameraCount, 0)})
+                </option>
+                {sites.map((site) => (
+                  <option key={site.id ?? UNASSIGNED_SITE} value={site.id ?? UNASSIGNED_SITE} className="bg-zinc-900">
+                    {site.name} ({site.cameraCount}){site.status === 'CRITICAL' ? ' ⚠' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
 
         {/* Primary Navigation */}
         <nav className="p-2 space-y-0.5">

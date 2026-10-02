@@ -4,6 +4,7 @@ import { Role } from '@prisma/client';
 import { createServer } from '../src/server.js';
 import { eventBus, EventBus } from '../src/events/event-bus.js';
 import { CoreEventType } from '../src/events/event.types.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Unified Core Event Bus & Persistence', () => {
   let app: FastifyInstance;
@@ -14,13 +15,13 @@ describe('Unified Core Event Bus & Persistence', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-uuid',
       username: 'viewer',
       role: Role.VIEWER,

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
 import { auditService } from '../src/audit/audit.service.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Audit Service & Audit Routes', () => {
   let app: FastifyInstance;
@@ -12,13 +13,13 @@ describe('Audit Service & Audit Routes', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: 'ADMIN',
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-uuid',
       username: 'viewer',
       role: 'VIEWER',

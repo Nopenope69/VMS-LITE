@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { Role } from '@prisma/client';
 import { createServer } from '../src/server.js';
 import { AuthService } from '../src/users/auth.service.js';
+import { signAs } from './helpers/auth.js';
 
 describe('RBAC & User Authentication', () => {
   let app: FastifyInstance;
@@ -14,13 +15,13 @@ describe('RBAC & User Authentication', () => {
     await app.ready();
 
     // Create test JWT tokens directly for RBAC testing
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-uuid',
       username: 'viewer',
       role: Role.VIEWER,

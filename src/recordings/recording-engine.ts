@@ -24,6 +24,8 @@ import {
 } from './repositories/recording.repository.js';
 import { StorageController } from './storage-controller.js';
 import { MotionRingBufferEngine } from './motion-ring-buffer.js';
+import { SegmentIndexer } from './segment-indexer.js';
+import { getRecordingsRoot } from './recordings-root.js';
 
 export interface RecordingEngineOptions {
   repository?: IRecordingRepository;
@@ -39,6 +41,7 @@ export interface RecordingEngineOptions {
   batchSize?: number;
   scheduleIntervalMs?: number;
   storageIntervalMs?: number;
+  indexIntervalMs?: number;
   statfsFn?: (dirPath: string) => Promise<{
     bsize: number | bigint;
     blocks: number | bigint;
@@ -56,12 +59,16 @@ export class RecordingEngine implements IRecordingEngine {
   private readonly scheduler: RecordingSchedulerCollaborator;
   private readonly storageController: StorageController;
   private readonly motionRingBuffer: MotionRingBufferEngine;
+  private readonly segmentIndexer: SegmentIndexer;
   private readonly clock: IClock;
   private readonly playbackBaseUrl: string;
 
   private isRunning = false;
   private scheduleTimerId?: NodeJS.Timeout;
   private storageTimerId?: NodeJS.Timeout;
+  private indexTimerId?: NodeJS.Timeout;
+  private readonly indexIntervalMs: number;
+  private isIndexing = false;
 
   private readonly scheduleIntervalMs: number;
   private readonly storageIntervalMs: number;
@@ -77,9 +84,7 @@ export class RecordingEngine implements IRecordingEngine {
     const eventBus = opts.eventBus || defaultEventBus;
     this.clock = opts.clock || systemClock;
     this.playbackBaseUrl =
-      opts.playbackBaseUrl ||
-      process.env.MEDIAMTX_PLAYBACK_BASE_URL ||
-      'http://localhost:9996';
+      opts.playbackBaseUrl || '/api/media/playback';
 
     const cameraLookup =
       opts.cameraLookup ||
@@ -92,8 +97,9 @@ export class RecordingEngine implements IRecordingEngine {
         }
       });
 
-    this.scheduleIntervalMs = opts.scheduleIntervalMs ?? 60_000;
+    this.scheduleIntervalMs = opts.scheduleIntervalMs ?? 30_000;
     this.storageIntervalMs = opts.storageIntervalMs ?? 60_000;
+    this.indexIntervalMs = opts.indexIntervalMs ?? 10_000;
 
     this.catalog = new RecordingCatalog({
       repository,
@@ -105,7 +111,7 @@ export class RecordingEngine implements IRecordingEngine {
       cameraLookup,
     });
 
-    eventBus.subscribe('camera.online', (evt: any) => {
+    const registerFromEvent = (evt: any) => {
       if (evt.cameraId && evt.metadata?.mediaMtxPath) {
         if ('registerCamera' in (repository as any)) {
           (repository as any).registerCamera({
@@ -115,7 +121,9 @@ export class RecordingEngine implements IRecordingEngine {
           });
         }
       }
-    });
+    };
+    eventBus.subscribe('camera.added', registerFromEvent);
+    eventBus.subscribe('camera.online', registerFromEvent);
 
     this.scheduler = new RecordingSchedulerCollaborator({
       repository,
@@ -133,6 +141,16 @@ export class RecordingEngine implements IRecordingEngine {
       targetThresholdPercent: opts.targetThresholdPercent,
       batchSize: opts.batchSize,
       statfsFn: opts.statfsFn,
+    });
+
+    this.segmentIndexer = new SegmentIndexer({
+      repository,
+      recordingsRoot: getRecordingsRoot(opts.recordingsDir),
+      ingest: (payload) => this.ingestSegment(payload),
+      now: () => this.clock.now().getTime(),
+    });
+    eventBus.subscribe('camera.deleted', (evt: any) => {
+      if (evt.cameraId) this.segmentIndexer.forgetCamera(evt.cameraId);
     });
 
     this.motionRingBuffer = new MotionRingBufferEngine({
@@ -252,6 +270,30 @@ export class RecordingEngine implements IRecordingEngine {
     this.storageTimerId = this.clock.setInterval(async () => {
       await this.tickStorage();
     }, this.storageIntervalMs);
+
+    await this.tickIndex();
+    this.indexTimerId = this.clock.setInterval(async () => {
+      await this.tickIndex();
+    }, this.indexIntervalMs);
+  }
+
+  /**
+   * Single-flight scan of the recordings volume for finished segments.
+   */
+  private async tickIndex(): Promise<void> {
+    if (this.isIndexing) return;
+    this.isIndexing = true;
+    try {
+      await this.segmentIndexer.scanAll();
+    } catch (err) {
+      console.warn(`[RecordingEngine] Segment indexing failed: ${(err as Error).message}`);
+    } finally {
+      this.isIndexing = false;
+    }
+  }
+
+  getSegmentIndexer(): SegmentIndexer {
+    return this.segmentIndexer;
   }
 
   /**
@@ -273,6 +315,11 @@ export class RecordingEngine implements IRecordingEngine {
       this.clock.clearInterval(this.storageTimerId);
       this.storageTimerId = undefined;
     }
+
+    if (this.indexTimerId) {
+      this.clock.clearInterval(this.indexTimerId);
+      this.indexTimerId = undefined;
+    }
   }
 
   /**
@@ -285,8 +332,8 @@ export class RecordingEngine implements IRecordingEngine {
     this.isEvaluatingSchedule = true;
     try {
       await this.scheduler.evaluateAllCameras(this.clock.now());
-    } catch {
-      // Tolerate tick errors without crashing process
+    } catch (err) {
+      console.warn(`[RecordingEngine] Schedule evaluation failed: ${(err as Error).message}`);
     } finally {
       this.isEvaluatingSchedule = false;
     }
@@ -301,9 +348,11 @@ export class RecordingEngine implements IRecordingEngine {
     }
     this.isCheckingStorage = true;
     try {
+      // Age-based retention first, then capacity-based FIFO rollover
+      await this.storageController.purgeRetention();
       await this.storageController.checkStorage();
-    } catch {
-      // Tolerate tick errors without crashing process
+    } catch (err) {
+      console.warn(`[RecordingEngine] Storage maintenance failed: ${(err as Error).message}`);
     } finally {
       this.isCheckingStorage = false;
     }

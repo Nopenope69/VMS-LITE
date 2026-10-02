@@ -18,6 +18,7 @@ import { MotionRingBufferEngine } from '../src/recordings/motion-ring-buffer.js'
 import { TestClock } from '../src/recordings/clock.js';
 import { EvidenceBundleService, STANDALONE_VERIFY_SCRIPT } from '../src/export/evidence-bundle.service.js';
 import { buildZipArchive } from '../src/export/zip-builder.js';
+import { signAs } from './helpers/auth.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -37,7 +38,7 @@ describe('Day 75 Field Validation & 72-Hour Acceptance Gate (Phase 21 - MVP-14)'
 
     vi.spyOn(app.capabilities, 'has').mockReturnValue(true);
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'usr-admin-field',
       username: 'installer_admin',
       role: Role.ADMIN,
@@ -86,7 +87,7 @@ describe('Day 75 Field Validation & 72-Hour Acceptance Gate (Phase 21 - MVP-14)'
         repository.registerCamera({
           id: `cam-${idNum}`,
           name: `Camera-${idNum}`,
-          mediaMtxPath: `path_cam_${idNum}`,
+          mediaMtxPath: `path_cam-${idNum}`,
         });
       }
 

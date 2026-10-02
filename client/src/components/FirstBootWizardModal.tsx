@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldAlert, KeyRound, Globe, CheckCircle, RefreshCw } from 'lucide-react';
+import { useAuth } from '../context/AuthContext.js';
 
 export interface FirstBootWizardModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ export const FirstBootWizardModal: React.FC<FirstBootWizardModalProps> = ({
   onCompleted,
   token,
 }) => {
+  const { login } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [siteName, setSiteName] = useState('');
@@ -52,6 +54,10 @@ export const FirstBootWizardModal: React.FC<FirstBootWizardModalProps> = ({
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || 'Setup completion failed');
+      }
+      // Changing the factory password revokes older sessions; continue with the new token
+      if (data.token && data.user) {
+        login(data.token, data.user);
       }
 
       onCompleted();

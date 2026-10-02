@@ -8,6 +8,7 @@ import { onvifEventListenerService } from '../src/events/onvif-events.service.js
 import { eventBus } from '../src/events/event-bus.js';
 import { CoreEventType } from '../src/events/event.types.js';
 import { Point, MotionZoneDto } from '../src/zones/zone.types.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Motion Zones & Spatial Exclusion Masking (Phase 11 - EXT-02)', () => {
   let app: FastifyInstance;
@@ -21,19 +22,19 @@ describe('Motion Zones & Spatial Exclusion Masking (Phase 11 - EXT-02)', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    operatorToken = app.jwt.sign({
+    operatorToken = await signAs(app, {
       id: 'op-uuid',
       username: 'operator',
       role: Role.OPERATOR,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-uuid',
       username: 'viewer',
       role: Role.VIEWER,

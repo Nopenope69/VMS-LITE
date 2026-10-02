@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
 import { setupService } from '../src/system/setup.service.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Setup Wizard Routes & Service', () => {
   let app: FastifyInstance;
@@ -11,7 +12,13 @@ describe('Setup Wizard Routes & Service', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    const { prisma } = await import('../src/db/prisma.js');
+    await prisma.user.deleteMany({ where: { username: 'admin' } });
+    await prisma.user.create({
+      data: { id: 'admin-uuid', username: 'admin', passwordHash: 'x', role: 'ADMIN' },
+    });
+
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: 'ADMIN',

@@ -9,6 +9,7 @@ import { createServer } from '../src/server.js';
 import { buildZipArchive } from '../src/export/zip-builder.js';
 import { EvidenceBundleService } from '../src/export/evidence-bundle.service.js';
 import { Role } from '@prisma/client';
+import { signAs } from './helpers/auth.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -194,7 +195,7 @@ describe('Self-Verifying Evidence Export Package (Phase 20 - Plan 01 - MVP-13)',
       app = await createServer({ logger: false });
       await app.ready();
       vi.spyOn(app.capabilities, 'has').mockImplementation(() => true);
-      operatorToken = app.jwt.sign({ id: 'usr-op', username: 'operator', role: Role.OPERATOR });
+      operatorToken = await signAs(app, { id: 'usr-op', username: 'operator', role: Role.OPERATOR });
     });
 
     afterEach(async () => {

@@ -6,6 +6,8 @@ import type { BookmarkItem } from './TimelineScrubber.js';
 export interface LaneCameraData {
   cameraId: string;
   cameraName: string;
+  /** Site the camera belongs to; consecutive lanes with the same group share a header */
+  group?: string;
   spans: TimelineSpan[];
   motionEvents?: Array<{ startTime: string; endTime: string; label?: string }>;
   bookmarks?: BookmarkItem[];
@@ -126,6 +128,10 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
     }
   };
 
+  // A header row precedes the first lane of each site group (only when lanes are grouped)
+  const startsGroup = (idx: number) =>
+    Boolean(lanes[idx]?.group) && (idx === 0 || lanes[idx - 1]?.group !== lanes[idx].group);
+
   // 24-hour markers every 2 hours: 00:00, 02:00, ..., 24:00
   const hourTicks = useMemo(() => Array.from({ length: 13 }, (_, i) => i * 2), []);
 
@@ -194,6 +200,7 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
       return {
         cameraId: lane.cameraId,
         cameraName: lane.cameraName,
+        group: lane.group,
         renderedSpans,
         renderedMotionEvents,
         renderedBookmarks,
@@ -219,14 +226,23 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
             </div>
           ) : (
             precomputedLanes.map((lane, idx) => (
-              <div
-                key={lane.cameraId || `lane-${idx}`}
-                className="h-9 px-3 flex items-center gap-2 border-b border-white/5 text-xs font-medium text-zinc-300 truncate"
-                title={lane.cameraName}
-              >
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
-                <span className="truncate">{lane.cameraName}</span>
-              </div>
+              <React.Fragment key={lane.cameraId || `lane-${idx}`}>
+                {startsGroup(idx) && (
+                  <div
+                    className="h-6 px-3 flex items-center border-b border-white/[0.06] bg-white/[0.03] text-[10px] font-semibold uppercase tracking-wider text-zinc-400 truncate"
+                    title={lane.group}
+                  >
+                    {lane.group}
+                  </div>
+                )}
+                <div
+                  className="h-9 px-3 flex items-center gap-2 border-b border-white/5 text-xs font-medium text-zinc-300 truncate"
+                  title={lane.cameraName}
+                >
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
+                  <span className="truncate">{lane.cameraName}</span>
+                </div>
+              </React.Fragment>
             ))
           )}
         </div>
@@ -273,10 +289,10 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
 
           {/* Precomputed Camera Track Lanes */}
           {precomputedLanes.map((lane, laneIdx) => (
-            <div
-              key={lane.cameraId || `track-${laneIdx}`}
-              className="h-9 relative w-full border-b border-white/5 flex items-center"
-            >
+            <React.Fragment key={lane.cameraId || `track-${laneIdx}`}>
+            {/* Site header row, aligned with the label column */}
+            {startsGroup(laneIdx) && <div className="h-6 w-full border-b border-white/[0.06] bg-[#0c0e14]/80" />}
+            <div className="h-9 relative w-full border-b border-white/5 flex items-center">
               {/* Continuous recording segments: Emerald Green */}
               {lane.renderedSpans.map((rendered) => (
                 <div
@@ -323,6 +339,7 @@ export const MultiLaneTimeline: React.FC<MultiLaneTimelineProps> = ({
                 </div>
               ))}
             </div>
+            </React.Fragment>
           ))}
 
           {/* Unified Hover Tooltip and Hover Line across all lanes */}

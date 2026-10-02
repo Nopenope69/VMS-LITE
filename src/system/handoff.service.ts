@@ -11,13 +11,27 @@ export interface HandoffReportOptions {
   installerNotes?: string;
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Strips user:password@ from stream URLs before they are printed on a customer document. */
+function redactUrlCredentials(url: string): string {
+  return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^@/]*@/i, '$1***@');
+}
+
 export class HandoffService {
   constructor(private readonly prisma: PrismaClient = defaultPrisma) {}
 
   async generateHtmlReport(opts: HandoffReportOptions = {}): Promise<string> {
-    const siteName = opts.siteName || 'CCTV Surveillance Site';
-    const technicianName = opts.technicianName || 'Certified CCTV Installer';
-    const clientName = opts.clientName || 'Facility Management';
+    const siteName = escapeHtml(opts.siteName || 'CCTV Surveillance Site');
+    const technicianName = escapeHtml(opts.technicianName || 'Certified CCTV Installer');
+    const clientName = escapeHtml(opts.clientName || 'Facility Management');
     const generatedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
     // 1. Hardware / OS Specs
@@ -47,22 +61,22 @@ export class HandoffService {
 
     const driveRows = drives.map((d) => `
       <tr>
-        <td><strong>${d.name}</strong> (${d.path})</td>
-        <td>${d.model}</td>
+        <td><strong>${escapeHtml(d.name)}</strong> (${escapeHtml(d.path)})</td>
+        <td>${escapeHtml(d.model)}</td>
         <td>${(d.sizeBytes / (1024 * 1024 * 1024)).toFixed(0)} GB (${d.rotational ? 'HDD' : 'SSD'})</td>
         <td>${d.temperatureCelsius !== null ? `${d.temperatureCelsius}°C` : 'N/A'}</td>
-        <td><span class="badge ${d.healthStatus === 'PASSED' ? 'badge-ok' : 'badge-fail'}">${d.healthStatus}</span></td>
+        <td><span class="badge ${d.healthStatus === 'PASSED' ? 'badge-ok' : 'badge-fail'}">${escapeHtml(d.healthStatus)}</span></td>
       </tr>
     `).join('');
 
     const cameraRows = cameras.map((c, i) => `
       <tr>
         <td>#${i + 1}</td>
-        <td><strong>${c.name}</strong></td>
-        <td>${c.ip || 'N/A'}</td>
-        <td><code>${c.rtspUrl}</code></td>
+        <td><strong>${escapeHtml(c.name)}</strong></td>
+        <td>${escapeHtml(c.ip || 'N/A')}</td>
+        <td><code>${escapeHtml(redactUrlCredentials(c.rtspUrl || ''))}</code></td>
         <td>${c.subStreamUrl ? 'Dual-Stream (Adaptive)' : 'Main Only'}</td>
-        <td><span class="badge ${c.status === 'online' ? 'badge-ok' : 'badge-fail'}">${c.status.toUpperCase()}</span></td>
+        <td><span class="badge ${String(c.status).toLowerCase() === 'online' ? 'badge-ok' : 'badge-fail'}">${escapeHtml(String(c.status).toUpperCase())}</span></td>
       </tr>
     `).join('');
 

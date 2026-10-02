@@ -50,6 +50,31 @@ interface CameraInternalState {
   reason?: string;
 }
 
+/**
+ * Host/port to probe. Cameras added by RTSP URL (typical for remote sites) store no
+ * IP; without this they could only ever be 'degraded', never 'offline'.
+ */
+export function networkTarget(camera: {
+  ip?: string | null;
+  port?: number | null;
+  rtspUrl?: string | null;
+}): { host: string; port: number } | null {
+  if (camera.ip) {
+    return { host: camera.ip, port: camera.port || 554 };
+  }
+  if (camera.rtspUrl) {
+    try {
+      const url = new URL(camera.rtspUrl);
+      if (url.hostname) {
+        return { host: url.hostname.replace(/^\[|\]$/g, ''), port: Number(url.port) || (url.protocol === 'rtsps:' ? 322 : 554) };
+      }
+    } catch {
+      // Unparseable URL: no network check
+    }
+  }
+  return null;
+}
+
 export class CameraHealthService {
   private readonly cameraService: CameraService;
   private readonly mediaMtxClient: IMediaMtxRuntimeAdapter;
@@ -121,6 +146,7 @@ export class CameraHealthService {
     name: string;
     ip?: string | null;
     port?: number | null;
+    rtspUrl?: string | null;
     mediaMtxPath: string;
   }): Promise<CameraHealthTelemetry> {
     const now = Date.now();
@@ -147,8 +173,9 @@ export class CameraHealthService {
     let tcpError: string | undefined;
     let networkCheck: NetworkCheckResult = 'NOT_APPLICABLE';
 
-    if (camera.ip) {
-      const pingResult = await this.pingTcp(camera.ip, camera.port || 554);
+    const target = networkTarget(camera);
+    if (target) {
+      const pingResult = await this.pingTcp(target.host, target.port);
       tcpReachable = pingResult.reachable;
       latencyMs = pingResult.latencyMs;
       tcpError = pingResult.error;

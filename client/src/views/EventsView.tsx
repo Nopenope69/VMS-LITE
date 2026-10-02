@@ -73,13 +73,13 @@ export const EventsView: React.FC<EventsViewProps> = ({
       // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const camName = (ev.cameraName || '').toLowerCase();
+        const camName = String(ev.metadata?.cameraName ?? cameraMap.get(ev.cameraId ?? '')?.name ?? '').toLowerCase();
         return camName.includes(q) || evTypeStr.includes(q);
       }
 
       return true;
     });
-  }, [events, selectedType, selectedCameraId, searchQuery]);
+  }, [events, selectedType, selectedCameraId, searchQuery, cameraMap]);
 
   // Humanize event title
   const getEventTitle = (type: string): string => {
@@ -239,13 +239,14 @@ export const EventsView: React.FC<EventsViewProps> = ({
         ) : (
           filteredEvents.map((ev) => {
             const timeObj = formatTimestamp(ev.timestamp);
-            const cam = cameraMap.get(ev.cameraId);
-            const cameraName = ev.cameraName || cam?.name || 'Unknown Camera';
+            const cam = ev.cameraId ? cameraMap.get(ev.cameraId) : undefined;
+            // System events (storage, etc.) have no camera
+            const cameraName = ev.metadata?.cameraName || cam?.name || (ev.cameraId ? 'Unknown Camera' : 'System');
 
             return (
               <div
                 key={ev.id}
-                onClick={() => onSelectCamera(ev.cameraId)}
+                onClick={() => ev.cameraId && onSelectCamera(ev.cameraId)}
                 className="group relative flex items-center justify-between p-3.5 bg-white/[0.02] hover:bg-white/[0.05] border border-white/[0.06] hover:border-white/15 rounded-xl cursor-pointer transition-all shadow-sm"
               >
                 <div className="flex items-center gap-4">

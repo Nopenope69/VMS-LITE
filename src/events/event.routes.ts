@@ -3,6 +3,9 @@ import { Role } from '@prisma/client';
 import { eventBus } from './event-bus.js';
 import { EmitEventInput, EventQueryFilter } from './event.types.js';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
+import { getVisibleCameraIds } from '../users/camera-access.js';
+import { parseSiteFilter } from '../cameras/camera.routes.js';
+import { cameraService } from '../cameras/camera.service.js';
 
 export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
   // GET /api/events
@@ -10,18 +13,38 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
     Querystring: {
       type?: string;
       cameraId?: string;
+      siteId?: string;
       since?: string;
       limit?: string;
       offset?: string;
     };
   }>('/events', { preHandler: [authenticate] }, async (request) => {
+    const limit = parseInt(request.query.limit ?? '', 10);
+    const offset = parseInt(request.query.offset ?? '', 10);
     const filter: EventQueryFilter = {
       type: request.query.type,
       cameraId: request.query.cameraId,
       since: request.query.since,
-      limit: request.query.limit ? parseInt(request.query.limit, 10) : 50,
-      offset: request.query.offset ? parseInt(request.query.offset, 10) : 0,
+      limit: Number.isFinite(limit) ? limit : 50,
+      offset: Number.isFinite(offset) ? offset : 0,
     };
+
+    // Operators only see events of cameras they are granted
+    let allowed = await getVisibleCameraIds(request.user);
+
+    // ?siteId= restricts to that site's cameras (site-wide system events have no camera)
+    const siteFilter = parseSiteFilter(request.query.siteId);
+    if (siteFilter.siteId !== undefined) {
+      const siteCameraIds = (await cameraService.listCameras(siteFilter)).map((c) => c.id);
+      allowed = allowed ? allowed.filter((id) => siteCameraIds.includes(id)) : siteCameraIds;
+    }
+
+    if (allowed) {
+      if (filter.cameraId && !allowed.includes(filter.cameraId)) {
+        return { events: [], count: 0 };
+      }
+      filter.cameraIds = allowed;
+    }
 
     const events = await eventBus.queryEvents(filter);
     return {

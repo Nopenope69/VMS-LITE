@@ -23,6 +23,9 @@ export interface CameraOnboardingWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** Sites the camera can be placed in (multi-site installs) */
+  sites?: Array<{ id: string | null; name: string }>;
+  defaultSiteId?: string | null;
 }
 
 export interface DiscoveredDevice {
@@ -48,7 +51,10 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
   isOpen,
   onClose,
   onSuccess,
+  sites = [],
+  defaultSiteId = null,
 }) => {
+  const [siteId, setSiteId] = useState<string>('');
   // Stepper state (1 to 6)
   const [currentStep, setCurrentStep] = useState<number>(1);
 
@@ -153,6 +159,8 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
       setPreviewError(null);
       setCameraName('');
       setCommitError(null);
+      // Default to the site being viewed, or the only site there is
+      setSiteId(defaultSiteId ?? (sites.length === 1 ? sites[0].id ?? '' : ''));
     }
   }, [isOpen]);
 
@@ -332,6 +340,7 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
         },
         body: JSON.stringify({
           name: cameraName.trim(),
+          siteId: siteId || null,
           ip: cameraIp || undefined,
           port: Number(cameraPort) || 554,
           username,
@@ -1002,6 +1011,26 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
                   style={{ width: '100%', padding: '10px 12px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#f8fafc', fontSize: '13px' }}
                 />
               </div>
+
+              {sites.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#cbd5e1', marginBottom: '6px' }}>
+                    Site
+                  </label>
+                  <select
+                    value={siteId}
+                    onChange={(e) => setSiteId(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#f8fafc', fontSize: '13px' }}
+                  >
+                    <option value="">No site</option>
+                    {sites.map((site) => (
+                      <option key={site.id ?? ''} value={site.id ?? ''}>
+                        {site.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#cbd5e1', marginBottom: '6px' }}>

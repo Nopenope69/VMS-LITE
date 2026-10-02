@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
 import { RecordingCatalog } from './recording-catalog.js';
+import { getRecordingsRoot } from './recordings-root.js';
 import { StorageCleanupResult, StorageMetricsDto } from './recording.types.js';
 
 export interface StorageControllerOptions {
@@ -42,9 +43,7 @@ export class StorageController {
   constructor(opts: StorageControllerOptions) {
     this.catalog = opts.catalog;
     this.eventBus = opts.eventBus || defaultEventBus;
-    this.recordingsRoot = path.resolve(
-      opts.recordingsDir || process.env.RECORDINGS_PATH || '/var/recordings'
-    );
+    this.recordingsRoot = getRecordingsRoot(opts.recordingsDir);
     this.warningThresholdPercent = opts.warningThresholdPercent ?? 80;
     this.criticalThresholdPercent = opts.criticalThresholdPercent ?? 90;
     this.targetThresholdPercent = opts.targetThresholdPercent ?? 80;
@@ -79,44 +78,45 @@ export class StorageController {
    * Retrieves disk metrics against the configured recordings root only.
    */
   async getStorageMetrics(): Promise<StorageMetricsDto> {
-    try {
+    await fs.mkdir(this.recordingsRoot, { recursive: true }).catch(() => {});
+    const stats = await this.statfsNearestExisting(this.recordingsRoot);
+    const bsize = BigInt(stats.bsize);
+    const blocks = BigInt(stats.blocks);
+    const bfree = BigInt(stats.bfree);
+
+    const totalBytes = Number(blocks * bsize);
+    const freeBytes = Number(bfree * bsize);
+    const usedBytes = Math.max(0, totalBytes - freeBytes);
+    const usedPercent = totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0;
+
+    return {
+      totalBytes,
+      freeBytes,
+      usedBytes,
+      usedPercent,
+      mountPath: this.recordingsRoot,
+      warningThresholdPercent: this.warningThresholdPercent,
+      criticalThresholdPercent: this.criticalThresholdPercent,
+    };
+  }
+
+  /**
+   * statfs the recordings root, or its closest existing ancestor (same filesystem in
+   * practice) when the directory cannot be created. Throws if nothing can be measured:
+   * reporting a fabricated 0% here would silently disable FIFO rollover.
+   */
+  private async statfsNearestExisting(dir: string) {
+    let current = dir;
+    for (;;) {
       try {
-        await fs.mkdir(this.recordingsRoot, { recursive: true });
-      } catch {
-        // Directory may already exist
+        return await this.statfsFn(current);
+      } catch (err) {
+        const parent = path.dirname(current);
+        if (parent === current) {
+          throw new Error(`Unable to read filesystem statistics for ${dir}: ${(err as Error).message}`);
+        }
+        current = parent;
       }
-
-      const stats = await this.statfsFn(this.recordingsRoot);
-      const bsize = BigInt(stats.bsize);
-      const blocks = BigInt(stats.blocks);
-      const bfree = BigInt(stats.bfree);
-
-      const totalBytes = Number(blocks * bsize);
-      const freeBytes = Number(bfree * bsize);
-      const usedBytes = Math.max(0, totalBytes - freeBytes);
-      const usedPercent =
-        totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0;
-
-      return {
-        totalBytes,
-        freeBytes,
-        usedBytes,
-        usedPercent,
-        mountPath: this.recordingsRoot,
-        warningThresholdPercent: this.warningThresholdPercent,
-        criticalThresholdPercent: this.criticalThresholdPercent,
-      };
-    } catch {
-      // Safe fallback if statfs fails in unmounted test environment
-      return {
-        totalBytes: 100 * 1024 * 1024 * 1024,
-        freeBytes: 100 * 1024 * 1024 * 1024,
-        usedBytes: 0,
-        usedPercent: 0,
-        mountPath: this.recordingsRoot,
-        warningThresholdPercent: this.warningThresholdPercent,
-        criticalThresholdPercent: this.criticalThresholdPercent,
-      };
     }
   }
 
@@ -173,41 +173,13 @@ export class StorageController {
     });
 
     let currentMetrics = initialMetrics;
-    let iteration = 0;
-    let deletedSegmentsCount = 0;
-    let totalFreedBytes = 0;
-
-    while (
-      currentMetrics.usedPercent > this.targetThresholdPercent &&
-      iteration < this.maxIterations
-    ) {
-      iteration++;
-      const candidates = await this.catalog.getOldestRecordings(this.batchSize);
-      if (candidates.length === 0) {
-        break;
-      }
-
-      for (const segment of candidates) {
-        if (this.isBookmarkedFn && (await this.isBookmarkedFn(segment))) {
-          continue; // Preserve bookmarked evidence
-        }
-        try {
-          const res = await this.catalog.deleteSegmentInternal(
-            segment.id,
-            segment.filePath,
-            Number(segment.sizeBytes)
-          );
-          if (res.success) {
-            deletedSegmentsCount++;
-            totalFreedBytes += res.freedBytes || 0;
-          }
-        } catch {
-          // Traversal or system error ignored per item
-        }
-      }
-
-      currentMetrics = await this.getStorageMetrics();
-    }
+    const { deletedSegmentsCount, freedBytes: totalFreedBytes } = await this.deleteOldestSegments({
+      shouldContinue: async () => {
+        currentMetrics = await this.getStorageMetrics();
+        return currentMetrics.usedPercent > this.targetThresholdPercent;
+      },
+    });
+    currentMetrics = await this.getStorageMetrics();
 
     const usedPercentAfter = currentMetrics.usedPercent;
 
@@ -244,25 +216,45 @@ export class StorageController {
     }
 
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const result = await this.deleteOldestSegments({
+      isEligible: (segment) => new Date(segment.startTime) < cutoff,
+    });
+    return result;
+  }
+
+  /**
+   * Deletes catalogued segments oldest-first.
+   *
+   * Segments that must be kept (bookmarked) or cannot be deleted are skipped by
+   * advancing the page offset, so a run of protected footage at the head of the
+   * catalog no longer stalls rollover forever. Stops at the first segment that is
+   * not eligible (catalog is ordered by start time), when shouldContinue() says so,
+   * or after maxIterations batches.
+   */
+  private async deleteOldestSegments(opts: {
+    isEligible?: (segment: any) => boolean;
+    shouldContinue?: () => Promise<boolean>;
+  }): Promise<{ deletedSegmentsCount: number; freedBytes: number }> {
     let deletedSegmentsCount = 0;
-    let totalFreedBytes = 0;
+    let freedBytes = 0;
+    let skip = 0;
 
-    let hasMore = true;
-    let iteration = 0;
+    for (let iteration = 0; iteration < this.maxIterations; iteration++) {
+      if (opts.shouldContinue && !(await opts.shouldContinue())) break;
 
-    while (hasMore && iteration < this.maxIterations) {
-      iteration++;
-      const candidates = await this.catalog.getOldestRecordings(this.batchSize);
+      const candidates = await this.catalog.getOldestRecordings(this.batchSize, skip);
       if (candidates.length === 0) break;
 
-      const expiredCandidates = candidates.filter((s) => new Date(s.startTime) < cutoff);
-      if (expiredCandidates.length === 0) break;
-
-      for (const segment of expiredCandidates) {
-        if (this.isBookmarkedFn && (await this.isBookmarkedFn(segment))) {
-          continue; // Preserve bookmarked evidence
+      let reachedIneligible = false;
+      for (const segment of candidates) {
+        if (opts.isEligible && !opts.isEligible(segment)) {
+          reachedIneligible = true;
+          break;
         }
-
+        if (this.isBookmarkedFn && (await this.isBookmarkedFn(segment))) {
+          skip++; // Preserve bookmarked evidence
+          continue;
+        }
         try {
           const res = await this.catalog.deleteSegmentInternal(
             segment.id,
@@ -271,18 +263,17 @@ export class StorageController {
           );
           if (res.success) {
             deletedSegmentsCount++;
-            totalFreedBytes += res.freedBytes || 0;
+            freedBytes += res.freedBytes || 0;
+          } else {
+            skip++;
           }
         } catch {
-          // Ignore error per item
+          skip++; // Outside the recordings root or other non-retryable error
         }
       }
-
-      if (expiredCandidates.length < candidates.length) {
-        hasMore = false;
-      }
+      if (reachedIneligible) break;
     }
 
-    return { deletedSegmentsCount, freedBytes: totalFreedBytes };
+    return { deletedSegmentsCount, freedBytes };
   }
 }

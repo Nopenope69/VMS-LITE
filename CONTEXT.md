@@ -58,6 +58,11 @@ The streaming and media ingestion infrastructure (MediaMTX) handling RTSP pull, 
 
 ---
 
+### Site
+A physical location (branch, warehouse, home) whose cameras this central server pulls over LAN, VPN or port-forwarded RTSP. Cameras belong to at most one site; sites drive filtering and per-site health. They do not change recording or playback.
+
+---
+
 ## 4. WebRTC & NAT Traversal Domain
 
 ### WHEP (WebRTC HTTP Egress Protocol)

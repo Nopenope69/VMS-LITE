@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
 import { IClock, systemClock } from './clock.js';
+import { getRecordingsRoot, isWithinRoot } from './recordings-root.js';
 import {
   IRecordingRepository,
   PrismaRecordingRepository,
@@ -26,6 +27,33 @@ export interface RecordingCatalogOptions {
   cameraLookup?: (cameraId: string) => Promise<{ id: string; name: string; mediaMtxPath: string } | null>;
 }
 
+/** Segments closer than this are shown as one continuous span on the timeline. */
+const SPAN_GAP_TOLERANCE_MS = 5_000;
+
+/**
+ * Parses the UTC start time MediaMTX encodes in segment file names
+ * (recordPath %Y-%m-%d_%H-%M-%S-%f; microseconds optional). MediaMTX runs in UTC.
+ */
+export function parseSegmentFileTime(segmentPath: string): Date | null {
+  const match = path
+    .basename(segmentPath)
+    .match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})(?:-(\d{1,6}))?/);
+  if (!match) return null;
+  const [, year, month, day, hour, min, sec, micros] = match;
+  // Round up: MediaMTX playback rejects a start even 1µs before the first segment,
+  // so span starts must never precede the real segment start.
+  const ms = micros ? Math.ceil(Number(micros.padEnd(6, '0')) / 1000) : 0;
+  const date = new Date(Date.UTC(+year, +month - 1, +day, +hour, +min, +sec, ms));
+  return isNaN(date.getTime()) ? null : date;
+}
+
+export class UnknownCameraPathError extends Error {
+  constructor(mediaMtxPath: string) {
+    super(`No camera is registered for media path '${mediaMtxPath}'`);
+    this.name = 'UnknownCameraPathError';
+  }
+}
+
 export interface SegmentDeletionResult {
   success: boolean;
   recordingId: string;
@@ -47,9 +75,7 @@ export class RecordingCatalog {
     this.repository = opts.repository || new PrismaRecordingRepository();
     this.eventBus = opts.eventBus || defaultEventBus;
     this.clock = opts.clock || systemClock;
-    this.recordingsRoot = path.resolve(
-      opts.recordingsDir || process.env.RECORDINGS_PATH || '/var/recordings'
-    );
+    this.recordingsRoot = getRecordingsRoot(opts.recordingsDir);
     this.fsStatFn = opts.fsStatFn || (async (p) => fs.stat(p));
     this.fsUnlinkFn = opts.fsUnlinkFn || (async (p) => fs.unlink(p));
     this.cameraLookup = opts.cameraLookup;
@@ -70,16 +96,12 @@ export class RecordingCatalog {
       }
     }
 
-    const match = segmentPath.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/);
-    if (match) {
-      const [, year, month, day, hour, min, sec] = match;
-      const startTime = new Date(Date.UTC(+year, +month - 1, +day, +hour, +min, +sec));
-      if (!isNaN(startTime.getTime())) {
-        return {
-          startTime,
-          endTime: new Date(startTime.getTime() + duration * 1000),
-        };
-      }
+    const fileTime = parseSegmentFileTime(segmentPath);
+    if (fileTime) {
+      return {
+        startTime: fileTime,
+        endTime: new Date(fileTime.getTime() + duration * 1000),
+      };
     }
 
     // Fallback: derive from clock
@@ -108,7 +130,22 @@ export class RecordingCatalog {
       }
     }
 
-    const cameraId = camera ? camera.id : `camera-${mediaMtxPath}`;
+    if (!camera) {
+      // Recording rows reference cameras; segments of deleted cameras or preview
+      // paths must not be catalogued.
+      throw new UnknownCameraPathError(mediaMtxPath);
+    }
+    if (!isWithinRoot(this.recordingsRoot, payload.segmentPath)) {
+      throw new Error(`Segment path ${payload.segmentPath} is outside the recordings root ${this.recordingsRoot}`);
+    }
+
+    // Idempotent: the segment indexer and the MediaMTX hook may both report a file
+    const existing = await this.repository.findRecordingByFilePath(payload.segmentPath);
+    if (existing) {
+      return existing;
+    }
+
+    const cameraId = camera.id;
     const fileName = path.basename(payload.segmentPath);
 
     let sizeBytes = payload.size ?? 1024 * 1024;
@@ -172,8 +209,8 @@ export class RecordingCatalog {
   /**
    * Retrieves oldest recordings for FIFO rollover.
    */
-  async getOldestRecordings(limit: number): Promise<RecordingDto[]> {
-    return this.repository.findOldestRecordings(limit);
+  async getOldestRecordings(limit: number, skip = 0): Promise<RecordingDto[]> {
+    return this.repository.findOldestRecordings(limit, skip);
   }
 
   /**
@@ -183,7 +220,7 @@ export class RecordingCatalog {
     const resolvedPath = path.resolve(rawFilePath);
 
     // Verify containment under normalized root (prevent directory traversal)
-    if (!resolvedPath.startsWith(this.recordingsRoot + path.sep) && resolvedPath !== this.recordingsRoot) {
+    if (!isWithinRoot(this.recordingsRoot, resolvedPath)) {
       throw new Error(`Directory traversal denied: path ${resolvedPath} is outside ${this.recordingsRoot}`);
     }
 
@@ -255,22 +292,28 @@ export class RecordingCatalog {
       endDate = new Date(`${dateStr}T23:59:59.999Z`);
     }
 
-    const records = await this.repository.queryRecordings({
-      cameraId: params.cameraId,
-      startTime: startDate.toISOString(),
-      endTime: endDate.toISOString(),
-      limit: 500,
-    });
+    const records = await this.repository.findRecordingsInRange(params.cameraId, startDate, endDate);
 
-    // Sort ascending for chronological playback scrubbing
-    records.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-
-    const spans: TimelineSpanDto[] = records.map((r) => ({
-      recordingId: r.id,
-      startTime: r.startTime,
-      endTime: r.endTime,
-      durationSeconds: Number(r.duration),
-    }));
+    // Stitch contiguous segments into continuous spans (MediaMTX writes back-to-back
+    // segments; small gaps come from rounding and segment rollover).
+    const spans: TimelineSpanDto[] = [];
+    for (const r of records) {
+      const start = new Date(r.startTime).getTime();
+      const end = new Date(r.endTime).getTime();
+      const last = spans[spans.length - 1];
+      if (last && start - new Date(last.endTime).getTime() <= SPAN_GAP_TOLERANCE_MS) {
+        const lastEnd = Math.max(new Date(last.endTime).getTime(), end);
+        last.endTime = new Date(lastEnd).toISOString();
+        last.durationSeconds = Math.round((lastEnd - new Date(last.startTime).getTime()) / 1000);
+      } else {
+        spans.push({
+          recordingId: r.id,
+          startTime: r.startTime,
+          endTime: r.endTime,
+          durationSeconds: Math.round((end - start) / 1000),
+        });
+      }
+    }
 
     const totalDurationSeconds = spans.reduce((sum, s) => sum + s.durationSeconds, 0);
 
@@ -308,7 +351,7 @@ export class RecordingCatalog {
 
     const base = playbackBaseUrl.replace(/\/$/, '');
     const encodedStart = encodeURIComponent(new Date(startTime).toISOString());
-    const fmp4StreamUrl = `${base}/get?path=${camera.mediaMtxPath}&start=${encodedStart}&duration=${durationSeconds}`;
+    const fmp4StreamUrl = `${base}/get?path=${encodeURIComponent(camera.mediaMtxPath)}&start=${encodedStart}&duration=${durationSeconds}`;
 
     return {
       cameraId,

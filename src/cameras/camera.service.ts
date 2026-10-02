@@ -17,7 +17,10 @@ import {
   ManualCameraInput,
   OnboardCameraInput,
   CommitCameraInput,
+  UpdateCameraInput,
 } from './camera.types.js';
+
+const PREVIEW_TTL_MS = 10 * 60 * 1000;
 
 export class LicenseLimitExceededError extends Error {
   public readonly code = 'LICENSE_LIMIT_EXCEEDED';
@@ -155,7 +158,13 @@ export class CameraService {
     const randomSuffix = crypto.randomBytes(4).toString('hex');
     const pathName = `${pathPrefix}_${randomSuffix}`;
 
-    await this.mediaMtx.addPath(pathName, rtspUrl);
+    await this.mediaMtx.addPath(pathName, rtspUrl, { record: false });
+
+    // Previews are transient: remove automatically if the wizard is abandoned
+    const expiry = setTimeout(() => {
+      this.teardownPreviewPath(pathName).catch(() => {});
+    }, PREVIEW_TTL_MS);
+    expiry.unref?.();
 
     // Poll MediaMTX for up to 5 seconds to verify stream readiness
     let ready = false;
@@ -169,7 +178,7 @@ export class CameraService {
       await new Promise((r) => setTimeout(r, 400));
     }
 
-    const whepUrl = `/whep/${pathName}/whep`;
+    const whepUrl = `/api/media/whep/${pathName}/whep`;
 
     return {
       pathName,
@@ -193,73 +202,20 @@ export class CameraService {
    * Directly creates and provisions a camera with dual-stream support.
    */
   async createCamera(dto: CreateCameraDto): Promise<CameraDto> {
-    const mediaMtxPath = this.generatePathName(dto.name);
-    const subMediaMtxPath = dto.subRtspUrl ? `${mediaMtxPath}_sub` : null;
-
-    try {
-      // Provision main stream in MediaMTX with sourceOnDemand: false
-      const mainOk = await this.mediaMtx.setPath(mediaMtxPath, {
-        source: dto.rtspUrl,
-        sourceOnDemand: false,
-      });
-      if (!mainOk) {
-        throw new Error(`Failed to configure main stream path in media plane: ${mediaMtxPath}`);
-      }
-
-      // Provision on-demand sub-stream if provided
-      if (dto.subRtspUrl && subMediaMtxPath) {
-        const subOk = await this.mediaMtx.setPath(subMediaMtxPath, {
-          source: dto.subRtspUrl,
-          sourceOnDemand: true,
-        });
-        if (!subOk) {
-          throw new Error(`Failed to configure sub-stream path in media plane: ${subMediaMtxPath}`);
-        }
-      }
-
-      const record = await this.prisma.camera.create({
-        data: {
-          name: dto.name,
-          ip: dto.ip || null,
-          port: dto.port ?? 554,
-          username: dto.username || null,
-          password: dto.password || null,
-          rtspUrl: dto.rtspUrl,
-          subRtspUrl: dto.subRtspUrl || null,
-          subStreamUrl: dto.subRtspUrl || null,
-          mediaMtxPath,
-          subMediaMtxPath,
-          status: 'online',
-          recordingMode: 'CONTINUOUS',
-        },
-      });
-
-      if (this.eventBus) {
-        await this.eventBus.emitEvent({
-          type: 'camera.online',
-          source: 'camera.service',
-          cameraId: record.id,
-          metadata: {
-            name: record.name,
-            mediaMtxPath: record.mediaMtxPath,
-            subMediaMtxPath: record.subMediaMtxPath,
-          },
-        }).catch(() => {});
-      }
-
-      return this.toDto(record);
-    } catch (err) {
-      // Compensating teardown on failure: cleanly remove MediaMTX paths if attempted/provisioned
-      if (subMediaMtxPath) {
-        await this.mediaMtx.removePath(subMediaMtxPath).catch(() => {});
-      }
-      await this.mediaMtx.removePath(mediaMtxPath).catch(() => {});
-      throw err;
-    }
+    return this.provisionCamera({
+      name: dto.name,
+      siteId: dto.siteId ?? null,
+      ip: dto.ip || null,
+      port: dto.port ?? 554,
+      username: dto.username || null,
+      password: dto.password || null,
+      rtspUrl: dto.rtspUrl,
+      subStreamUrl: dto.subRtspUrl || null,
+    });
   }
 
   /**
-   * Atomically commits a verified camera to PostgreSQL and locks in the permanent stream path (Step 6).
+   * Commits a camera verified by the onboarding wizard and locks in its permanent stream paths (Step 6).
    */
   async commitVerifiedCamera(
     input: CommitCameraInput,
@@ -267,11 +223,9 @@ export class CameraService {
   ): Promise<CameraResponseDto> {
     await this.assertWithinLimit(cameraLimit);
 
-    const mediaMtxPath = this.generatePathName(input.name);
-
-    // Save camera to PostgreSQL
-    const cameraRecord = await this.persistCamera({
+    const camera = await this.provisionCamera({
       name: input.name,
+      siteId: input.siteId ?? null,
       ip: input.ip || null,
       port: input.port || null,
       username: input.username || null,
@@ -283,41 +237,102 @@ export class CameraService {
       manufacturer: input.manufacturer || null,
       model: input.model || null,
       serialNumber: input.serialNumber || null,
-      status: 'online',
-      mediaMtxPath,
     });
 
-    try {
-      // Configure permanent path in MediaMTX
-      await this.mediaMtx.addPath(mediaMtxPath, input.rtspUrl);
-    } catch (err: any) {
-      // Transactional rollback: purge from database if media plane provisioning fails
-      await this.prisma.camera.delete({ where: { id: cameraRecord.id } }).catch(() => {});
-      throw new Error(`Media plane provisioning failed: ${err.message}. Database rollback completed.`);
-    }
-
-    // Clean up temporary preview path if provided
     if (input.previewPath) {
       await this.teardownPreviewPath(input.previewPath).catch(() => {});
     }
 
-    // Emit lifecycle event
-    await this.eventBus.emitEvent({
-      type: 'camera.online',
-      source: 'camera.service',
-      cameraId: cameraRecord.id,
-      metadata: {
-        name: cameraRecord.name,
-        ip: cameraRecord.ip,
-        port: cameraRecord.port,
-        onvifXAddr: cameraRecord.onvifUrl,
-        username: cameraRecord.username,
-        mediaMtxPath: cameraRecord.mediaMtxPath,
-        manufacturer: cameraRecord.manufacturer,
-      },
-    });
+    return camera;
+  }
 
-    return this.toDto(cameraRecord);
+  /**
+   * Single provisioning path for every onboarding flow:
+   * 1. configure main (always-on, recording) and optional sub (on-demand) paths in MediaMTX,
+   * 2. persist the camera,
+   * 3. roll back the media paths if anything fails,
+   * 4. announce camera.online (never including credentials: events are stored and broadcast).
+   */
+  private async provisionCamera(data: {
+    name: string;
+    siteId?: string | null;
+    rtspUrl: string;
+    subStreamUrl?: string | null;
+    ip?: string | null;
+    port?: number | null;
+    username?: string | null;
+    password?: string | null;
+    onvifUrl?: string | null;
+    profileToken?: string | null;
+    manufacturer?: string | null;
+    model?: string | null;
+    serialNumber?: string | null;
+  }): Promise<CameraResponseDto> {
+    const mediaMtxPath = this.generatePathName(data.name);
+    const subMediaMtxPath = data.subStreamUrl ? `${mediaMtxPath}_sub` : null;
+
+    let record: any;
+    try {
+      const mainOk = await this.mediaMtx.setPath(mediaMtxPath, {
+        source: data.rtspUrl,
+        sourceOnDemand: false,
+        record: true, // New cameras start in CONTINUOUS mode; the scheduler owns this flag afterwards
+      });
+      if (!mainOk) {
+        throw new Error(`Failed to configure main stream path in media plane: ${mediaMtxPath}`);
+      }
+
+      if (data.subStreamUrl && subMediaMtxPath) {
+        const subOk = await this.mediaMtx.setPath(subMediaMtxPath, {
+          source: data.subStreamUrl,
+          sourceOnDemand: true,
+          record: false,
+        });
+        if (!subOk) {
+          throw new Error(`Failed to configure sub-stream path in media plane: ${subMediaMtxPath}`);
+        }
+      }
+
+      record = await this.prisma.camera.create({
+        data: {
+          ...data,
+          subStreamUrl: data.subStreamUrl || null,
+          subRtspUrl: data.subStreamUrl || null,
+          mediaMtxPath,
+          subMediaMtxPath,
+          status: 'online',
+          recordingMode: 'CONTINUOUS',
+        },
+      });
+    } catch (err) {
+      if (subMediaMtxPath) {
+        await this.mediaMtx.removePath(subMediaMtxPath).catch(() => {});
+      }
+      await this.mediaMtx.removePath(mediaMtxPath).catch(() => {});
+      throw err;
+    }
+
+    await this.eventBus
+      .emitEvent({
+        // 'added', not 'online': nothing has verified the stream yet. Real online/
+        // offline transitions come from the health monitor.
+        type: 'camera.added',
+        source: 'camera.service',
+        cameraId: record.id,
+        metadata: {
+          name: record.name,
+          ip: record.ip,
+          port: record.port,
+          onvifXAddr: record.onvifUrl,
+          manufacturer: record.manufacturer,
+          mediaMtxPath: record.mediaMtxPath,
+          subMediaMtxPath: record.subMediaMtxPath,
+          siteId: record.siteId ?? null,
+        },
+      })
+      .catch(() => {});
+
+    return this.toDto(record);
   }
 
   /**
@@ -358,15 +373,13 @@ export class CameraService {
     const mainProfile = profiles.find((p) => p.isMainStream) || profiles[0];
     const subProfile = profiles.find((p) => !p.isMainStream);
 
-    const mediaMtxPath = this.generatePathName(input.name);
-
-    // Save camera to PostgreSQL (with in-memory fallback)
-    const cameraRecord = await this.persistCamera({
+    return this.provisionCamera({
       name: input.name,
+      siteId: input.siteId ?? null,
       ip: input.ip,
       port: input.port,
-      username: input.username,
-      password: input.password,
+      username: input.username || null,
+      password: input.password || null,
       rtspUrl: mainProfile.rtspUri,
       subStreamUrl: subProfile?.rtspUri || null,
       onvifUrl: input.xaddr || `http://${input.ip}:${input.port}/onvif/device_service`,
@@ -374,31 +387,7 @@ export class CameraService {
       manufacturer: info.manufacturer || null,
       model: info.model || null,
       serialNumber: info.serialNumber || null,
-      status: 'online',
-      mediaMtxPath,
     });
-
-    // Dynamically provision path in MediaMTX
-    await this.mediaMtx.addPath(mediaMtxPath, mainProfile.rtspUri);
-
-    // Emit lifecycle event
-    await this.eventBus.emitEvent({
-      type: 'camera.online',
-      source: 'camera.service',
-      cameraId: cameraRecord.id,
-      metadata: {
-        name: cameraRecord.name,
-        ip: cameraRecord.ip,
-        port: cameraRecord.port,
-        onvifXAddr: cameraRecord.onvifUrl,
-        username: cameraRecord.username,
-        password: input.password,
-        mediaMtxPath: cameraRecord.mediaMtxPath,
-        manufacturer: cameraRecord.manufacturer,
-      },
-    });
-
-    return this.toDto(cameraRecord);
   }
 
   /**
@@ -410,37 +399,20 @@ export class CameraService {
   ): Promise<CameraResponseDto> {
     await this.assertWithinLimit(cameraLimit);
 
-    const mediaMtxPath = this.generatePathName(input.name);
-
-    const cameraRecord = await this.persistCamera({
+    return this.provisionCamera({
       name: input.name,
+      siteId: input.siteId ?? null,
       rtspUrl: input.rtspUrl,
       subStreamUrl: input.subStreamUrl || null,
-      status: 'online',
-      mediaMtxPath,
     });
-
-    await this.mediaMtx.addPath(mediaMtxPath, input.rtspUrl);
-
-    await this.eventBus.emitEvent({
-      type: 'camera.online',
-      source: 'camera.service',
-      cameraId: cameraRecord.id,
-      metadata: {
-        name: cameraRecord.name,
-        mediaMtxPath: cameraRecord.mediaMtxPath,
-        manual: true,
-      },
-    });
-
-    return this.toDto(cameraRecord);
   }
 
   /**
    * Retrieves all onboarded cameras.
    */
-  async listCameras(): Promise<CameraResponseDto[]> {
+  async listCameras(filter: { siteId?: string | null } = {}): Promise<CameraResponseDto[]> {
     const records = await this.prisma.camera.findMany({
+      where: filter.siteId !== undefined ? { siteId: filter.siteId } : undefined,
       orderBy: { createdAt: 'desc' },
     });
     return records.map((r) => this.toDto(r));
@@ -457,6 +429,23 @@ export class CameraService {
   }
 
   /**
+   * Renames a camera and/or moves it to another site (null = unassigned).
+   * Stream configuration is untouched; the media path keeps its name.
+   */
+  async updateCamera(id: string, input: UpdateCameraInput): Promise<CameraResponseDto | null> {
+    const existing = await this.prisma.camera.findUnique({ where: { id } });
+    if (!existing) return null;
+    const record = await this.prisma.camera.update({
+      where: { id },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.siteId !== undefined ? { siteId: input.siteId } : {}),
+      },
+    });
+    return this.toDto(record);
+  }
+
+  /**
    * Removes a camera and tears down its streaming path in MediaMTX.
    */
   async removeCamera(id: string): Promise<boolean> {
@@ -467,8 +456,11 @@ export class CameraService {
 
     await this.prisma.camera.delete({ where: { id } });
 
-    // Teardown MediaMTX stream path
-    await this.mediaMtx.removePath(existingCamera.mediaMtxPath);
+    // Teardown MediaMTX stream paths (the DB row is gone, so a failure here only leaves
+    // an orphaned path that a MediaMTX restart clears; don't fail the request for it)
+    await this.mediaMtx.removePath(existingCamera.mediaMtxPath).catch((err: Error) => {
+      console.warn(`[CameraService] Failed to remove media path ${existingCamera.mediaMtxPath}: ${err.message}`);
+    });
     if (existingCamera.subMediaMtxPath) {
       await this.mediaMtx.removePath(existingCamera.subMediaMtxPath).catch(() => {});
     }
@@ -531,19 +523,13 @@ export class CameraService {
   }
 
   /**
-   * Persists camera to PostgreSQL.
-   */
-  private async persistCamera(data: any): Promise<any> {
-    return await this.prisma.camera.create({ data });
-  }
-
-  /**
    * Formats camera database record into public DTO, deliberately excluding password (T-02-06).
    */
   private toDto(record: any): CameraResponseDto {
     return {
       id: record.id,
       name: record.name,
+      siteId: record.siteId ?? null,
       ip: record.ip,
       port: record.port,
       username: record.username,

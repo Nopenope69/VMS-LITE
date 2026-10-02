@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
 import { auditService } from '../src/audit/audit.service.js';
+import { signAs } from './helpers/auth.js';
 
 describe('Sub-Project D: Installer Handoff & Audit Security End-to-End', () => {
   let app: FastifyInstance;
@@ -12,13 +13,19 @@ describe('Sub-Project D: Installer Handoff & Audit Security End-to-End', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    const { prisma } = await import('../src/db/prisma.js');
+    await prisma.user.deleteMany({ where: { username: 'admin' } });
+    await prisma.user.create({
+      data: { id: 'admin-uuid-001', username: 'admin', passwordHash: 'x', role: 'ADMIN' },
+    });
+
+    adminToken = await signAs(app, {
       id: 'admin-uuid-001',
       username: 'admin',
       role: 'ADMIN',
     });
 
-    operatorToken = app.jwt.sign({
+    operatorToken = await signAs(app, {
       id: 'operator-uuid-002',
       username: 'guard',
       role: 'OPERATOR',
@@ -74,6 +81,16 @@ describe('Sub-Project D: Installer Handoff & Audit Security End-to-End', () => {
       const body = JSON.parse(res.payload);
       expect(body.success).toBe(true);
       expect(body.message).toContain('completed successfully');
+
+      // Changing the factory password revokes earlier tokens; the wizard returns a new one
+      const revoked = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      expect(revoked.statusCode).toBe(401);
+      expect(typeof body.token).toBe('string');
+      adminToken = body.token;
 
       // Verify setup status has updated
       const statusRes = await app.inject({

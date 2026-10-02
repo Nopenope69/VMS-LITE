@@ -71,9 +71,9 @@ describe('CameraService (CAM-01, CAM-02, CAM-03, CAM-05)', () => {
       expect(path?.name).toBe(camera.mediaMtxPath);
     });
 
-    it('emits camera.online event upon onboarding', async () => {
+    it('emits camera.added (not camera.online) upon onboarding', async () => {
       let eventReceived: any = null;
-      eventBus.subscribe('camera.online', (evt) => {
+      eventBus.subscribe('camera.added', (evt) => {
         eventReceived = evt;
       });
 
@@ -88,7 +88,7 @@ describe('CameraService (CAM-01, CAM-02, CAM-03, CAM-05)', () => {
 
       expect(eventReceived).not.toBeNull();
       expect(eventReceived.cameraId).toBe(camera.id);
-      expect(eventReceived.type).toBe('camera.online');
+      expect(eventReceived.type).toBe('camera.added');
     });
   });
 

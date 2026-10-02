@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 
 export type UserRole = 'ADMIN' | 'OPERATOR' | 'VIEWER';
 
@@ -25,8 +25,18 @@ export interface AuthContextType {
   isOperator: boolean;
   isViewer: boolean;
   isLoading: boolean;
+  /** Licensed capabilities (e.g. 'extended.ptz'), from /api/auth/me */
+  capabilities: string[];
+  /** Whether the user may control PTZ on this camera (role + operator grant) */
+  canControlPtz: (cameraId: string) => boolean;
   login: (token: string, user: User) => void;
   logout: () => void;
+  /**
+   * Call when a request made with `failedToken` got 401. Logs out only if that token is
+   * still the current one: after a password change, in-flight requests with the old
+   * (revoked) token must not wipe the new session.
+   */
+  handleUnauthorized: (failedToken: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,6 +55,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return null;
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [capabilities, setCapabilities] = useState<string[]>([]);
 
   useEffect(() => {
     async function verifySession() {
@@ -63,9 +74,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (res.ok) {
           const data = await res.json();
           setUser(data.user);
+          setCapabilities(data.capabilities || []);
           localStorage.setItem('vms_user', JSON.stringify(data.user));
-        } else {
-          // Token expired or invalid
+        } else if (localStorage.getItem('vms_token') === token) {
+          // Token expired or revoked, and not already replaced by a newer login
           setToken(null);
           setUser(null);
           localStorage.removeItem('vms_token');
@@ -81,21 +93,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     verifySession();
   }, [token]);
 
-  const login = (newToken: string, newUser: User) => {
+  const login = useCallback((newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem('vms_token', newToken);
     localStorage.setItem('vms_user', JSON.stringify(newUser));
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
+    // Clears the HttpOnly media cookie used for video playback
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     setToken(null);
     setUser(null);
     localStorage.removeItem('vms_token');
     localStorage.removeItem('vms_user');
-  };
+  }, []);
+
+  const handleUnauthorized = useCallback(
+    (failedToken: string | null) => {
+      if (!failedToken || localStorage.getItem('vms_token') === failedToken) {
+        logout();
+      }
+    },
+    [logout]
+  );
 
   const role = user?.role ?? null;
+  const canControlPtz = useCallback(
+    (cameraId: string) => {
+      if (!capabilities.includes('extended.ptz')) return false;
+      if (role === 'ADMIN') return true;
+      if (role === 'OPERATOR') {
+        return Boolean(user?.cameraPermissions?.some((p) => p.cameraId === cameraId && p.canControlPtz));
+      }
+      return false;
+    },
+    [capabilities, role, user]
+  );
   const isAdmin = role === 'ADMIN';
   const isOperator = role === 'OPERATOR';
   const isViewer = role === 'VIEWER';
@@ -110,8 +144,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isOperator,
         isViewer,
         isLoading,
+        capabilities,
+        canControlPtz,
         login,
         logout,
+        handleUnauthorized,
       }}
     >
       {children}
@@ -131,8 +168,11 @@ export const useAuth = (): AuthContextType => {
       isOperator: false,
       isViewer: false,
       isLoading: false,
+      capabilities: [],
+      canControlPtz: () => false,
       login: () => {},
       logout: () => {},
+      handleUnauthorized: () => {},
     };
   }
   return context;

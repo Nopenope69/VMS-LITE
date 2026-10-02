@@ -16,6 +16,7 @@ import {
 } from '../src/webhooks/webhook-dispatcher.service.js';
 import { ALLOWED_WEBHOOK_EVENTS } from '../src/webhooks/webhook.types.js';
 import { EventBus } from '../src/events/event-bus.js';
+import { signAs } from './helpers/auth.js';
 
 describe('WhatsApp Alerts & Outbound Webhooks (Phase 12 - Plan 02 - EXT-07, EXT-08)', () => {
   let app: FastifyInstance;
@@ -27,19 +28,19 @@ describe('WhatsApp Alerts & Outbound Webhooks (Phase 12 - Plan 02 - EXT-07, EXT-
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-1',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    operatorToken = app.jwt.sign({
+    operatorToken = await signAs(app, {
       id: 'op-1',
       username: 'operator',
       role: Role.OPERATOR,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'view-1',
       username: 'viewer',
       role: Role.VIEWER,

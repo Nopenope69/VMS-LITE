@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
+const SiteIdField = z.string().min(1).optional().nullable();
+
 export const OnboardCameraSchema = z.object({
   name: z.string().min(1, 'Camera name is required'),
+  siteId: SiteIdField,
   ip: z.string().min(1, 'Camera IP is required'),
   port: z.number().int().positive().default(80),
   username: z.string().optional(),
@@ -13,6 +16,7 @@ export type OnboardCameraInput = z.infer<typeof OnboardCameraSchema>;
 
 export const ManualCameraSchema = z.object({
   name: z.string().min(1, 'Camera name is required'),
+  siteId: SiteIdField,
   rtspUrl: z.string().refine((url) => url.startsWith('rtsp://') || url.startsWith('rtsps://'), {
     message: 'RTSP URL must start with rtsp:// or rtsps://',
   }),
@@ -28,6 +32,7 @@ export type ManualCameraInput = z.infer<typeof ManualCameraSchema>;
 
 export interface CreateCameraDto {
   name: string;
+  siteId?: string | null;
   rtspUrl: string;
   subRtspUrl?: string;
   ip?: string;
@@ -39,6 +44,7 @@ export interface CreateCameraDto {
 export interface CameraDto {
   id: string;
   name: string;
+  siteId?: string | null;
   ip?: string | null;
   port?: number | null;
   rtspUrl: string;
@@ -66,6 +72,7 @@ export interface CameraProfiles {
 export interface CameraResponseDto {
   id: string;
   name: string;
+  siteId: string | null;
   ip?: string | null;
   port?: number | null;
   username?: string | null;
@@ -88,8 +95,8 @@ export interface CameraResponseDto {
 
 export const ProbeNetworkSchema = z.object({
   ip: z.string().min(1, 'IP address is required'),
-  port: z.number().int().positive().default(554),
-  timeoutMs: z.number().int().positive().default(2500),
+  port: z.number().int().min(1).max(65535).default(554),
+  timeoutMs: z.number().int().positive().max(10_000).default(2500),
 });
 export type ProbeNetworkInput = z.infer<typeof ProbeNetworkSchema>;
 
@@ -111,6 +118,7 @@ export type ProvisionPreviewInput = z.infer<typeof ProvisionPreviewSchema>;
 
 export const CommitCameraSchema = z.object({
   name: z.string().min(1, 'Camera name is required'),
+  siteId: SiteIdField,
   ip: z.string().optional(),
   port: z.number().int().positive().optional(),
   username: z.string().optional(),
@@ -128,3 +136,11 @@ export const CommitCameraSchema = z.object({
 });
 export type CommitCameraInput = z.infer<typeof CommitCameraSchema>;
 
+
+export const UpdateCameraSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100).optional(),
+    siteId: z.string().min(1).nullable().optional(),
+  })
+  .refine((v) => v.name !== undefined || v.siteId !== undefined, { message: 'Nothing to update' });
+export type UpdateCameraInput = z.infer<typeof UpdateCameraSchema>;

@@ -23,19 +23,46 @@ import { notificationService } from './notifications/notification-dispatcher.ser
 import { smtpDispatcherService } from './notifications/smtp-dispatcher.service.js';
 import { webhookRoutes } from './webhooks/webhook.routes.js';
 import { settingsRoutes } from './settings/settings.routes.js';
+import { settingsService } from './settings/settings.service.js';
 import { systemRoutes } from './system/system.routes.js';
 import { shutdownRoutes } from './system/shutdown.routes.js';
 import { backupRoutes } from './system/backup.routes.js';
 import { setupRoutes } from './system/setup.routes.js';
 import { handoffRoutes } from './system/handoff.routes.js';
 import { auditRoutes } from './audit/audit.routes.js';
+import { mediaProxyRoutes } from './media/media-proxy.routes.js';
+import { siteRoutes } from './sites/site.routes.js';
 import { storageTelemetryRoutes } from './system/storage-telemetry.routes.js';
 import { storageTelemetryService } from './system/storage-telemetry.service.js';
 import { registerProcessSignalHandlers } from './system/shutdown.service.js';
 import { webhookDispatcherService } from './webhooks/webhook-dispatcher.service.js';
+import { eventBus } from './events/event-bus.js';
 import { webSocketFeedService, WebSocketFeedService } from './events/websocket-feed.service.js';
 import { onvifEventListenerService as defaultOnvifEvents, OnvifEventListenerService } from './events/onvif-events.service.js';
+import { resolveJwtSecret } from './users/jwt-secret.js';
+import { isSessionValid } from './users/session.js';
+import type { UserTokenPayload } from './users/rbac.guard.js';
 import { recordingEngine as defaultRecordingEngine, RecordingEngine } from './recordings/recording-engine.js';
+
+let eventRetentionTimer: NodeJS.Timeout | null = null;
+
+/** Prunes persisted events older than EVENT_RETENTION_DAYS (default 90) hourly. */
+function startEventRetention(): void {
+  if (eventRetentionTimer || process.env.NODE_ENV === 'test') return;
+  const days = Math.max(1, Number(process.env.EVENT_RETENTION_DAYS) || 90);
+  const prune = () =>
+    eventBus.pruneOlderThan(days).catch((err) => console.warn('[Events] Retention prune failed:', err.message));
+  prune();
+  eventRetentionTimer = setInterval(prune, 60 * 60 * 1000);
+  eventRetentionTimer.unref();
+}
+
+function stopEventRetention(): void {
+  if (eventRetentionTimer) {
+    clearInterval(eventRetentionTimer);
+    eventRetentionTimer = null;
+  }
+}
 
 export interface ServerOptions {
   logger?: boolean;
@@ -49,21 +76,26 @@ export interface ServerOptions {
 export async function createServer(opts: ServerOptions = {}): Promise<FastifyInstance> {
   const app = fastify({
     logger: opts.logger ?? (process.env.NODE_ENV !== 'test'),
+    // Behind Caddy/nginx: take the client IP from X-Forwarded-For (audit logs)
+    trustProxy: process.env.TRUST_PROXY === 'true',
   });
 
   const wsFeed = opts.wsFeedService || webSocketFeedService;
   const engine = opts.recordingEngine || defaultRecordingEngine;
   const onvifEvents = opts.onvifEventsService || defaultOnvifEvents;
 
-  // Permissive CORS
-  await app.register(cors, {
-    origin: true,
-    credentials: true,
-  });
+  // The UI is served from this origin; cross-origin access only for explicitly listed origins
+  const corsOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  if (corsOrigins.length > 0) {
+    await app.register(cors, { origin: corsOrigins, credentials: true });
+  }
 
   // JWT authentication plugin
   await app.register(fastifyJwt, {
-    secret: opts.jwtSecret || process.env.JWT_SECRET || 'dev-secret-basic-vms-super-secure',
+    secret: opts.jwtSecret || (await resolveJwtSecret()),
     sign: {
       expiresIn: '7d',
     },
@@ -140,6 +172,8 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(handoffRoutes, { prefix: '/api/system' });
   await app.register(storageTelemetryRoutes, { prefix: '/api/system/storage' });
   await app.register(auditRoutes, { prefix: '/api/audit' });
+  await app.register(mediaProxyRoutes, { prefix: '/api/media' });
+  await app.register(siteRoutes, { prefix: '/api/sites' });
 
   // Register static file serving & SPA fallback if client/dist exists
   const clientDist = path.resolve(process.cwd(), 'client/dist');
@@ -159,7 +193,8 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
         });
       }
 
-      if (request.method === 'GET') {
+      // SPA deep links get index.html; missing static files (e.g. /assets/x.js) stay 404
+      if (request.method === 'GET' && !path.extname(request.url.split('?')[0])) {
         return reply.sendFile('index.html');
       }
 
@@ -173,20 +208,27 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
 
   // Attach background services when server is ready
   app.addHook('onReady', async () => {
+    await settingsService.load();
     await engine.start();
     onvifEvents.start();
     cameraHealthService.start();
     await notificationService.start();
     await webhookDispatcherService.start();
     await smtpDispatcherService.start();
+    startEventRetention();
     await storageTelemetryService.start();
     wsFeed.attach(app.server, async (token: string) => {
-      return app.jwt.verify(token);
+      const payload = app.jwt.verify<UserTokenPayload>(token);
+      if (!(await isSessionValid(payload))) {
+        throw new Error('Session revoked');
+      }
+      return payload;
     });
   });
 
   // Clean up on server close
   app.addHook('onClose', async () => {
+    stopEventRetention();
     storageTelemetryService.stop();
     notificationService.stop();
     webhookDispatcherService.stop();

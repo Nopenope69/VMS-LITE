@@ -5,6 +5,7 @@ import { createServer } from '../src/server.js';
 import { prisma } from '../src/db/prisma.js';
 import { ptzService, PtzService } from '../src/ptz/ptz.service.js';
 import { onvifCameraProvider } from '../src/cameras/onvif.provider.js';
+import { signAs } from './helpers/auth.js';
 
 describe('ONVIF PTZ Controls & Camera Presets (Phase 9 - EXT-03)', () => {
   let app: FastifyInstance;
@@ -37,25 +38,25 @@ describe('ONVIF PTZ Controls & Camera Presets (Phase 9 - EXT-03)', () => {
     app = await createServer({ logger: false });
     await app.ready();
 
-    adminToken = app.jwt.sign({
+    adminToken = await signAs(app, {
       id: 'admin-uuid',
       username: 'admin',
       role: Role.ADMIN,
     });
 
-    operatorAllowedToken = app.jwt.sign({
+    operatorAllowedToken = await signAs(app, {
       id: allowedOperatorId,
       username: 'guard_ptz',
       role: Role.OPERATOR,
     });
 
-    operatorDeniedToken = app.jwt.sign({
+    operatorDeniedToken = await signAs(app, {
       id: deniedOperatorId,
       username: 'guard_nopz',
       role: Role.OPERATOR,
     });
 
-    viewerToken = app.jwt.sign({
+    viewerToken = await signAs(app, {
       id: 'viewer-uuid',
       username: 'viewer1',
       role: Role.VIEWER,

@@ -9,19 +9,44 @@ import {
   Radio,
   ExternalLink,
 } from 'lucide-react';
-import { CameraStreamInfo } from '../components/LiveCameraTile.js';
+import { CameraStreamInfo } from '../types/streams.js';
+import { resolveStreamProfile } from '../utils/streamProfileManager.js';
 import { WhepHlsPlayer } from '../components/WhepHlsPlayer.js';
+import { CameraHealthTelemetry } from '../hooks/useCameraHealth.js';
 
 export type LiveLayout = '1x1' | '2x2' | '3x3';
 
 export interface LiveViewProps {
   cameras: CameraStreamInfo[];
+  iceServers?: RTCIceServer[];
+  healthMap?: Record<string, CameraHealthTelemetry>;
   onlineCount: number;
   onSelectCamera: (cameraId: string) => void;
 }
 
+/** Grid layouts use the sub-stream (when the camera has one); a single tile uses the main stream. */
+function pickStream(cam: CameraStreamInfo, layout: LiveLayout): { whepUrl: string; hlsUrl: string } {
+  const profile = resolveStreamProfile({
+    viewMode: layout === '1x1' ? 'FOCUSED' : 'GRID',
+    operatorOverride: 'AUTO',
+    mainPath: cam.whepUrl,
+    subPath: cam.subStreamWhepUrl,
+  });
+  return profile.selectedStream === 'SUB'
+    ? { whepUrl: cam.subStreamWhepUrl!, hlsUrl: cam.subStreamHlsUrl || cam.hlsUrl }
+    : { whepUrl: cam.whepUrl, hlsUrl: cam.hlsUrl };
+}
+
+const STATUS_DOT: Record<string, string> = {
+  ONLINE: 'bg-emerald-400',
+  DEGRADED: 'bg-amber-400',
+  OFFLINE: 'bg-red-500',
+};
+
 export const LiveView: React.FC<LiveViewProps> = ({
   cameras,
+  iceServers,
+  healthMap = {},
   onlineCount,
   onSelectCamera,
 }) => {
@@ -151,9 +176,11 @@ export const LiveView: React.FC<LiveViewProps> = ({
               >
                 {/* Video Player Surface */}
                 <div className="absolute inset-0">
+                  {/* Multi-tile layouts use the sub-stream when the camera has one:
+                      a 3x3 grid of main streams can saturate a remote site's uplink */}
                   <WhepHlsPlayer
-                    whepUrl={cam.whepUrl}
-                    hlsUrl={cam.hlsUrl}
+                    {...pickStream(cam, layout)}
+                    iceServers={iceServers}
                     cameraName={cam.name}
                     className="w-full h-full object-cover"
                   />
@@ -162,13 +189,12 @@ export const LiveView: React.FC<LiveViewProps> = ({
                 {/* Subtle top overlay with camera name */}
                 <div className="relative z-10 p-3 flex items-center justify-between pointer-events-none bg-gradient-to-b from-black/60 to-transparent">
                   <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-zinc-950/70 backdrop-blur-md border border-white/10 text-xs">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[healthMap[cam.cameraId]?.status ?? ''] ?? 'bg-zinc-500'}`}
+                      title={healthMap[cam.cameraId]?.status ?? 'UNKNOWN'}
+                    />
                     <span className="font-medium text-zinc-200 tracking-tight">{cam.name}</span>
                   </div>
-
-                  <span className="text-[10px] text-zinc-400 font-mono px-1.5 py-0.5 rounded bg-zinc-950/70 border border-white/10">
-                    REC
-                  </span>
                 </div>
 
                 {/* Hover Click Target Hint */}

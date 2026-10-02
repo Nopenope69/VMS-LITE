@@ -58,24 +58,25 @@ describe('Installer Litmus Acceptance Test (Phase 21 - MVP-14)', () => {
     expect(clientHtml).toContain('<div id="root"></div>');
   });
 
-  it('Gate 3: Verifies Caddy reverse-proxy configuration routes media, api, and SPA', async () => {
+  it('Gate 3: Caddy fronts only the control plane (media is served by the authenticated proxy)', async () => {
     const caddyfilePath = path.join(process.cwd(), 'Caddyfile');
     const caddyContent = await fs.readFile(caddyfilePath, 'utf8');
 
-    // MediaMTX media plane routes
-    expect(caddyContent).toContain('path /whep/*');
-    expect(caddyContent).toContain('path /hls/*');
-    expect(caddyContent).toContain('reverse_proxy 127.0.0.1:8889');
-
-    // Fastify control plane API & WebSockets
-    expect(caddyContent).toContain('path /api/*');
-    expect(caddyContent).toContain('path /ws');
-    expect(caddyContent).toContain('path /health');
     expect(caddyContent).toContain('reverse_proxy 127.0.0.1:3000');
+    // MediaMTX listeners must never be exposed directly (no auth on them)
+    for (const port of ['8888', '8889', '9996', '9997', '8554']) {
+      expect(caddyContent).not.toContain(`127.0.0.1:${port}`);
+    }
+  });
 
-    // Frontend SPA static server
-    expect(caddyContent).toContain('root * ./client/dist');
-    expect(caddyContent).toContain('try_files {path} /index.html');
+  it('Gate 3b: MediaMTX HTTP listeners are bound to localhost', async () => {
+    const mtx = await fs.readFile(path.join(process.cwd(), 'mediamtx.yml'), 'utf8');
+    for (const key of ['apiAddress', 'playbackAddress', 'hlsAddress', 'webrtcAddress', 'rtspAddress']) {
+      expect(mtx).toMatch(new RegExp(`^${key}: 127\\.0\\.0\\.1:`, 'm'));
+    }
+    // 1.11 applies defaults from pathDefaults; 'paths: all:' would be a literal path
+    expect(mtx).toMatch(/^pathDefaults:/m);
+    expect(mtx).toMatch(/recordDeleteAfter: 0s/);
   });
 
   it('Gate 4: Verifies 100% Permissive third-party dependency licensing', async () => {

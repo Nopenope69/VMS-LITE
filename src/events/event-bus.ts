@@ -8,6 +8,37 @@ import {
   EventSeverity,
 } from './event.types.js';
 
+/**
+ * High-frequency operational events that are useful in-process (catalog, ring buffer,
+ * webhooks) but would flood the events table: one per camera per segment.
+ */
+const NON_PERSISTED_EVENT_TYPES = new Set(['recording.segment_created']);
+
+const SECRET_KEY_PATTERN = /pass(word)?|secret|token|credential|api[-_]?key/i;
+
+/**
+ * Removes credentials from event metadata before it is stored or broadcast:
+ * secret-looking keys are dropped and user:password@ is stripped from URLs.
+ */
+export function scrubSecrets(value: unknown, depth = 0): unknown {
+  if (depth > 6) return value;
+  if (typeof value === 'string') {
+    return value.replace(/([a-z][a-z0-9+.-]*:\/\/)[^@/\s]+@/gi, '$1');
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => scrubSecrets(v, depth + 1));
+  }
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (SECRET_KEY_PATTERN.test(k)) continue;
+      out[k] = scrubSecrets(v, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
 export class EventBus extends EventEmitter {
   constructor(private readonly prisma: PrismaClient = defaultPrisma) {
     super();
@@ -25,11 +56,14 @@ export class EventBus extends EventEmitter {
       ? new Date(input.timestamp)
       : new Date();
     const severity: EventSeverity = input.severity ?? 'info';
-    const metadata = (input.metadata ?? {}) as Record<string, unknown>;
+    const metadata = scrubSecrets(input.metadata ?? {}) as Record<string, unknown>;
 
     let record: EventRecord<T>;
 
     try {
+      if (NON_PERSISTED_EVENT_TYPES.has(input.type)) {
+        throw new Error('not persisted');
+      }
       const created = await this.prisma.event.create({
         data: {
           cameraId: input.cameraId ?? null,
@@ -52,7 +86,7 @@ export class EventBus extends EventEmitter {
         createdAt: created.createdAt,
       };
     } catch (err) {
-      // If database is offline or unmigrated (e.g. unit test fixture), generate in-memory record
+      // Not persisted by design, or the database is unavailable: still deliver in-process
       record = {
         id: `local-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         cameraId: input.cameraId ?? null,
@@ -77,12 +111,37 @@ export class EventBus extends EventEmitter {
    */
   subscribe<T = Record<string, unknown>>(
     eventType: string,
-    listener: (event: EventRecord<T>) => void
+    listener: (event: EventRecord<T>) => unknown
   ): () => void {
-    this.on(eventType, listener);
-    return () => {
-      this.off(eventType, listener);
+    // A throwing or rejecting subscriber must neither break the emitter nor surface
+    // as an unhandled rejection (which terminates Node).
+    const safeListener = (event: EventRecord<T>) => {
+      try {
+        const result = listener(event);
+        if (result instanceof Promise) {
+          result.catch((err) => this.reportListenerError(eventType, err));
+        }
+      } catch (err) {
+        this.reportListenerError(eventType, err);
+      }
     };
+    this.on(eventType, safeListener);
+    return () => {
+      this.off(eventType, safeListener);
+    };
+  }
+
+  private reportListenerError(eventType: string, err: unknown): void {
+    console.error(`[EventBus] Subscriber for '${eventType}' failed:`, (err as Error)?.message ?? err);
+  }
+
+  /**
+   * Deletes persisted events older than the given number of days.
+   */
+  async pruneOlderThan(days: number): Promise<number> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const result = await this.prisma.event.deleteMany({ where: { timestamp: { lt: cutoff } } });
+    return result.count;
   }
 
   /**
@@ -96,6 +155,8 @@ export class EventBus extends EventEmitter {
     }
     if (filter.cameraId) {
       where.cameraId = filter.cameraId;
+    } else if (filter.cameraIds) {
+      where.cameraId = { in: filter.cameraIds };
     }
     if (filter.since) {
       where.timestamp = {
@@ -107,8 +168,8 @@ export class EventBus extends EventEmitter {
       const events = await this.prisma.event.findMany({
         where,
         orderBy: { timestamp: 'desc' },
-        take: filter.limit ?? 50,
-        skip: filter.offset ?? 0,
+        take: Math.min(Math.max(filter.limit ?? 50, 1), 500),
+        skip: Math.max(filter.offset ?? 0, 0),
       });
 
       return events.map((e) => ({
