@@ -5,6 +5,7 @@ import { prisma as defaultPrisma } from '../db/prisma.js';
 import { auditService } from '../audit/audit.service.js';
 import { SystemSettingsStore } from '../settings/system-settings.store.js';
 import { invalidateSessionCache } from '../users/session.js';
+import { applyApplianceTimeZone, isValidTimeZone } from './time-format.js';
 
 export interface SetupState {
   completed: boolean;
@@ -46,6 +47,12 @@ export class SetupService {
 
   constructor(private readonly prisma: PrismaClient = defaultPrisma) {
     this.store = new SystemSettingsStore(prisma);
+  }
+
+  /** Boot: the wizard's timezone, once chosen, overrides the TZ default from .env */
+  async applyStoredTimeZone(): Promise<void> {
+    const state = await this.getSetupState();
+    if (state.completed) applyApplianceTimeZone(state.timezone);
   }
 
   async getSetupState(): Promise<SetupState> {
@@ -110,6 +117,9 @@ export class SetupService {
     actorUserId?: string
   ): Promise<{ success: boolean; message: string; user?: any }> {
     let updatedUser: any;
+    if (input.timezone?.trim() && !isValidTimeZone(input.timezone.trim())) {
+      throw new Error(`Unknown timezone '${input.timezone}'`);
+    }
     if (input.newPassword) {
       if (input.newPassword.length < 8) {
         throw new Error('New password must be at least 8 characters long');
@@ -147,6 +157,7 @@ export class SetupService {
       timezone: input.timezone?.trim() || previous.timezone,
       completedAt: new Date().toISOString(),
     });
+    if (input.timezone?.trim()) applyApplianceTimeZone(input.timezone);
 
     await auditService.log({
       action: 'INITIAL_SETUP_COMPLETED',

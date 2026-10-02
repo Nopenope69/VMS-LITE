@@ -18,7 +18,7 @@ export interface NotificationDispatchPayload {
   eventType: string;
   cameraId: string;
   cameraName: string;
-  timestamp: string; // IST formatted string e.g. "25 Sep 2026, 08:15:22 IST"
+  timestamp: string; // appliance-local, e.g. "25 Sept 2026, 13:45:22 IST"
   snapshotUrl?: string;
   messageText: string;
   templateId?: string;

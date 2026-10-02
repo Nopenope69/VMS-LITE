@@ -9,6 +9,7 @@
  */
 
 import fs from 'node:fs/promises';
+import { formatLocalTimestamp } from '../system/time-format.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
@@ -40,7 +41,8 @@ export interface EvidenceManifest {
 export interface EvidenceAudit {
   exportId: string;
   generatedAt: string;
-  generatedAtIst: string;
+  /** Generation time in the appliance timezone, zone included */
+  generatedAtLocal: string;
   nodeVersion: string;
   systemPlatform: string;
   requestIp: string;
@@ -183,20 +185,6 @@ export class EvidenceBundleService {
     this.exportService = opts.exportService || defaultExportService;
   }
 
-  private formatIstTimestamp(date: Date = new Date()): string {
-    return (
-      new Intl.DateTimeFormat('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      }).format(date) + ' IST'
-    );
-  }
 
   async buildEvidenceBundle(
     exportId: string,
@@ -306,7 +294,7 @@ export class EvidenceBundleService {
     const audit: EvidenceAudit = {
       exportId: job.id,
       generatedAt: now.toISOString(),
-      generatedAtIst: this.formatIstTimestamp(now),
+      generatedAtLocal: formatLocalTimestamp(now),
       nodeVersion: 'Basic VMS v0.1.0',
       systemPlatform: `${os.type()} ${os.release()} (${os.arch()})`,
       requestIp: clientIp,

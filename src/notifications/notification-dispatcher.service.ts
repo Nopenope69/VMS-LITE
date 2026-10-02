@@ -19,6 +19,7 @@ import {
   WhatsAppCloudCredentials,
 } from './notification.types.js';
 import { SITE_ALERT_EVENTS, channelWantsEvent, isCoveredBySiteAlert, siteAlertDetails } from './site-alerts.js';
+import { formatLocalTimestamp } from '../system/time-format.js';
 
 export class MockNotificationDispatcher implements INotificationDispatcher {
   readonly providerName = 'mock';
@@ -201,20 +202,9 @@ export class NotificationService {
     return this.mockDispatcher;
   }
 
-  /**
-   * Formats a date into Indian Standard Time (IST).
-   */
-  formatIstTimestamp(date: Date = new Date()): string {
-    return new Intl.DateTimeFormat('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    }).format(date) + ' IST';
+  /** Alert time in the appliance timezone (TZ), with the zone shown */
+  formatLocalTimestamp(date: Date = new Date()): string {
+    return formatLocalTimestamp(date);
   }
 
   /**
@@ -403,7 +393,7 @@ export class NotificationService {
       return { success: false, error: 'No recipient phone number configured for test alert' };
     }
 
-    const timestamp = this.formatIstTimestamp();
+    const timestamp = this.formatLocalTimestamp();
     const messageText = `🧪 *Basic VMS Test Alert*\nNotification integration active.\n• *Timestamp:* ${timestamp}`;
 
     const dispatcher = this.getDispatcher(config.provider);
@@ -476,7 +466,7 @@ export class NotificationService {
 
     if (isSiteEvent) {
       const site = siteAlertDetails(event);
-      const timestamp = this.formatIstTimestamp(new Date(event.timestamp || Date.now()));
+      const timestamp = this.formatLocalTimestamp(new Date(event.timestamp || Date.now()));
       let messageText = `${event.type === 'site.offline' ? '🔴' : '🟢'} *VMS ALERT: ${site.title}*\n`;
       messageText += `• *Site:* ${site.siteName}\n`;
       messageText += `• *Cameras:* ${site.cameraCount}\n`;
@@ -507,7 +497,7 @@ export class NotificationService {
       (event.metadata as any)?.name ||
       `Camera ${cameraId.slice(0, 8)}`;
 
-    const timestamp = this.formatIstTimestamp(new Date(event.timestamp || Date.now()));
+    const timestamp = this.formatLocalTimestamp(new Date(event.timestamp || Date.now()));
     const snapshotUrl = cameraId !== 'system' ? this.generateSignedSnapshotUrl(cameraId) : undefined;
     const messageText = this.formatAlertMessage(event.type, cameraName, timestamp, snapshotUrl);
 

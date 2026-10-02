@@ -432,7 +432,7 @@ describe('Day 75 Field Validation & 72-Hour Acceptance Gate (Phase 21 - MVP-14)'
       const audit = {
         exportId: 'exp-soak-gate-10',
         generatedAt: new Date().toISOString(),
-        generatedAtIst: '01 Oct 2026, 17:30:00 IST',
+        generatedAtLocal: '01 Oct 2026, 17:30:00 IST',
         nodeVersion: 'Basic VMS v0.1.0',
         systemPlatform: 'darwin arm64',
         requestIp: '192.168.1.50',

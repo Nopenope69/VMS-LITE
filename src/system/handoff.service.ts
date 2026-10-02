@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { formatLocalTimestamp } from './time-format.js';
 import { PrismaClient } from '@prisma/client';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 import { storageTelemetryService } from './storage-telemetry.service.js';
@@ -32,7 +33,7 @@ export class HandoffService {
     const siteName = escapeHtml(opts.siteName || 'CCTV Surveillance Site');
     const technicianName = escapeHtml(opts.technicianName || 'Certified CCTV Installer');
     const clientName = escapeHtml(opts.clientName || 'Facility Management');
-    const generatedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const generatedAt = formatLocalTimestamp(new Date());
 
     // 1. Hardware / OS Specs
     const hostname = os.hostname();
@@ -134,7 +135,7 @@ export class HandoffService {
     </div>
     <div style="text-align: right; font-size: 13px; color: #64748b;">
       <div><strong>Site:</strong> ${siteName}</div>
-      <div><strong>Date/Time:</strong> ${generatedAt} IST</div>
+      <div><strong>Date/Time:</strong> ${generatedAt}</div>
     </div>
   </div>
 
@@ -145,7 +146,7 @@ export class HandoffService {
       <div><strong>Platform:</strong> ${platform}</div>
       <div><strong>Processor:</strong> ${cpuModel} (${cpuCores} Cores)</div>
       <div><strong>System Memory:</strong> ${totalMemoryGb} GB RAM</div>
-      <div><strong>NTP Time Synchronization:</strong> <span class="badge ${isNtpSynced ? 'badge-ok' : 'badge-fail'}">${isNtpSynced ? 'SYNCHRONIZED (UTC/IST)' : 'UNSYNCHRONIZED'}</span></div>
+      <div><strong>NTP Time Synchronization:</strong> <span class="badge ${isNtpSynced ? 'badge-ok' : 'badge-fail'}">${isNtpSynced ? 'SYNCHRONIZED' : 'UNSYNCHRONIZED'}</span></div>
     </div>
 
     <div class="card">
