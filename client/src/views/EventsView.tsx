@@ -73,7 +73,9 @@ export const EventsView: React.FC<EventsViewProps> = ({
       // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const camName = String(ev.metadata?.cameraName ?? cameraMap.get(ev.cameraId ?? '')?.name ?? '').toLowerCase();
+        const camName = String(
+          ev.metadata?.cameraName ?? ev.metadata?.siteName ?? cameraMap.get(ev.cameraId ?? '')?.name ?? ''
+        ).toLowerCase();
         return camName.includes(q) || evTypeStr.includes(q);
       }
 
@@ -241,7 +243,10 @@ export const EventsView: React.FC<EventsViewProps> = ({
             const timeObj = formatTimestamp(ev.timestamp);
             const cam = ev.cameraId ? cameraMap.get(ev.cameraId) : undefined;
             // System events (storage, etc.) have no camera
-            const cameraName = ev.metadata?.cameraName || cam?.name || (ev.cameraId ? 'Unknown Camera' : 'System');
+            const cameraName =
+              ev.metadata?.cameraName ||
+              cam?.name ||
+              (ev.siteId ? `Site: ${ev.metadata?.siteName ?? 'Unknown'}` : ev.cameraId ? 'Unknown Camera' : 'System');
 
             return (
               <div

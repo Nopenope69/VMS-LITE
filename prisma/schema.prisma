@@ -51,6 +51,8 @@ model User {
 model Event {
   id        String   @id @default(uuid())
   cameraId  String?
+  /// Site-level events (site.offline / site.online) carry the site instead of a camera
+  siteId    String?  @map("site_id")
   timestamp DateTime
   type      String
   source    String
@@ -60,6 +62,7 @@ model Event {
 
   @@index([type])
   @@index([cameraId])
+  @@index([siteId])
   @@index([timestamp])
   @@map("events")
 }

@@ -83,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </option>
                 {sites.map((site) => (
                   <option key={site.id ?? UNASSIGNED_SITE} value={site.id ?? UNASSIGNED_SITE} className="bg-zinc-900">
-                    {site.name} ({site.cameraCount}){site.status === 'CRITICAL' ? ' ⚠' : ''}
+                    {site.name} ({site.cameraCount}){site.status === 'CRITICAL' || site.status === 'OFFLINE' ? ' ⚠' : ''}
                   </option>
                 ))}
               </select>

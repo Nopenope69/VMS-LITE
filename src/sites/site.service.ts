@@ -32,8 +32,8 @@ export interface SiteSummaryDto {
   notes: string | null;
   cameraCount: number;
   health: SiteHealthCounts;
-  /** Worst state across the site's cameras */
-  status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN' | 'EMPTY';
+  /** OFFLINE = the site link is down (no camera reachable); otherwise the worst camera state */
+  status: 'OFFLINE' | 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN' | 'EMPTY';
 }
 
 export class SiteError extends Error {
@@ -48,7 +48,8 @@ export const UNASSIGNED_SITE_NAME = 'Unassigned';
 export class SiteService {
   constructor(
     private readonly prisma: any = defaultPrisma,
-    private readonly health: Pick<CameraHealthService, 'getTelemetry'> = defaultHealth
+    private readonly health: Pick<CameraHealthService, 'getTelemetry'> &
+      Partial<Pick<CameraHealthService, 'getSiteLinkState'>> = defaultHealth
   ) {}
 
   async getSite(id: string) {
@@ -102,8 +103,11 @@ export class SiteService {
       else if (status === 'OFFLINE') health.offline++;
       else health.unknown++;
     }
+    const linkDown = site.id !== null && this.health.getSiteLinkState?.(site.id) === 'DOWN';
     const status: SiteSummaryDto['status'] =
-      cameraIds.length === 0
+      linkDown
+        ? 'OFFLINE'
+        : cameraIds.length === 0
         ? 'EMPTY'
         : health.offline > 0
         ? 'CRITICAL'

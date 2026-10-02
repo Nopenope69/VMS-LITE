@@ -652,6 +652,10 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
                     </label>
                   ))}
                 </div>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  With camera.offline selected, a site whose cameras all go unreachable at once sends one
+                  &quot;site unreachable&quot; alert (and one when it is back) instead of an alert per camera.
+                </p>
               </div>
 
               {/* Action buttons */}
@@ -878,6 +882,10 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
                     </label>
                   ))}
                 </div>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  With camera.offline selected, a site whose cameras all go unreachable at once sends one
+                  &quot;site unreachable&quot; alert (and one when it is back) instead of an alert per camera.
+                </p>
               </div>
 
               {/* Action buttons */}

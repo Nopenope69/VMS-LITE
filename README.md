@@ -45,6 +45,13 @@ the **Cameras** page. The site selector in the sidebar filters every page; the
 Overview shows health per site, and the Recordings timeline groups lanes by site
 (click a site in the camera picker to load its cameras).
 
+If every camera at a site (2 or more) stops answering at once, the server treats it
+as the site link going down (VPN, router or internet at the site): it raises one
+**Site unreachable** alert, and another when the site is back, instead of one alert
+per camera. Email and WhatsApp/SMS channels that send camera-offline alerts send
+these too; webhooks can subscribe to `site.offline` / `site.online`. If only some
+cameras fail, they are alerted individually as before.
+
 Operators can be granted a whole site in **Settings → User Accounts**: the grant
 covers every camera at that site, including cameras added later, on top of any
 per-camera grants. Operators only see the sites and cameras they are granted.

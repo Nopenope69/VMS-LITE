@@ -11,6 +11,16 @@ import path from 'node:path';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
 import { TokenBucketRateLimiter, tokenBucketRateLimiter as defaultLimiter } from './token-bucket-rate-limiter.js';
 import { ISmtpTransport, MockSmtpTransport, NodeSocketSmtpClient, SmtpSendResult } from './smtp-client.js';
+import { SITE_ALERT_EVENTS, channelWantsEvent, isCoveredBySiteAlert, siteAlertDetails } from './site-alerts.js';
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 export interface SmtpConfig {
   host: string;
@@ -189,9 +199,11 @@ export class SmtpDispatcherService {
   ): { subject: string; html: string } {
     const istTime = this.formatIstTimestamp(new Date(timestampIso));
     const baseUrl = (process.env.PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
-    const playbackUrl = `${baseUrl}/playback?cameraId=${encodeURIComponent(cameraId)}&t=${encodeURIComponent(
-      timestampIso
-    )}`;
+    const isSiteEvent = eventType.startsWith('site.');
+    const actionUrl = isSiteEvent
+      ? `${baseUrl}/`
+      : `${baseUrl}/playback?cameraId=${encodeURIComponent(cameraId)}&t=${encodeURIComponent(timestampIso)}`;
+    const actionLabel = isSiteEvent ? 'Open site overview' : 'Open 24h Timeline Playback';
 
     let badgeColor = '#d97706'; // Amber default
     let badgeText = 'INCIDENT ALERT';
@@ -205,6 +217,11 @@ export class SmtpDispatcherService {
       badgeColor = '#dc2626'; // Deep Red
       badgeText = 'CAMERA OFFLINE';
       subjectPrefix = `🔴 Camera Offline: ${cameraName}`;
+    } else if (isSiteEvent) {
+      const site = siteAlertDetails({ type: eventType, metadata });
+      badgeColor = eventType === 'site.offline' ? '#dc2626' : '#059669';
+      badgeText = eventType === 'site.offline' ? 'SITE UNREACHABLE' : 'SITE BACK ONLINE';
+      subjectPrefix = `${eventType === 'site.offline' ? '🔴' : '🟢'} ${site.title}: ${site.siteName}`;
     } else if (eventType === 'storage.warning') {
       badgeColor = '#ea580c'; // Orange
       badgeText = 'STORAGE WARNING';
@@ -219,7 +236,7 @@ export class SmtpDispatcherService {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
+  <title>${escapeHtml(subject)}</title>
 </head>
 <body style="margin: 0; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #f8fafc;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);">
@@ -233,14 +250,14 @@ export class SmtpDispatcherService {
     <!-- Alert Body -->
     <div style="padding: 24px;">
       <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 700; color: #f8fafc;">
-        ${subjectPrefix}
+        ${escapeHtml(subjectPrefix)}
       </h2>
 
       <div style="background-color: #0f172a; border-radius: 6px; border: 1px solid #334155; padding: 16px; margin-bottom: 24px;">
         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
           <tr>
-            <td style="padding: 6px 0; color: #94a3b8; width: 120px; font-weight: 500;">Camera / Node:</td>
-            <td style="padding: 6px 0; color: #f1f5f9; font-weight: 600;">${cameraName}</td>
+            <td style="padding: 6px 0; color: #94a3b8; width: 120px; font-weight: 500;">${isSiteEvent ? 'Site:' : 'Camera / Node:'}</td>
+            <td style="padding: 6px 0; color: #f1f5f9; font-weight: 600;">${escapeHtml(cameraName)}</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; color: #94a3b8; font-weight: 500;">Event Type:</td>
@@ -254,7 +271,7 @@ export class SmtpDispatcherService {
             metadata?.zoneName
               ? `<tr>
             <td style="padding: 6px 0; color: #94a3b8; font-weight: 500;">Motion Zone:</td>
-            <td style="padding: 6px 0; color: #fbbf24; font-weight: 600;">${metadata.zoneName}</td>
+            <td style="padding: 6px 0; color: #fbbf24; font-weight: 600;">${escapeHtml(metadata.zoneName)}</td>
           </tr>`
               : ''
           }
@@ -262,8 +279,23 @@ export class SmtpDispatcherService {
             metadata?.usedPercent
               ? `<tr>
             <td style="padding: 6px 0; color: #94a3b8; font-weight: 500;">Disk Utilization:</td>
-            <td style="padding: 6px 0; color: #ef4444; font-weight: 600;">${metadata.usedPercent}%</td>
+            <td style="padding: 6px 0; color: #ef4444; font-weight: 600;">${escapeHtml(metadata.usedPercent)}%</td>
           </tr>`
+              : ''
+          }
+          ${
+            isSiteEvent
+              ? `<tr>
+            <td style="padding: 6px 0; color: #94a3b8; font-weight: 500;">Cameras:</td>
+            <td style="padding: 6px 0; color: #f1f5f9; font-weight: 600;">${escapeHtml(metadata?.cameraCount ?? '')}</td>
+          </tr>${
+            siteAlertDetails({ type: eventType, metadata }).duration
+              ? `<tr>
+            <td style="padding: 6px 0; color: #94a3b8; font-weight: 500;">Down for:</td>
+            <td style="padding: 6px 0; color: #f1f5f9; font-weight: 600;">${escapeHtml(siteAlertDetails({ type: eventType, metadata }).duration)}</td>
+          </tr>`
+              : ''
+          }`
               : ''
           }
         </table>
@@ -271,8 +303,8 @@ export class SmtpDispatcherService {
 
       <!-- Action Button -->
       <div style="text-align: center; margin-bottom: 8px;">
-        <a href="${playbackUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; border-radius: 6px; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
-          Open 24h Timeline Playback &rarr;
+        <a href="${escapeHtml(actionUrl)}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; border-radius: 6px; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
+          ${actionLabel} &rarr;
         </a>
       </div>
     </div>
@@ -327,7 +359,7 @@ export class SmtpDispatcherService {
   async start(): Promise<void> {
     if (this.unsubscribeEventBus) return;
 
-    const watchedEvents = ['motion.detected', 'camera.offline', 'storage.warning', 'camera.degraded'];
+    const watchedEvents = ['motion.detected', 'camera.offline', 'storage.warning', 'camera.degraded', ...SITE_ALERT_EVENTS];
 
     const unsubscribers = watchedEvents.map((eventType) =>
       this.eventBus.subscribe(eventType, async (event) => {
@@ -356,22 +388,22 @@ export class SmtpDispatcherService {
       return;
     }
 
-    if (!this.config.events.includes(event.type)) {
+    if (!channelWantsEvent(this.config.events, event.type) || isCoveredBySiteAlert(event)) {
       return;
     }
 
+    const isSiteEvent = Boolean(event.siteId) && event.type.startsWith('site.');
     const cameraId = event.cameraId || 'system';
-    const rateLimitKey = `smtp:${cameraId}:${event.type}`;
+    const rateLimitKey = isSiteEvent ? `smtp:site:${event.siteId}:${event.type}` : `smtp:${cameraId}:${event.type}`;
 
     const rateResult = this.rateLimiter.tryAcquire(rateLimitKey, this.config.cooldownSeconds);
     if (!rateResult.allowed) {
       return;
     }
 
-    const cameraName =
-      event.metadata?.cameraName ||
-      (event.metadata as any)?.name ||
-      `Camera ${cameraId.slice(0, 8)}`;
+    const cameraName = isSiteEvent
+      ? siteAlertDetails(event).siteName
+      : event.metadata?.cameraName || (event.metadata as any)?.name || `Camera ${cameraId.slice(0, 8)}`;
 
     const timestampIso = event.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString();
 
