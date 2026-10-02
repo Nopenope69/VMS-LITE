@@ -1,0 +1,22 @@
+# HTTPS front end for VMS-Lite (docker compose --profile https).
+#
+# HTTPS_DOMAIN  DNS name (or IP) viewers use, e.g. vms.example.com
+# HTTPS_TLS     an e-mail address: public certificate from Let's Encrypt (the domain
+#               must resolve to this server and ports 80/443 must be reachable)
+#               "internal": certificate from Caddy's own CA, for LAN / VPN-only
+#               installs (browsers warn until the CA is trusted)
+#
+# Plain HTTP on port 80 redirects to HTTPS. The app itself listens on localhost only.
+{
+	# Nothing reconfigures Caddy at runtime
+	admin off
+}
+
+{$HTTPS_DOMAIN} {
+	tls {$HTTPS_TLS}
+
+	reverse_proxy 127.0.0.1:{$PORT:3000} {
+		# Stream video (HLS, fMP4 playback, clip exports) without buffering
+		flush_interval -1
+	}
+}
