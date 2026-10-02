@@ -138,6 +138,7 @@ npm run typecheck             # server + client
 # an empty database and the built app (npm run build && npm run build:client)
 MEDIAMTX_BIN=/path/to/mediamtx DATABASE_URL=postgresql://.../vms_e2e e2e/stack.sh start
 npm run test:e2e              # Google Chrome; or E2E_CHROMIUM_PATH=... E2E_PLAYBACK_DECODE=0
+                              # (start the stack with E2E_CAMERA_CODEC=vp9 for Chromium without H.264)
 e2e/stack.sh stop
 ```
 

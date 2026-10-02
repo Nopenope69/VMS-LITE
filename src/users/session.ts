@@ -14,23 +14,38 @@ import type { UserTokenPayload } from './rbac.guard.js';
 
 const CACHE_TTL_MS = 10_000;
 const cache = new Map<string, { at: number; user: { role: string; tokenVersion: number } | null }>();
+/**
+ * Bumped on every invalidation. A lookup that started before a revocation must not
+ * store what it read, or the revoked token would be accepted again until the TTL.
+ */
+const generations = new Map<string, number>();
+let globalGeneration = 0;
+const generationOf = (userId: string) => `${globalGeneration}:${generations.get(userId) ?? 0}`;
 
 export async function isSessionValid(payload: UserTokenPayload, prisma: any = defaultPrisma): Promise<boolean> {
   if (!payload?.id) return false;
   let entry = cache.get(payload.id);
   if (!entry || Date.now() - entry.at > CACHE_TTL_MS) {
+    const generation = generationOf(payload.id);
     const user = await prisma.user.findUnique({
       where: { id: payload.id },
       select: { role: true, tokenVersion: true },
     });
     entry = { at: Date.now(), user: user ? { role: user.role, tokenVersion: user.tokenVersion ?? 0 } : null };
-    cache.set(payload.id, entry);
-    if (cache.size > 5_000) cache.delete(cache.keys().next().value!);
+    if (generationOf(payload.id) === generation) {
+      cache.set(payload.id, entry);
+      if (cache.size > 5_000) cache.delete(cache.keys().next().value!);
+    }
   }
   return Boolean(entry.user && entry.user.role === payload.role && entry.user.tokenVersion === (payload.tv ?? 0));
 }
 
 export function invalidateSessionCache(userId?: string): void {
-  if (userId) cache.delete(userId);
-  else cache.clear();
+  if (userId) {
+    generations.set(userId, (generations.get(userId) ?? 0) + 1);
+    cache.delete(userId);
+  } else {
+    globalGeneration++;
+    cache.clear();
+  }
 }

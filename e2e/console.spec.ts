@@ -16,6 +16,28 @@ async function token(page: Page): Promise<string> {
 
 /** Waits until a <video> in `scope` is decoding frames and its clock moves */
 async function expectVideoPlaying(page: Page, scope = 'body') {
+  try {
+    await pollVideoPlaying(page, scope);
+  } catch (err) {
+    // Say why: the media element's own state and what the console shows
+    const state = await page.evaluate((sel) => {
+      const videos = Array.from(document.querySelectorAll<HTMLVideoElement>(`${sel} video`)).map((v) => ({
+        src: (v.currentSrc || (v.srcObject ? 'webrtc' : '')).slice(0, 160),
+        readyState: v.readyState,
+        networkState: v.networkState,
+        paused: v.paused,
+        currentTime: v.currentTime,
+        videoWidth: v.videoWidth,
+        error: v.error ? `${v.error.code} ${v.error.message}` : null,
+      }));
+      const text = document.body.innerText.replace(/\s+/g, ' ').slice(0, 600);
+      return { videos, text };
+    }, scope);
+    throw new Error(`${(err as Error).message}\nPlayer state: ${JSON.stringify(state, null, 2)}`);
+  }
+}
+
+async function pollVideoPlaying(page: Page, scope: string) {
   await expect
     .poll(
       async () =>
@@ -42,11 +64,15 @@ test('first boot, live view and recorded playback', async ({ page, request }) =>
   await page.getByPlaceholder('e.g. Warehouse North Gate').fill('Head Office');
   await page.getByPlaceholder('Min. 8 characters').fill(PASSWORD);
   await page.getByPlaceholder('Re-enter new password').fill(PASSWORD);
+  const factoryToken = await token(page);
+  const setupDone = page.waitForResponse((r) => r.url().includes('/api/system/setup-complete'));
   await page.getByRole('button', { name: /Complete Initial Provisioning/ }).click();
+  expect((await setupDone).status()).toBe(200);
+  // The password change revokes the factory session; the console switches to a new token
+  await expect.poll(() => token(page), { timeout: 15_000 }).not.toBe(factoryToken);
   await expect(page.getByRole('button', { name: /^Live/ }).first()).toBeVisible();
 
-  // 2. Add the simulated camera. The wizard's password change revokes earlier
-  // sessions, so always use the token the console currently holds.
+  // 2. Add the simulated camera, always with the token the console currently holds
   const auth = async () => ({ Authorization: `Bearer ${await token(page)}` });
   const created = await request.post('/api/cameras', {
     headers: await auth(),

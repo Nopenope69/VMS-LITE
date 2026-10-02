@@ -49,7 +49,7 @@ npm test                     # vitest, tests/**/*.test.ts, in-memory Prisma mock
 npm run build && npm run build:client
 # Browser end-to-end (CI job "Browser end-to-end", Google Chrome):
 MEDIAMTX_BIN=... DATABASE_URL=postgresql://.../vms_e2e e2e/stack.sh start
-npm run test:e2e             # here: E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium E2E_PLAYBACK_DECODE=0
+npm run test:e2e             # here: E2E_CAMERA_CODEC=vp9 (stack) + E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium E2E_PLAYBACK_DECODE=0
 e2e/stack.sh stop
 npm run audit:licenses       # regenerates third_party/; `git checkout third_party` if only the date changed
 ```

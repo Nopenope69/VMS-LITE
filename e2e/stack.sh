@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Starts or stops the stack the browser end-to-end test runs against:
-#   a simulated camera (MediaMTX + ffmpeg test pattern, VP9 so any Chromium decodes it),
+#   a simulated camera (MediaMTX + ffmpeg test pattern; H.264 like real cameras, or
+#   E2E_CAMERA_CODEC=vp9 for Chromium builds without H.264),
 #   the VMS MediaMTX (repo mediamtx.yml, 10 s recording segments) and the built app.
 #
 #   MEDIAMTX_BIN=/path/to/mediamtx DATABASE_URL=postgresql://... e2e/stack.sh start
@@ -36,9 +37,15 @@ start() {
 
   run_bg camera-mediamtx "${MEDIAMTX_BIN}" "${ROOT}/e2e/camera-sim.yml"
   sleep 1
+  local codec_args
+  if [ "${E2E_CAMERA_CODEC:-h264}" = "vp9" ]; then
+    codec_args=(-strict experimental -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -b:v 300k -g 15)
+  else
+    codec_args=(-c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline -pix_fmt yuv420p -g 15)
+  fi
   run_bg camera-ffmpeg ffmpeg -nostdin -loglevel error -re \
     -f lavfi -i "testsrc2=size=320x240:rate=15" \
-    -strict experimental -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -b:v 300k -g 15 \
+    "${codec_args[@]}" \
     -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:18554/cam
 
   MTX_PATHDEFAULTS_RECORDPATH="${RUN}/rec/%path/%Y-%m-%d_%H-%M-%S-%f" \
