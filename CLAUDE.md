@@ -58,14 +58,15 @@ Conventions: tests live in `tests/` (`signAs()` in `tests/helpers/auth.ts` creat
 real users; `extendedLicense()` in `tests/helpers/license.ts` for 32-camera tests).
 Match the surrounding code's comment density; no model identifiers in commits.
 
-## Status (2026-10-02)
+## Status (2026-10-03)
 
 Merged into `main`: PR #1 (architecture fixes, multi-site, site permissions, site
 lanes), PR #2 (site-unreachable alert), PR #3 (Fastify 5, HTTPS, local alert
 times, Node 22, daily backups, dev advisories), PR #4 (H.265 warnings, per-site
 link bandwidth, browser end-to-end CI job incl. recorded playback in Chrome,
 alert e-mail playback link fix, session-cache revocation race fix, `deploy/update.sh`).
-Both CI jobs (unit/typecheck/migrations/licenses, browser end-to-end) passed on PR #4's final commit.
+PR #5 updated this file. CI on `main` is green (both jobs: unit/typecheck/migrations/licenses
+and browser end-to-end) as of the PR #5 merge. Nothing is pending on any branch.
 
 ## Next steps
 
