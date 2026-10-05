@@ -179,6 +179,9 @@ model Recording {
   format       String   @default("fmp4")
   createdAt    DateTime @default(now()) @map("created_at")
 
+  processingJobs ProcessingJob[]
+  detections     Detection[]
+
   @@index([cameraId, startTime])
   @@index([startTime])
   @@map("recordings")
@@ -328,3 +331,57 @@ model SystemSetting {
 
   @@map("system_settings")
 }
+
+enum JobStatus {
+  QUEUED
+  CLAIMED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model ProcessingJob {
+  id           String    @id @default(uuid())
+  recordingId  String    @map("recording_id")
+  recording    Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  jobType      String    @map("job_type")
+  status       JobStatus @default(QUEUED)
+  priority     Int       @default(0)
+  attempts     Int       @default(0)
+  maxAttempts  Int       @default(3) @map("max_attempts")
+  availableAt  DateTime  @default(now()) @map("available_at")
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+  lastError    String?   @map("last_error")
+  modelVersion String?   @map("model_version")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@unique([recordingId, jobType])
+  @@index([status, priority, availableAt])
+  @@map("processing_jobs")
+}
+
+model Detection {
+  id           String    @id @default(uuid())
+  recordingId  String    @map("recording_id")
+  recording    Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  cameraId     String    @map("camera_id")
+  siteId       String?   @map("site_id")
+  timestamp    DateTime
+  label        String
+  confidence   Float
+  bboxX        Float     @map("bbox_x")
+  bboxY        Float     @map("bbox_y")
+  bboxW        Float     @map("bbox_w")
+  bboxH        Float     @map("bbox_h")
+  trackId      String?   @map("track_id")
+  modelVersion String    @map("model_version")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([cameraId, label, timestamp])
+  @@index([siteId, label, timestamp])
+  @@index([recordingId])
+  @@map("detections")
+}
+

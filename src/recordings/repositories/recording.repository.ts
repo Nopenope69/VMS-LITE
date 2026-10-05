@@ -13,6 +13,7 @@ export interface CameraRecordSummary {
   id: string;
   name: string;
   mediaMtxPath: string;
+  siteId?: string | null;
   /** Present when known; required for the scheduler to (re)provision MediaMTX paths. */
   rtspUrl?: string | null;
   subStreamUrl?: string | null;
@@ -233,6 +234,7 @@ export class PrismaRecordingRepository implements IRecordingRepository {
         id: true,
         name: true,
         mediaMtxPath: true,
+        siteId: true,
         rtspUrl: true,
         subStreamUrl: true,
         subMediaMtxPath: true,
@@ -243,14 +245,30 @@ export class PrismaRecordingRepository implements IRecordingRepository {
   async getCameraByMediaMtxPath(mediaMtxPath: string): Promise<CameraRecordSummary | null> {
     return this.prisma.camera.findUnique({
       where: { mediaMtxPath },
-      select: { id: true, name: true, mediaMtxPath: true },
+      select: {
+        id: true,
+        name: true,
+        mediaMtxPath: true,
+        siteId: true,
+        rtspUrl: true,
+        subStreamUrl: true,
+        subMediaMtxPath: true,
+      },
     });
   }
 
   async getCameraById(cameraId: string): Promise<CameraRecordSummary | null> {
     return this.prisma.camera.findUnique({
       where: { id: cameraId },
-      select: { id: true, name: true, mediaMtxPath: true },
+      select: {
+        id: true,
+        name: true,
+        mediaMtxPath: true,
+        siteId: true,
+        rtspUrl: true,
+        subStreamUrl: true,
+        subMediaMtxPath: true,
+      },
     });
   }
 

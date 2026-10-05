@@ -70,6 +70,8 @@ describe('Recording Catalog & Webhook Routes (/api/recordings)', () => {
       expect(eventPayload).not.toBeNull();
       expect(eventPayload.type).toBe('recording.segment_created');
       expect(eventPayload.metadata.mediaMtxPath).toBe('cam_front_gate');
+      expect(eventPayload.metadata.storageUri).toContain('file://');
+      expect(eventPayload.metadata.format).toBe('fmp4');
     });
 
     it('rejects path traversal attempts with 400 ValidationError (T-03-01)', async () => {

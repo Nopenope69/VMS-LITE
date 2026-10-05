@@ -180,12 +180,16 @@ export class RecordingCatalog {
       cameraId,
       metadata: {
         recordingId: recording.id,
+        cameraId,
+        siteId: camera.siteId ?? null,
         mediaMtxPath: payload.mediaMtxPath,
         filePath: payload.segmentPath,
+        storageUri: `file://${path.resolve(payload.segmentPath)}`,
         duration: payload.duration,
         sizeBytes: Number(recording.sizeBytes),
         startTime: recording.startTime,
         endTime: recording.endTime,
+        format: recording.format || 'fmp4',
       },
     });
 

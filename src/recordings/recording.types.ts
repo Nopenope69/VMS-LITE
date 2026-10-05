@@ -176,3 +176,17 @@ export interface IRecordingEngine {
   start(): Promise<void>;
   stop(): Promise<void>;
 }
+
+export interface SegmentCreatedEventMetadata {
+  recordingId: string;
+  cameraId: string;
+  siteId?: string | null;
+  mediaMtxPath: string;
+  filePath: string;
+  storageUri: string;
+  duration: number;
+  sizeBytes: number;
+  startTime: Date | string;
+  endTime: Date | string;
+  format: string;
+}

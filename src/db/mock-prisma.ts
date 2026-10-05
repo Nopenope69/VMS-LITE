@@ -123,7 +123,7 @@ class MockCollection<T extends { id: string }> {
 
   private toEpoch(val: any): number | null {
     if (val instanceof Date) return val.getTime();
-    if (typeof val === 'string' || typeof val === 'number') {
+    if (typeof val === 'string' && isNaN(Number(val))) {
       const parsed = new Date(val).getTime();
       return isNaN(parsed) ? null : parsed;
     }
@@ -215,6 +215,8 @@ export function createMockPrisma() {
     systemSetting: new MockCollection<any>(),
     site: new MockCollection<any>(),
     sitePermission: new MockCollection<any>(),
+    processingJob: new MockCollection<any>(),
+    detection: new MockCollection<any>(),
     $disconnect: async () => {},
   };
   mock.$transaction = async (fn: any) => {
