@@ -46,7 +46,16 @@ export const RecordingQuerySchema = z.object({
 
 export type RecordingQueryParams = z.input<typeof RecordingQuerySchema>;
 
-export type SegmentStatusType = 'DISCOVERED' | 'VALIDATING' | 'AVAILABLE' | 'QUARANTINED' | 'EXPIRED' | 'DELETED';
+export type SegmentStatusType =
+  | 'DISCOVERED'
+  | 'VALIDATING'
+  | 'AVAILABLE'
+  | 'QUARANTINED'
+  | 'DELETE_PENDING'
+  | 'GARBAGE'
+  | 'MISSING'
+  | 'EXPIRED'
+  | 'DELETED';
 export type RetentionTierType = 'CONTINUOUS' | 'EVENT' | 'INCIDENT' | 'PROTECTED';
 export type StreamRoleType = 'PRIMARY' | 'SUB';
 
@@ -71,6 +80,7 @@ export interface RecordingDto {
   retentionTier?: RetentionTierType;
   isProtected?: boolean;
   protectionReason?: string | null;
+  errorReason?: string | null;
   sha256?: string | null;
   validatedAt?: string | null;
   storageProvider?: string;

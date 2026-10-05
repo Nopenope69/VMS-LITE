@@ -13,6 +13,8 @@ export interface SegmentIndexerOptions {
   /** A segment with no newer sibling is complete once it has not been written for this long. */
   quietPeriodMs?: number;
   now?: () => number;
+  fsReaddirFn?: (dir: string) => Promise<string[]>;
+  fsStatFn?: (filePath: string) => Promise<{ size: number; mtimeMs: number }>;
 }
 
 /**
@@ -30,10 +32,14 @@ export class SegmentIndexer {
   private readonly watermarks = new Map<string, number>();
   private readonly quietPeriodMs: number;
   private readonly now: () => number;
+  private readonly fsReaddir: (dir: string) => Promise<string[]>;
+  private readonly fsStat: (filePath: string) => Promise<{ size: number; mtimeMs: number }>;
 
   constructor(private readonly opts: SegmentIndexerOptions) {
     this.quietPeriodMs = opts.quietPeriodMs ?? 15_000;
     this.now = opts.now ?? Date.now;
+    this.fsReaddir = opts.fsReaddirFn || ((d) => fs.readdir(d));
+    this.fsStat = opts.fsStatFn || ((p) => fs.stat(p));
   }
 
   async scanAll(): Promise<number> {
@@ -53,7 +59,7 @@ export class SegmentIndexer {
     const dir = path.join(this.opts.recordingsRoot, mediaMtxPath);
     let names: string[];
     try {
-      names = (await fs.readdir(dir)).filter((n) => SEGMENT_FILE.test(n));
+      names = (await this.fsReaddir(dir)).filter((n) => SEGMENT_FILE.test(n));
     } catch (err: any) {
       if (err.code === 'ENOENT') return 0; // Nothing recorded yet
       throw err;
@@ -74,7 +80,7 @@ export class SegmentIndexer {
       const filePath = path.join(dir, names[i]);
       let stat;
       try {
-        stat = await fs.stat(filePath);
+        stat = await this.fsStat(filePath);
       } catch {
         continue; // Removed between readdir and stat
       }

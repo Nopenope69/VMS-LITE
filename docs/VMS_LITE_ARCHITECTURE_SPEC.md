@@ -505,3 +505,38 @@ export interface ICameraPtzController {
   1. Subscribe [`AiPipelineCoordinator`](../src/ai/ai-pipeline-coordinator.ts) strictly as a consumer of `recording.segment_created`.
   2. Dispatch to PostgreSQL-backed [`ProcessingJobQueue`](../src/jobs/processing-job.queue.ts) with backoff retry.
   3. Guarantee that worker timeouts, crash loops, or missing GPUs never impede MediaMTX or core recording.
+
+---
+
+## 8. Moonfire NVR Invariants & Crash Recovery Matrix
+
+### A. The 7 Storage Invariants
+- **Invariant 1 (Catalog Uniqueness)**: Every `AVAILABLE` recording has exactly one catalog row (`filePath` unique).
+- **Invariant 2 (Physical Media Integrity)**: Every cataloged segment has exactly one storage object on disk. Missing files transition to `MISSING`.
+- **Invariant 3 (Origin Traceability)**: Every segment under `/recordings` belongs to exactly one known camera/path.
+- **Invariant 4 (Auditable 2-Phase Deletion)**: No segment can be deleted from disk while catalog claims it is `AVAILABLE`. Transition: `AVAILABLE` $\rightarrow$ `DELETE_PENDING` $\rightarrow$ unlinked $\rightarrow$ `DELETED` (or `GARBAGE` on failure).
+- **Invariant 5 (Evidence Immutability)**: Retention cannot delete protected evidence (`isProtected: true` or `retentionTier: PROTECTED`).
+- **Invariant 6 (Self-Healing Catalog)**: A crash cannot permanently create uncatalogued video. Dual-path indexer reconstructs missing metadata from disk.
+- **Invariant 7 (Storage Fault Isolation)**: When storage fails (`WRITE_FAILED` or `MOUNT_MISSING`), deletions and mutations halt to prevent catalog drift.
+
+### B. Multi-Camera Staggered Rotation Principle
+To minimize disk seek contention and avoid periodic concurrent I/O bursts across multi-camera deployments, segment rollover is staggered across camera channels (e.g. camera 1 at :00, camera 2 at :04, camera 3 at :08) rather than synchronizing all segment closes simultaneously.
+
+### C. The 14-Scenario Failure and Recovery Matrix
+| Scenario | Invariant Tested | Handling & Recovery |
+|---|---|---|
+| **segment written** | Invariant 1 | MediaMTX writes fMP4; container atoms (`ftyp`, `moov`) validated. |
+| **segment discovered** | Invariant 3 | Timestamp & duration parsed from filename/header. |
+| **segment catalogued** | Invariant 1 | Status set to `AVAILABLE`; `recording.segment_created` emitted. |
+| **DB write fails** | Invariant 6 | Capture continues; uncatalogued file picked up on next indexer sweep. |
+| **file disappears** | Invariant 2 | Invariant auditor detects missing file; transitions status to `MISSING`; excluded from timeline. |
+| **file deletion fails** | Invariant 4 | Status transitions `DELETE_PENDING` $\rightarrow$ `GARBAGE` with `errorReason`; removed from timeline; retried on future sweep. |
+| **power loss during delete** | Invariant 4 | Startup reconciliation inspects `DELETE_PENDING` rows, finishes unlink, and purges DB row. |
+| **process crash during capture** | Invariant 1 | Truncated/corrupt files rejected by `SegmentValidator` (`QUARANTINED`). |
+| **disk becomes read-only** | Invariant 7 | Write canary detects `EROFS`; status set to `WRITE_FAILED`; deletions halted. |
+| **disk disappears / unmounted** | Invariant 7 | Status set to `MOUNT_MISSING`; deletions halted; catalog preserved. |
+| **database restored without recordings** | Invariant 2 | Invariant auditor detects missing media; marks records `MISSING`. |
+| **recordings restored without database** | Invariant 6 | `SegmentIndexer.scanAll()` sweeps disk and reconstructs complete catalog. |
+| **duplicate segment notification** | Invariant 1 | Ingestion is idempotent; single catalog row preserved. |
+| **segment notification missed** | Invariant 6 | Periodic indexer sweep discovers segment and catalogs it. |
+

@@ -193,3 +193,52 @@ Entitlements are cleanly segregated:
 - **Asynchronous Event Consumer**: Downstream intelligence sits strictly behind the event bus and durable PostgreSQL queue (`ProcessingJob`).
 - **Dynamic Toggle & Error Containment**: [`AiPipelineCoordinator`](src/ai/ai-pipeline-coordinator.ts) can be enabled or disabled dynamically (`setEnabled(false)`). When active, worker exceptions, timeouts, or NPU driver crashes are trapped within the worker seam and will never drop recording packets or crash the control plane.
 
+---
+
+## 7. Storage / Database Invariants & Crash-Recovery Semantics (Moonfire NVR Principles)
+
+VMS-Lite incorporates the core storage and database discipline of Moonfire NVR: preserving compressed camera video, performing zero video transcoding in the control plane, keeping video samples on filesystem storage while catalog metadata stays in transactional PostgreSQL, and strictly defining and enforcing explicit system invariants.
+
+### A. The Core Invariants
+1. **Invariant 1 (Catalog Uniqueness)**: Every `AVAILABLE` recording has exactly one catalog row. Enforced by `@unique` on `file_path` and idempotent ingestion.
+2. **Invariant 2 (Physical Media Integrity)**: Every cataloged segment has exactly one storage object on disk. Audited by [`StorageInvariantsService`](src/recordings/storage-invariants.service.ts); missing files transition to `MISSING` and are excluded from timeline playback.
+3. **Invariant 3 (Origin Traceability)**: Every segment under `/recordings` belongs to exactly one known camera/path. Unmatched directories or orphaned files are detected and flagged.
+4. **Invariant 4 (Auditable 2-Phase Deletion)**: No segment can be deleted from disk while the catalog claims it is `AVAILABLE`.
+   ```text
+   AVAILABLE ──> DELETE_PENDING ──> [physical unlink] ──> DELETED
+                                            │
+                                            └── failure ──> GARBAGE
+   ```
+   If a crash or power cut occurs during `DELETE_PENDING`, startup reconciliation inspects the disk, completes the unlink, and purges the catalog row or records `GARBAGE`.
+5. **Invariant 5 (Evidence Immutability)**: Retention and FIFO rollover cannot delete protected evidence (`isProtected: true` or `retentionTier: PROTECTED`).
+6. **Invariant 6 (Self-Healing Catalog)**: A crash cannot permanently create uncatalogued video. The dual-path `SegmentIndexer` reconciles on startup and periodically, reconstructing missing metadata from disk.
+7. **Invariant 7 (Storage Fault Isolation)**: When storage is degraded, read-only (`EROFS`), or unmounted, deletions and state mutations halt immediately to prevent catalog drift.
+
+### B. High-Context Structured Diagnostics Logging
+Operational events and storage metrics carry structured diagnostic context via [`DiagnosticsLogger`](src/diagnostics/diagnostics-logger.ts):
+```text
+[DIAGNOSTICS] [WARN] camera=warehouse-04 stream=primary operation=fsync durationMs=1450 reason=slow_io_threshold_exceeded path=/var/recordings/wh04/seg.mp4
+```
+Proactive warnings fire when I/O operations exceed baseline latency thresholds (`fsync` > 1000ms, `segment_write` > 2000ms, `unlink` > 500ms).
+
+### C. Multi-Camera Staggered Rotation Principle
+To minimize disk seek contention and avoid periodic concurrent I/O bursts across multi-camera deployments, segment rollover is staggered across camera channels (e.g. camera 1 at :00, camera 2 at :04, camera 3 at :08) rather than synchronizing all segment closes simultaneously.
+
+### D. Verified Crash & Failure Matrix
+The system is verified against a 14-scenario failure and recovery test suite (`tests/storage-invariants-and-crash-recovery.test.ts`):
+- `segment written` (valid container box atom check)
+- `segment discovered` (timestamp and path extraction)
+- `segment catalogued` (AVAILABLE status & event emission)
+- `DB write fails` (isolated failure, disk intact, retried on next sweep)
+- `file disappears` (detected, marked MISSING, removed from timeline)
+- `file deletion fails` (transitions to GARBAGE with errorReason, not lost)
+- `power loss / process crash during delete` (stale DELETE_PENDING recovered on startup)
+- `process crash during capture` (partial files quarantined)
+- `disk becomes read-only` (canary detects EROFS, halts deletions)
+- `disk disappears / mount missing` (halts deletions, prevents catalog wipe)
+- `database restored without recordings` (missing files marked MISSING)
+- `recordings restored without database` (indexer reconstructs catalog from disk)
+- `duplicate segment notification` (idempotent, single row preserved)
+- `segment notification missed` (periodic sweep discovers and catalogs)
+
+

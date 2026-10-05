@@ -172,6 +172,9 @@ enum SegmentStatus {
   VALIDATING
   AVAILABLE
   QUARANTINED
+  DELETE_PENDING
+  GARBAGE
+  MISSING
   EXPIRED
   DELETED
 }
@@ -212,6 +215,7 @@ model Recording {
   retentionTier    RetentionTier   @default(CONTINUOUS) @map("retention_tier")
   isProtected      Boolean         @default(false) @map("is_protected")
   protectionReason String?         @map("protection_reason")
+  errorReason      String?         @map("error_reason")
   sha256           String?
   validatedAt      DateTime?       @map("validated_at")
 

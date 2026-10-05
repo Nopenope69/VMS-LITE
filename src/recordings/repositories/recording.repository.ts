@@ -47,6 +47,7 @@ export interface IRecordingRepository {
     storageProvider?: string;
     storageKey?: string | null;
     videoCodec?: string;
+    errorReason?: string | null;
     hasAudio?: boolean;
     width?: number | null;
     height?: number | null;
@@ -62,6 +63,8 @@ export interface IRecordingRepository {
   findRecordingsInRange(cameraId: string, start: Date, end: Date): Promise<RecordingDto[]>;
   findOldestRecordings(limit: number, skip?: number): Promise<RecordingDto[]>;
   deleteRecording(id: string): Promise<boolean>;
+  updateRecordingStatus(id: string, status: SegmentStatusType, errorReason?: string | null): Promise<RecordingDto | null>;
+  findRecordingsByStatus(status: SegmentStatusType, limit?: number): Promise<RecordingDto[]>;
 
   getCameraSchedule(cameraId: string): Promise<CameraScheduleConfig>;
   saveCameraSchedule(
@@ -106,6 +109,7 @@ export class PrismaRecordingRepository implements IRecordingRepository {
     storageProvider?: string;
     storageKey?: string | null;
     videoCodec?: string;
+    errorReason?: string | null;
     hasAudio?: boolean;
     width?: number | null;
     height?: number | null;
@@ -132,6 +136,7 @@ export class PrismaRecordingRepository implements IRecordingRepository {
         storageProvider: data.storageProvider || 'local',
         storageKey: data.storageKey ?? null,
         videoCodec: data.videoCodec || 'h264',
+        errorReason: data.errorReason ?? null,
         hasAudio: data.hasAudio ?? false,
         width: data.width ?? null,
         height: data.height ?? null,
@@ -187,6 +192,7 @@ export class PrismaRecordingRepository implements IRecordingRepository {
     const records = await this.prisma.recording.findMany({
       where: {
         cameraId,
+        status: 'AVAILABLE',
         startTime: { lt: end },
         endTime: { gt: start },
       },
@@ -210,6 +216,30 @@ export class PrismaRecordingRepository implements IRecordingRepository {
       where: { id },
     });
     return true;
+  }
+
+  async updateRecordingStatus(id: string, status: SegmentStatusType, errorReason?: string | null): Promise<RecordingDto | null> {
+    try {
+      const record = await this.prisma.recording.update({
+        where: { id },
+        data: {
+          status: status as any,
+          errorReason: errorReason ?? null,
+        },
+      });
+      return this.toDto(record);
+    } catch {
+      return null;
+    }
+  }
+
+  async findRecordingsByStatus(status: SegmentStatusType, limit = 100): Promise<RecordingDto[]> {
+    const records = await this.prisma.recording.findMany({
+      where: { status: status as any },
+      take: limit,
+      orderBy: { startTime: 'asc' },
+    });
+    return records.map((r) => this.toDto(r));
   }
 
   async getCameraSchedule(cameraId: string): Promise<CameraScheduleConfig> {
@@ -348,6 +378,7 @@ export class PrismaRecordingRepository implements IRecordingRepository {
       retentionTier: record.retentionTier || 'CONTINUOUS',
       isProtected: Boolean(record.isProtected),
       protectionReason: record.protectionReason ?? null,
+      errorReason: record.errorReason ?? null,
       sha256: record.sha256 ?? null,
       validatedAt: record.validatedAt instanceof Date ? record.validatedAt.toISOString() : record.validatedAt ?? null,
       storageProvider: record.storageProvider || 'local',
@@ -381,6 +412,7 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
     retentionTier?: RetentionTierType;
     isProtected?: boolean;
     protectionReason?: string | null;
+    errorReason?: string | null;
     sha256?: string | null;
     validatedAt?: Date | null;
     storageProvider?: string;
@@ -413,6 +445,7 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
       retentionTier: data.retentionTier || 'CONTINUOUS',
       isProtected: data.isProtected ?? false,
       protectionReason: data.protectionReason ?? null,
+      errorReason: data.errorReason ?? null,
       sha256: data.sha256 ?? null,
       validatedAt: data.validatedAt ? data.validatedAt.toISOString() : null,
       storageProvider: data.storageProvider || 'local',
@@ -468,6 +501,7 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
       .filter(
         (r) =>
           r.cameraId === cameraId &&
+          (r.status === 'AVAILABLE' || !r.status) &&
           new Date(r.startTime).getTime() < end.getTime() &&
           new Date(r.endTime).getTime() > start.getTime()
       )
@@ -483,6 +517,21 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
 
   async deleteRecording(id: string): Promise<boolean> {
     return this.recordings.delete(id);
+  }
+
+  async updateRecordingStatus(id: string, status: SegmentStatusType, errorReason?: string | null): Promise<RecordingDto | null> {
+    const rec = this.recordings.get(id);
+    if (!rec) return null;
+    rec.status = status;
+    rec.errorReason = errorReason ?? null;
+    return { ...rec };
+  }
+
+  async findRecordingsByStatus(status: SegmentStatusType, limit = 100): Promise<RecordingDto[]> {
+    const list = Array.from(this.recordings.values())
+      .filter((r) => r.status === status)
+      .slice(0, limit);
+    return list;
   }
 
   async getCameraSchedule(cameraId: string): Promise<CameraScheduleConfig> {

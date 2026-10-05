@@ -392,6 +392,9 @@ export class StorageController {
       },
     });
 
+    // Reconcile any crash-interrupted pending deletions first
+    await this.catalog.reconcilePendingDeletions();
+
     let currentMetrics = initialMetrics;
     const { deletedSegmentsCount, freedBytes: totalFreedBytes, allRemainingProtected } = await this.deleteOldestSegments({
       shouldContinue: async () => {

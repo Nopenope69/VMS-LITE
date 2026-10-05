@@ -25,6 +25,7 @@ export interface RecordingCatalogOptions {
   recordingsDir?: string;
   fsStatFn?: (filePath: string) => Promise<{ size: number }>;
   fsUnlinkFn?: (filePath: string) => Promise<void>;
+  fsAccessFn?: (filePath: string) => Promise<void>;
   cameraLookup?: (cameraId: string) => Promise<{ id: string; name: string; mediaMtxPath: string } | null>;
   validator?: SegmentValidator;
 }
@@ -71,6 +72,7 @@ export class RecordingCatalog {
   private readonly recordingsRoot: string;
   private readonly fsStatFn: (filePath: string) => Promise<{ size: number }>;
   private readonly fsUnlinkFn: (filePath: string) => Promise<void>;
+  private readonly fsAccessFn: (filePath: string) => Promise<void>;
   private readonly cameraLookup?: (cameraId: string) => Promise<{ id: string; name: string; mediaMtxPath: string } | null>;
   private readonly validator: SegmentValidator;
 
@@ -81,6 +83,7 @@ export class RecordingCatalog {
     this.recordingsRoot = getRecordingsRoot(opts.recordingsDir);
     this.fsStatFn = opts.fsStatFn || (async (p) => fs.stat(p));
     this.fsUnlinkFn = opts.fsUnlinkFn || (async (p) => fs.unlink(p));
+    this.fsAccessFn = opts.fsAccessFn || (async (p) => fs.access(p));
     this.cameraLookup = opts.cameraLookup;
     this.validator = opts.validator || new SegmentValidator({
       recordingsRoot: this.recordingsRoot,
@@ -266,8 +269,13 @@ export class RecordingCatalog {
       throw new Error(`Directory traversal denied: path ${resolvedPath} is outside ${this.recordingsRoot}`);
     }
 
+    // Invariant 4: No segment can be deleted from disk while its catalog still claims it is AVAILABLE.
+    // Phase 1: Mark DELETE_PENDING in catalog
+    await this.repository.updateRecordingStatus(recordingId, 'DELETE_PENDING');
+
     let freedBytes = reportedSize;
 
+    // Phase 2: Unlink physical file on disk
     try {
       await this.fsUnlinkFn(resolvedPath);
     } catch (err: any) {
@@ -282,7 +290,9 @@ export class RecordingCatalog {
         };
       }
 
-      // Other filesystem error: DO NOT delete catalog row, report failure
+      // Filesystem error (EPERM, EROFS, EBUSY):
+      // Mark as GARBAGE so it is neither AVAILABLE on the timeline nor forgotten by storage
+      await this.repository.updateRecordingStatus(recordingId, 'GARBAGE', `Filesystem unlink error: ${err.message}`);
       return {
         success: false,
         recordingId,
@@ -290,10 +300,11 @@ export class RecordingCatalog {
       };
     }
 
-    // Unlink succeeded: delete DB row
+    // Phase 3: Unlink succeeded: delete DB row
     try {
       await this.repository.deleteRecording(recordingId);
     } catch (dbErr: any) {
+      await this.repository.updateRecordingStatus(recordingId, 'GARBAGE', `Database deletion failed: ${dbErr.message}`);
       return {
         success: false,
         recordingId,
@@ -306,6 +317,37 @@ export class RecordingCatalog {
       recordingId,
       freedBytes,
     };
+  }
+
+  /**
+   * Recovers segments that were in DELETE_PENDING after a crash, restart, or power loss.
+   */
+  async reconcilePendingDeletions(): Promise<{ recoveredCount: number; garbageCount: number }> {
+    const pending = await this.repository.findRecordingsByStatus('DELETE_PENDING', 200);
+    let recoveredCount = 0;
+    let garbageCount = 0;
+
+    for (const seg of pending) {
+      const resolved = path.resolve(seg.filePath);
+      try {
+        await this.fsAccessFn(resolved);
+        // File still on disk: try to unlink it
+        try {
+          await this.fsUnlinkFn(resolved);
+          await this.repository.deleteRecording(seg.id);
+          recoveredCount++;
+        } catch (unlinkErr: any) {
+          await this.repository.updateRecordingStatus(seg.id, 'GARBAGE', `Reconciliation unlink failed: ${unlinkErr.message}`);
+          garbageCount++;
+        }
+      } catch {
+        // File does not exist on disk: safely delete stale DB row
+        await this.repository.deleteRecording(seg.id);
+        recoveredCount++;
+      }
+    }
+
+    return { recoveredCount, garbageCount };
   }
 
   /**
