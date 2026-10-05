@@ -82,6 +82,22 @@ Client-side playback complexity is encapsulated inside [`client/src/hooks/usePla
 - Manages 11 state variables, including playhead epoch time, timeline span merging, playback rates (0.5x, 1x, 2x, 4x), stream selection, and error states.
 - Leaves [`client/src/pages/PlaybackPage.tsx`](client/src/pages/PlaybackPage.tsx) as a clean, purely presentational component.
 
+### F. Video Artifact Storage Abstraction & Tiering (`src/storage/`)
+Physical media storage is abstracted via [`IStorageProvider`](src/storage/storage-provider.interface.ts):
+- [`LocalStorageProvider`](src/storage/local-storage-provider.ts): Default zero-transcode filesystem driver enforcing root path boundary protection (`isWithinRoot`) and byte-range slicing for fMP4 seek streams.
+- [`TieredStorageManager`](src/storage/tiered-storage-manager.ts): Coordinates background asynchronous offloading of mission-critical footage (manual bookmarks, incident alerts) to remote secondary storage (S3, Cloudflare R2, MinIO, or NAS) for anti-theft DVR protection.
+- Video segments are addressed across the system via canonical `recording.id` and opaque artifact keys (`provider` + `key`), demoting physical file paths to internal storage implementation details.
+
+### G. Versioned Segment Events & Durable Edge Job Queue (`src/events/`, `src/jobs/`)
+Downstream processing decouples into the 4-way separation architecture:
+- **Event Contract** (`src/events/segment-created-event.schema.ts`): Emits `SegmentCreatedEventV1` carrying canonical `recording.id`, capture mode (`CONTINUOUS` vs `MOTION_ONLY`), motion `incidentId`, and generic `analysisHints` (`priority: high` for incidents, `preferredStream: sub`).
+- **Durable Queue** (`src/jobs/processing-job.queue.ts`): Backed by PostgreSQL (`processing_jobs` table) with `UNIQUE(recordingId, jobType)`, priority claiming, and exponential backoff retry. Survives appliance power cuts and restarts without external broker dependencies (zero Kafka/Redis).
+
+### H. Spatio-Temporal Detection Store & AI Coordinator (`src/ai/`)
+Package 3 AI intelligence integrates as independent, non-blocking consumers:
+- [`PrismaDetectionRepository`](src/ai/detection.repository.ts): Dedicated `Detection` table with composite indexes on `(cameraId, label, timestamp)` and `(siteId, label, timestamp)` for sub-second timeline queries ("find persons at Gate 1 between 10-11 PM").
+- [`AiPipelineCoordinator`](src/ai/ai-pipeline-coordinator.ts): Orchestrates durable jobs and async inference (`IAiWorker`) with strict error isolation, guaranteeing that worker exceptions, timeouts, or NPU driver OOMs never disrupt media capture or drop recording packets.
+
 ---
 
 ## 3. Media Access, Recording Pipeline & Deployment Model
