@@ -100,7 +100,14 @@ export class SegmentIndexer {
         });
         indexed++;
       } catch (err) {
-        if ((err as Error).name !== 'UnknownCameraPathError') {
+        const error = err as Error;
+        if (error.name === 'UnknownCameraPathError') {
+          // Camera removed
+        } else if (error.message.includes('Segment validation failed')) {
+          console.warn(`[SegmentIndexer] Segment quarantined for camera ${cameraId}: ${error.message}`);
+          this.watermarks.set(cameraId, start.getTime());
+          continue;
+        } else {
           throw err; // Retry this file next scan; keep the watermark where it is
         }
       }

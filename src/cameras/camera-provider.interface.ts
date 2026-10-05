@@ -6,6 +6,22 @@ export interface DiscoveredCamera {
   port: number;
 }
 
+export type StreamRole = 'PRIMARY' | 'SUB';
+
+export interface StreamDescriptor {
+  role: StreamRole;
+  rtspUri: string;
+  token?: string;
+  name?: string;
+  encoding: 'H264' | 'H265' | 'JPEG' | string;
+  resolution?: {
+    width: number;
+    height: number;
+  };
+  fps?: number;
+  hasAudio?: boolean;
+}
+
 export interface CameraStreamProfile {
   token: string;
   name: string;
@@ -17,6 +33,8 @@ export interface CameraStreamProfile {
   fps?: number;
   rtspUri: string;
   isMainStream?: boolean;
+  streamRole?: StreamRole;
+  hasAudio?: boolean;
 }
 
 export interface CameraDeviceDetails {
@@ -50,61 +68,55 @@ export interface CameraPreset {
   name: string;
 }
 
-export interface ICameraProvider {
-  /**
-   * Discovers ONVIF compliant cameras on the local network via WS-Discovery probe.
-   */
+/**
+ * Capability: Network discovery of cameras (WS-Discovery probe, multicast).
+ */
+export interface ICameraDiscovery {
   discover(timeoutMs?: number): Promise<DiscoveredCamera[]>;
+}
 
-  /**
-   * Tests reachability of an IP camera port.
-   */
+/**
+ * Capability: Hardware & model information inspection and socket reachability probing.
+ */
+export interface ICameraDeviceInfo {
   probe(ip: string, port: number, timeoutMs?: number): Promise<boolean>;
-
-  /**
-   * Retrieves manufacturer, model, and hardware details for a camera.
-   */
   getDeviceInformation(params: CameraConnectionParams): Promise<CameraDeviceDetails>;
+}
 
-  /**
-   * Extracts available video stream profiles, prioritizing Profile T / high-res
-   * for Main Stream and lower resolution for Sub Stream.
-   */
+/**
+ * Capability: Stream role negotiation (PRIMARY high-res vs SUB low-res) and RTSP URL resolution.
+ */
+export interface ICameraStreamProvider {
+  getStreams?(params: CameraConnectionParams): Promise<StreamDescriptor[]>;
   getProfiles(params: CameraConnectionParams): Promise<CameraStreamProfile[]>;
-
-  /**
-   * Resolves direct RTSP stream URI for a given profile token.
-   */
   getStreamUri(params: CameraConnectionParams, profileToken?: string): Promise<string>;
+}
 
-  /**
-   * Commands camera to continuously move Pan, Tilt, or Zoom.
-   */
+/**
+ * Capability: Pan-Tilt-Zoom continuous moves, stops, and named presets.
+ */
+export interface ICameraPtzController {
   ptzMove(params: CameraConnectionParams, move: PtzMoveParams, profileToken?: string): Promise<void>;
-
-  /**
-   * Immediately halts active PTZ movement.
-   */
   ptzStop(params: CameraConnectionParams, profileToken?: string): Promise<void>;
-
-  /**
-   * Retrieves saved presets from the camera.
-   */
   getPresets(params: CameraConnectionParams, profileToken?: string): Promise<CameraPreset[]>;
-
-  /**
-   * Moves camera to target preset position.
-   */
   gotoPreset(params: CameraConnectionParams, presetToken: string, profileToken?: string): Promise<void>;
-
-  /**
-   * Saves current position as a named preset and returns preset token.
-   */
   setPreset(params: CameraConnectionParams, presetName: string, profileToken?: string): Promise<string>;
-
-  /**
-   * Deletes a saved preset from the camera.
-   */
   removePreset(params: CameraConnectionParams, presetToken: string, profileToken?: string): Promise<void>;
 }
 
+/**
+ * Capability: In-camera event subscriptions (e.g. ONVIF Pull-Point motion / tampering).
+ */
+export interface ICameraEventProvider {
+  subscribeEvents?(params: CameraConnectionParams, onEvent: (evt: unknown) => void): Promise<() => Promise<void>>;
+}
+
+/**
+ * Unified camera provider interface (combines discovery, device info, streams, and PTZ).
+ * Implemented by full-featured ONVIF Profile T/S adapters.
+ */
+export interface ICameraProvider
+  extends ICameraDiscovery,
+    ICameraDeviceInfo,
+    ICameraStreamProvider,
+    ICameraPtzController {}

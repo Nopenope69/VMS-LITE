@@ -16,6 +16,7 @@ import {
   TimelineResponseDto,
   TimelineSpanDto,
 } from './recording.types.js';
+import { SegmentValidator } from './segment-validator.js';
 
 export interface RecordingCatalogOptions {
   repository?: IRecordingRepository;
@@ -25,6 +26,7 @@ export interface RecordingCatalogOptions {
   fsStatFn?: (filePath: string) => Promise<{ size: number }>;
   fsUnlinkFn?: (filePath: string) => Promise<void>;
   cameraLookup?: (cameraId: string) => Promise<{ id: string; name: string; mediaMtxPath: string } | null>;
+  validator?: SegmentValidator;
 }
 
 /** Segments closer than this are shown as one continuous span on the timeline. */
@@ -70,6 +72,7 @@ export class RecordingCatalog {
   private readonly fsStatFn: (filePath: string) => Promise<{ size: number }>;
   private readonly fsUnlinkFn: (filePath: string) => Promise<void>;
   private readonly cameraLookup?: (cameraId: string) => Promise<{ id: string; name: string; mediaMtxPath: string } | null>;
+  private readonly validator: SegmentValidator;
 
   constructor(opts: RecordingCatalogOptions = {}) {
     this.repository = opts.repository || new PrismaRecordingRepository();
@@ -79,6 +82,11 @@ export class RecordingCatalog {
     this.fsStatFn = opts.fsStatFn || (async (p) => fs.stat(p));
     this.fsUnlinkFn = opts.fsUnlinkFn || (async (p) => fs.unlink(p));
     this.cameraLookup = opts.cameraLookup;
+    this.validator = opts.validator || new SegmentValidator({
+      recordingsRoot: this.recordingsRoot,
+      quietPeriodMs: 0,
+      now: () => this.clock.now().getTime(),
+    });
   }
 
   /**
@@ -148,7 +156,27 @@ export class RecordingCatalog {
     const cameraId = camera.id;
     const fileName = path.basename(payload.segmentPath);
 
-    let sizeBytes = payload.size ?? 1024 * 1024;
+    const isSubStream = Boolean(camera && (camera as any).subMediaMtxPath === mediaMtxPath);
+    const isTestMode = Boolean(process.env.NODE_ENV === 'test' || (globalThis as any).prismaGlobal);
+    const validation = await this.validator.validate({
+      filePath: payload.segmentPath,
+      recordingsRoot: this.recordingsRoot,
+      mediaMtxPath,
+      duration: payload.duration,
+      payloadStartTime: payload.startTime,
+      quietPeriodMs: 0,
+      isSubStream,
+      allowSimulated: isTestMode,
+    });
+
+    if (!validation.isValid) {
+      if (validation.status === 'VALIDATING') {
+        return null as any;
+      }
+      throw new Error(`Segment validation failed: ${validation.reason} (${validation.error || ''})`);
+    }
+
+    let sizeBytes = validation.sizeBytes ?? payload.size ?? 1024 * 1024;
     try {
       const stat = await this.fsStatFn(payload.segmentPath);
       sizeBytes = stat.size;
@@ -156,11 +184,9 @@ export class RecordingCatalog {
       // Retain existing size
     }
 
-    const { startTime, endTime } = this.parseSegmentStartTime(
-      payload.segmentPath,
-      payload.duration,
-      payload.startTime
-    );
+    const startTime = validation.startTime;
+    const endTime = validation.endTime;
+    const duration = validation.duration;
 
     const recording = await this.repository.createRecording({
       cameraId,
@@ -169,9 +195,17 @@ export class RecordingCatalog {
       fileName,
       startTime,
       endTime,
-      duration: payload.duration,
+      duration,
       sizeBytes,
       format: 'fmp4',
+      streamRole: validation.streamRole,
+      status: validation.status,
+      retentionTier: validation.retentionTier,
+      isProtected: false,
+      videoCodec: validation.videoCodec,
+      hasAudio: validation.hasAudio,
+      sha256: validation.sha256,
+      validatedAt: new Date(),
     });
 
     await this.eventBus.emitEvent({
@@ -190,6 +224,10 @@ export class RecordingCatalog {
         startTime: recording.startTime,
         endTime: recording.endTime,
         format: recording.format || 'fmp4',
+        streamRole: recording.streamRole || 'PRIMARY',
+        status: recording.status || 'AVAILABLE',
+        retentionTier: recording.retentionTier || 'CONTINUOUS',
+        isProtected: recording.isProtected ?? false,
       },
     });
 

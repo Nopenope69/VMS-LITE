@@ -60,6 +60,8 @@ model Event {
   metadata  Json     @default("{}")
   createdAt DateTime @default(now())
 
+  incidentEvents IncidentEvent[]
+
   @@index([type])
   @@index([cameraId])
   @@index([siteId])
@@ -165,24 +167,66 @@ model MotionZone {
   @@map("motion_zones")
 }
 
-model Recording {
-  id           String   @id @default(uuid())
-  cameraId     String   @map("camera_id")
-  camera       Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
-  mediaMtxPath String   @map("mediamtx_path")
-  filePath     String   @unique @map("file_path")
-  fileName     String   @map("file_name")
-  startTime    DateTime @map("start_time")
-  endTime      DateTime @map("end_time")
-  duration     Float
-  sizeBytes    BigInt   @map("size_bytes")
-  format       String   @default("fmp4")
-  createdAt    DateTime @default(now()) @map("created_at")
+enum SegmentStatus {
+  DISCOVERED
+  VALIDATING
+  AVAILABLE
+  QUARANTINED
+  EXPIRED
+  DELETED
+}
 
-  processingJobs ProcessingJob[]
-  detections     Detection[]
+enum RetentionTier {
+  CONTINUOUS
+  EVENT
+  INCIDENT
+  PROTECTED
+}
+
+enum StreamRole {
+  PRIMARY
+  SUB
+}
+
+model Recording {
+  id               String          @id @default(uuid())
+  cameraId         String          @map("camera_id")
+  camera           Camera          @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  mediaMtxPath     String          @map("mediamtx_path")
+  streamRole       StreamRole      @default(PRIMARY) @map("stream_role")
+  filePath         String          @unique @map("file_path")
+  fileName         String          @map("file_name")
+  startTime        DateTime        @map("start_time")
+  endTime          DateTime        @map("end_time")
+  duration         Float
+  sizeBytes        BigInt          @map("size_bytes")
+  format           String          @default("fmp4")
+  videoCodec       String          @default("h264") @map("video_codec")
+  hasAudio         Boolean         @default(false) @map("has_audio")
+  width            Int?
+  height           Int?
+  fps              Float?
+
+  // Lifecycle & Integrity
+  status           SegmentStatus   @default(AVAILABLE)
+  retentionTier    RetentionTier   @default(CONTINUOUS) @map("retention_tier")
+  isProtected      Boolean         @default(false) @map("is_protected")
+  protectionReason String?         @map("protection_reason")
+  sha256           String?
+  validatedAt      DateTime?       @map("validated_at")
+
+  // Storage Provider
+  storageProvider  String          @default("local") @map("storage_provider")
+  storageKey       String?         @map("storage_key")
+
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  processingJobs   ProcessingJob[]
+  detections       Detection[]
+  incidentSegments IncidentRecording[]
 
   @@index([cameraId, startTime])
+  @@index([status, retentionTier, isProtected])
   @@index([startTime])
   @@map("recordings")
 }
@@ -384,4 +428,67 @@ model Detection {
   @@index([recordingId])
   @@map("detections")
 }
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  ARCHIVED
+}
+
+model Incident {
+  id              String             @id @default(uuid())
+  incidentNumber  Int                @default(autoincrement()) @map("incident_number")
+  title           String
+  description     String?
+  severity        IncidentSeverity   @default(MEDIUM)
+  status          IncidentStatus     @default(OPEN)
+  siteId          String?            @map("site_id")
+  primaryCameraId String?            @map("primary_camera_id")
+  startTime       DateTime           @map("start_time")
+  endTime         DateTime           @map("end_time")
+  createdById     String?            @map("created_by_id")
+  createdSource   String             @default("manual") @map("created_source")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  recordings      IncidentRecording[]
+  events          IncidentEvent[]
+
+  @@index([siteId, startTime])
+  @@index([status, severity])
+  @@map("incidents")
+}
+
+model IncidentRecording {
+  id          String    @id @default(uuid())
+  incidentId  String    @map("incident_id")
+  incident    Incident  @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  recordingId String    @map("recording_id")
+  recording   Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  lockedAt    DateTime  @default(now()) @map("locked_at")
+
+  @@unique([incidentId, recordingId])
+  @@map("incident_recordings")
+}
+
+model IncidentEvent {
+  id         String   @id @default(uuid())
+  incidentId String   @map("incident_id")
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  eventId    String   @map("event_id")
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  addedAt    DateTime @default(now()) @map("added_at")
+
+  @@unique([incidentId, eventId])
+  @@map("incident_events")
+}
+
 

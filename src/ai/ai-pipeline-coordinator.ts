@@ -15,6 +15,7 @@ export interface AiPipelineCoordinatorOptions {
   eventBus: EventBus;
   jobQueue?: IProcessingJobQueue;
   detectionRepository?: IDetectionRepository;
+  enabled?: boolean;
 }
 
 /**
@@ -32,6 +33,7 @@ export class AiPipelineCoordinator {
   private readonly jobQueue?: IProcessingJobQueue;
   private readonly detectionRepository?: IDetectionRepository;
   private isRunning = false;
+  private enabled = true;
   private stats: AiPipelineStats = {
     segmentsReceived: 0,
     segmentsProcessed: 0,
@@ -46,7 +48,16 @@ export class AiPipelineCoordinator {
       this.eventBus = options.eventBus;
       this.jobQueue = options.jobQueue;
       this.detectionRepository = options.detectionRepository;
+      this.enabled = options.enabled ?? true;
     }
+  }
+
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+  }
+
+  isEnabled(): boolean {
+    return this.enabled;
   }
 
   registerWorker(worker: IAiWorker): void {
@@ -70,7 +81,7 @@ export class AiPipelineCoordinator {
     this.isRunning = true;
 
     this.eventBus.subscribe('recording.segment_created', (event) => {
-      if (!this.isRunning) return;
+      if (!this.isRunning || !this.enabled) return;
       const metadata = event.metadata as unknown as SegmentCreatedEventMetadata;
       if (metadata && metadata.recordingId) {
         // Asynchronously process without blocking caller or event dispatch

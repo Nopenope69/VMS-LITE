@@ -157,7 +157,39 @@ Entitlements are cleanly segregated:
 - **Outbound Webhooks**: Delivered asynchronously via a bounded queue (depth 500, concurrency 5). Signed with `HMAC-SHA256(secret, `${timestamp}.${rawBody}`)`. Re-uses `X-VMS-Delivery` UUID across retries for receiver idempotency.
 - **SSRF Defense-in-Depth**: Dispatch-time DNS pre-resolution blocks private, loopback, link-local, and cloud metadata IPs (IPv4 and IPv6), accompanied by `redirect: 'manual'` to prevent redirect bounce bypasses.
 
-### C. Single-Active-Worker Appliance Invariant
-VMS-Lite operates as a **single active worker instance per appliance**:
-- Health polling cycles, in-memory telemetry caches, and rate-limiting token buckets are intentionally process-local.
-- This design decision explicitly avoids dragging heavyweight external distributed coordination dependencies (Redis, distributed locks) onto budget edge NVR hardware. All durable multi-node recovery or audit needs rely on PostgreSQL event logs.
+- **Single-Active-Worker Appliance Invariant**: VMS-Lite operates as a **single active worker instance per appliance**. Health polling cycles, in-memory telemetry caches, and rate-limiting token buckets are intentionally process-local. This avoids dragging heavyweight external distributed coordination dependencies (Redis, distributed locks) onto budget edge NVR hardware. All durable multi-node recovery or audit needs rely on PostgreSQL event logs.
+
+---
+
+## 6. Industrial Appliance Hardening & Processing Boundaries
+
+### A. Recording Correctness & Segment Lifecycle (Phase 1)
+- **State Machine**: Segments follow `DISCOVERED -> VALIDATED -> CATALOGUED / AVAILABLE -> EXPIRED -> DELETED`. `EXPORTED` is not a terminal state; segments remain `AVAILABLE` while referenced by events, incidents, bookmarks, or exports.
+- **Box Atom Validation**: Segments are validated via [`SegmentValidator`](src/recordings/segment-validator.ts) for valid fMP4 container structure (`ftyp`, `moov`, `moof`), minimum size ($\ge 1\text{KB}$), positive duration, and quiet-period file stability. Zero `fsync` in segment validation (write integrity is monitored independently via active probe).
+- **Dual-Path Self-Healing Reconciliation**: Combines an event-driven fast path (`/api/recordings/segments/complete` webhook or file notifications) with periodic background filesystem reconciliation sweeps in [`SegmentIndexer`](src/recordings/segment-indexer.ts). If the Node control plane restarts, the reconciliation path automatically audits on-disk media and repairs missed catalog entries.
+- **Contract-Stable Event**: Emits `SegmentCreatedEventV1` (`recording.segment_created`) with `recordingId`, `cameraId`, `streamRole` (`PRIMARY` | `SUB`), `lifecycle`, `hasAudio`, and `sha256`.
+
+### B. Storage Reliability & Active Write Canary (Phase 2)
+- **Active Write Canary Probe**: [`StorageController`](src/recordings/storage-controller.ts) runs an active canary probe (`runWriteCanary`) writing 64KB with an explicit `fsync` sync-to-disk and latency timing. This catches dying flash controllers, read-only remounts, or I/O stalls before footage is lost.
+- **Storage Health State Machine**: Evaluates `HEALTHY`, `WARNING`, `CRITICAL`, `WRITE_DEGRADED` (latency > 1s), `WRITE_FAILED` (I/O error), `MOUNT_MISSING`, and emits `storage.health_changed`.
+- **Multi-Tier Retention**: Differentiates retention policies across `CONTINUOUS` (default 7d), `EVENT` (15d), `INCIDENT` (60d), and `PROTECTED` (never purged).
+- **Storage Pressure Safeguard**: Enforces a strict quota on protected evidence (`MAX_PROTECTED_STORAGE_PERCENT = 25%`). If protected footage approaches capacity, the appliance emits `storage.protected_overflow` and `storage.exhaustion_risk` before FIFO rollover stalls.
+
+### C. Camera & Device Abstraction (Phase 3)
+- **Discrete Capability Model**: Decoupled into targeted interfaces ([`src/cameras/camera-provider.interface.ts`](src/cameras/camera-provider.interface.ts)):
+  - `ICameraStreamProvider` (stream discovery, RTSP/WHEP descriptors)
+  - `ICameraDeviceInfo` (make, model, firmware, serial number)
+  - `ICameraDiscovery` (WS-Discovery / ONVIF probe)
+  - `ICameraPtzController` (pan, tilt, zoom, presets)
+  - `ICameraEventProvider` (ONVIF pull-point event subscription)
+- **Stream Roles**: Simplified to `PRIMARY` (high-res recording) and `SUB` (low-res preview/live grid), with `hasAudio` boolean capability. Generic RTSP devices implement [`RtspCameraAdapter`](src/cameras/rtsp.adapter.ts) without inheriting irrelevant ONVIF/PTZ requirements.
+
+### D. Industrial Operations & Incident Correlation (Phase 4)
+- **Multi-Sensor Incident Correlation**: [`IncidentCorrelationService`](src/incidents/incident-correlation.service.ts) binds multi-sensor events (motion, line crossing, door sensor, operator bookmark) to recorded segments (`Incident`, `IncidentRecording`, `IncidentEvent`).
+- **Evidence Protection**: Automatically elevates associated recording segments to `INCIDENT` retention tier, locking them against continuous FIFO deletion and packaging them for auditability.
+
+### E. Optional Processing Boundary (Phase 5)
+- **Strict Decoupling**: Core VMS operations (recording, playback, retention, live stream) are 100% functional with zero AI or external analytics.
+- **Asynchronous Event Consumer**: Downstream intelligence sits strictly behind the event bus and durable PostgreSQL queue (`ProcessingJob`).
+- **Dynamic Toggle & Error Containment**: [`AiPipelineCoordinator`](src/ai/ai-pipeline-coordinator.ts) can be enabled or disabled dynamically (`setEnabled(false)`). When active, worker exceptions, timeouts, or NPU driver crashes are trapped within the worker seam and will never drop recording packets or crash the control plane.
+

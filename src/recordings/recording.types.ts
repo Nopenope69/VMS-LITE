@@ -46,10 +46,15 @@ export const RecordingQuerySchema = z.object({
 
 export type RecordingQueryParams = z.input<typeof RecordingQuerySchema>;
 
+export type SegmentStatusType = 'DISCOVERED' | 'VALIDATING' | 'AVAILABLE' | 'QUARANTINED' | 'EXPIRED' | 'DELETED';
+export type RetentionTierType = 'CONTINUOUS' | 'EVENT' | 'INCIDENT' | 'PROTECTED';
+export type StreamRoleType = 'PRIMARY' | 'SUB';
+
 export interface RecordingDto {
   id: string;
   cameraId: string;
   mediaMtxPath: string;
+  streamRole?: StreamRoleType;
   filePath: string;
   fileName: string;
   startTime: string;
@@ -57,6 +62,19 @@ export interface RecordingDto {
   duration: number;
   sizeBytes: number;
   format: string;
+  videoCodec?: string;
+  hasAudio?: boolean;
+  width?: number | null;
+  height?: number | null;
+  fps?: number | null;
+  status?: SegmentStatusType;
+  retentionTier?: RetentionTierType;
+  isProtected?: boolean;
+  protectionReason?: string | null;
+  sha256?: string | null;
+  validatedAt?: string | null;
+  storageProvider?: string;
+  storageKey?: string | null;
   createdAt: string;
 }
 
@@ -84,6 +102,15 @@ export interface CameraScheduleConfig {
   windows: ScheduleWindow[];
 }
 
+export type StorageHealthStatus =
+  | 'HEALTHY'
+  | 'WARNING'
+  | 'CRITICAL'
+  | 'WRITE_DEGRADED'
+  | 'WRITE_FAILED'
+  | 'MOUNT_MISSING'
+  | 'RECONCILIATION_ERROR';
+
 export interface StorageMetricsDto {
   totalBytes: number;
   freeBytes: number;
@@ -92,16 +119,25 @@ export interface StorageMetricsDto {
   mountPath: string;
   warningThresholdPercent: number;
   criticalThresholdPercent: number;
+  healthStatus?: StorageHealthStatus;
+  canaryLatencyMs?: number | null;
+  protectedBytes?: number;
+  protectedPercent?: number;
+  maxProtectedThresholdPercent?: number;
+  continuousRetentionDays?: number;
+  eventRetentionDays?: number;
+  incidentRetentionDays?: number;
 }
 
 export interface StorageCleanupResult {
-  status: 'ok' | 'warning' | 'critical';
+  status: 'ok' | 'warning' | 'critical' | 'write_degraded' | 'write_failed' | 'mount_missing';
   triggered: boolean;
   usedPercentBefore: number;
   usedPercentAfter: number;
   deletedSegmentsCount: number;
   freedBytes: number;
   metrics?: StorageMetricsDto;
+  protectedOverflow?: boolean;
 }
 
 export const TimelineQuerySchema = z

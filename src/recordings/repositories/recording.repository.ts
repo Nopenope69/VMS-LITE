@@ -7,6 +7,9 @@ import {
   RecordingMode,
   RecordingQueryParams,
   ScheduleWindow,
+  SegmentStatusType,
+  RetentionTierType,
+  StreamRoleType,
 } from '../recording.types.js';
 
 export interface CameraRecordSummary {
@@ -34,6 +37,20 @@ export interface IRecordingRepository {
     duration: number;
     sizeBytes: bigint | number;
     format?: string;
+    streamRole?: StreamRoleType;
+    status?: SegmentStatusType;
+    retentionTier?: RetentionTierType;
+    isProtected?: boolean;
+    protectionReason?: string | null;
+    sha256?: string | null;
+    validatedAt?: Date | null;
+    storageProvider?: string;
+    storageKey?: string | null;
+    videoCodec?: string;
+    hasAudio?: boolean;
+    width?: number | null;
+    height?: number | null;
+    fps?: number | null;
   }): Promise<RecordingDto>;
 
   findRecordingById(id: string): Promise<RecordingDto | null>;
@@ -79,6 +96,20 @@ export class PrismaRecordingRepository implements IRecordingRepository {
     duration: number;
     sizeBytes: bigint | number;
     format?: string;
+    streamRole?: StreamRoleType;
+    status?: SegmentStatusType;
+    retentionTier?: RetentionTierType;
+    isProtected?: boolean;
+    protectionReason?: string | null;
+    sha256?: string | null;
+    validatedAt?: Date | null;
+    storageProvider?: string;
+    storageKey?: string | null;
+    videoCodec?: string;
+    hasAudio?: boolean;
+    width?: number | null;
+    height?: number | null;
+    fps?: number | null;
   }): Promise<RecordingDto> {
     const record = await this.prisma.recording.create({
       data: {
@@ -91,6 +122,20 @@ export class PrismaRecordingRepository implements IRecordingRepository {
         duration: data.duration,
         sizeBytes: BigInt(data.sizeBytes),
         format: data.format || 'fmp4',
+        streamRole: (data.streamRole as any) || 'PRIMARY',
+        status: (data.status as any) || 'AVAILABLE',
+        retentionTier: (data.retentionTier as any) || 'CONTINUOUS',
+        isProtected: data.isProtected ?? false,
+        protectionReason: data.protectionReason ?? null,
+        sha256: data.sha256 ?? null,
+        validatedAt: data.validatedAt ?? null,
+        storageProvider: data.storageProvider || 'local',
+        storageKey: data.storageKey ?? null,
+        videoCodec: data.videoCodec || 'h264',
+        hasAudio: data.hasAudio ?? false,
+        width: data.width ?? null,
+        height: data.height ?? null,
+        fps: data.fps ?? null,
       },
     });
 
@@ -243,8 +288,13 @@ export class PrismaRecordingRepository implements IRecordingRepository {
   }
 
   async getCameraByMediaMtxPath(mediaMtxPath: string): Promise<CameraRecordSummary | null> {
-    return this.prisma.camera.findUnique({
-      where: { mediaMtxPath },
+    return this.prisma.camera.findFirst({
+      where: {
+        OR: [
+          { mediaMtxPath },
+          { subMediaMtxPath: mediaMtxPath },
+        ],
+      },
       select: {
         id: true,
         name: true,
@@ -281,6 +331,7 @@ export class PrismaRecordingRepository implements IRecordingRepository {
       id: record.id,
       cameraId: record.cameraId,
       mediaMtxPath: record.mediaMtxPath,
+      streamRole: record.streamRole || 'PRIMARY',
       filePath: record.filePath,
       fileName: record.fileName,
       startTime: record.startTime instanceof Date ? record.startTime.toISOString() : String(record.startTime),
@@ -288,6 +339,19 @@ export class PrismaRecordingRepository implements IRecordingRepository {
       duration: Number(record.duration),
       sizeBytes: Number(record.sizeBytes),
       format: record.format,
+      videoCodec: record.videoCodec || 'h264',
+      hasAudio: Boolean(record.hasAudio),
+      width: record.width ?? null,
+      height: record.height ?? null,
+      fps: record.fps ?? null,
+      status: record.status || 'AVAILABLE',
+      retentionTier: record.retentionTier || 'CONTINUOUS',
+      isProtected: Boolean(record.isProtected),
+      protectionReason: record.protectionReason ?? null,
+      sha256: record.sha256 ?? null,
+      validatedAt: record.validatedAt instanceof Date ? record.validatedAt.toISOString() : record.validatedAt ?? null,
+      storageProvider: record.storageProvider || 'local',
+      storageKey: record.storageKey ?? null,
       createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : String(record.createdAt),
     };
   }
@@ -312,12 +376,27 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
     duration: number;
     sizeBytes: bigint | number;
     format?: string;
+    streamRole?: StreamRoleType;
+    status?: SegmentStatusType;
+    retentionTier?: RetentionTierType;
+    isProtected?: boolean;
+    protectionReason?: string | null;
+    sha256?: string | null;
+    validatedAt?: Date | null;
+    storageProvider?: string;
+    storageKey?: string | null;
+    videoCodec?: string;
+    hasAudio?: boolean;
+    width?: number | null;
+    height?: number | null;
+    fps?: number | null;
   }): Promise<RecordingDto> {
     const id = crypto.randomUUID();
     const dto: RecordingDto = {
       id,
       cameraId: data.cameraId,
       mediaMtxPath: data.mediaMtxPath,
+      streamRole: data.streamRole || 'PRIMARY',
       filePath: data.filePath,
       fileName: data.fileName,
       startTime: data.startTime.toISOString(),
@@ -325,6 +404,19 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
       duration: data.duration,
       sizeBytes: Number(data.sizeBytes),
       format: data.format || 'fmp4',
+      videoCodec: data.videoCodec || 'h264',
+      hasAudio: data.hasAudio ?? false,
+      width: data.width ?? null,
+      height: data.height ?? null,
+      fps: data.fps ?? null,
+      status: data.status || 'AVAILABLE',
+      retentionTier: data.retentionTier || 'CONTINUOUS',
+      isProtected: data.isProtected ?? false,
+      protectionReason: data.protectionReason ?? null,
+      sha256: data.sha256 ?? null,
+      validatedAt: data.validatedAt ? data.validatedAt.toISOString() : null,
+      storageProvider: data.storageProvider || 'local',
+      storageKey: data.storageKey ?? null,
       createdAt: new Date().toISOString(),
     };
     this.recordings.set(id, dto);
@@ -411,7 +503,7 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
 
   async getCameraByMediaMtxPath(mediaMtxPath: string): Promise<CameraRecordSummary | null> {
     for (const cam of this.cameras.values()) {
-      if (cam.mediaMtxPath === mediaMtxPath) {
+      if (cam.mediaMtxPath === mediaMtxPath || cam.subMediaMtxPath === mediaMtxPath) {
         return cam;
       }
     }
