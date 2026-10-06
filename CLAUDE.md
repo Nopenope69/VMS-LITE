@@ -8,7 +8,7 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
 ## Architecture (see ARCHITECTURE.md for detail)
 
 - **Control plane**: Node 22, TypeScript, Fastify 5 (`src/`), Prisma 5 + PostgreSQL 16.
-  Migrations in `prisma/migrations` (0001 to 0008); `npx prisma migrate dev --name x`.
+  Migrations in `prisma/migrations` (0001 to 0011); `npx prisma migrate dev --name x`.
 - **Media plane**: MediaMTX 1.11 (`mediamtx.yml`), localhost-only. The app reconciles
   MediaMTX paths from the DB every 30 s. Browsers never talk to MediaMTX directly:
   WHEP, HLS and fMP4 playback go through `/api/media` (JWT or HttpOnly `vms_media` cookie).
@@ -48,6 +48,21 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
 - AI worker harness (`src/ai/ai-pipeline-coordinator.ts`): `AiPipelineCoordinator`
   orchestrates durable jobs and async inference (`IAiWorker`) with strict error isolation,
   guaranteeing that worker exceptions, timeouts, or NPU OOMs never disrupt media capture.
+- Recording lifecycle (`src/recordings/`): `segment-validator.ts` checks MP4 box atoms
+  without fsync; the indexer self-heals via a dual path. Storage health state machine,
+  write-canary probe, multi-tier retention and a 25% protected-storage safeguard live
+  in `storage-controller.ts`.
+- Storage invariants (`storage-invariants.service.ts`): one catalog row per AVAILABLE
+  recording, one object per cataloged segment (missing files become MISSING), no
+  uncatalogued video after a crash, protected evidence is never retained-out, and
+  storage failure halts deletions. Deletion is two-phase: AVAILABLE -> DELETE_PENDING
+  -> [unlink] -> DELETED or GARBAGE. `diagnostics-logger.ts` warns on slow I/O.
+- Camera abstraction (`src/cameras/camera-provider.interface.ts`, `rtsp.adapter.ts`):
+  discrete capability interfaces, primary/sub stream roles.
+- Incidents (`src/incidents/incident-correlation.service.ts`): multi-sensor event
+  correlation and evidence protection.
+- Optional processing boundary: with AI disabled the core runs with zero processing
+  overhead; worker failures stay isolated. Full spec: `docs/VMS_LITE_ARCHITECTURE_SPEC.md`.
 - Times in alerts and reports use the appliance timezone (`src/system/time-format.ts`);
   the first-boot wizard's timezone overrides `TZ` from `.env`.
 - Sessions are revocable (`User.tokenVersion`); completing the wizard's password
@@ -90,7 +105,17 @@ Merged into `main`:
   4. Spatio-temporal detection repository (`Detection` model with composite indexing)
   5. Asynchronous `AiPipelineCoordinator` with non-blocking error isolation.
 - Migration `0008_processing_jobs_and_detections` added.
-- All 75 test files passed (531/531 tests green). Full typecheck clean (0 errors).
+- Commit `4a75148` on `main`: five-phase appliance hardening (recording correctness,
+  storage reliability, camera abstraction, incident correlation, optional processing
+  boundary). Migrations `0009_recording_lifecycle_and_correctness` and
+  `0010_incidents_and_event_correlation`.
+- Commit `8901849` on `main`: storage invariants, two-phase deletion, crash-recovery
+  matrix (`tests/storage-invariants-and-crash-recovery.test.ts`, 14 scenarios).
+  Migration `0011_storage_invariants_and_garbage_state`.
+- Last full-suite result recorded (at `ef37621`): 75 test files, 531/531 green. Not
+  re-run since the three commits above; re-run `npm test` and `npm run typecheck`.
+- Branches: `origin/vms-lite` holds an unrelated-history simulator prototype (with a
+  committed `.agent/` GSD directory); four `feature-*` branches have no commits beyond `main`.
 
 ## Next steps
 
