@@ -46,6 +46,8 @@ export interface RecordingEngineOptions {
     blocks: number | bigint;
     bfree: number | bigint;
   }>;
+  /** Storage write probe (default: a real 64 KB write + fsync under the recordings root). */
+  canaryWriteFn?: (probePath: string) => Promise<{ latencyMs: number }>;
   fsStatFn?: (filePath: string) => Promise<{ size: number }>;
   fsUnlinkFn?: (filePath: string) => Promise<void>;
   playbackBaseUrl?: string;
@@ -140,6 +142,7 @@ export class RecordingEngine implements IRecordingEngine {
       targetThresholdPercent: opts.targetThresholdPercent,
       batchSize: opts.batchSize,
       statfsFn: opts.statfsFn,
+      canaryWriteFn: opts.canaryWriteFn,
     });
 
     this.invariants = new StorageInvariantsService({

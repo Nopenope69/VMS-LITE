@@ -133,6 +133,7 @@ describe('Storage FIFO rollover', () => {
       catalog,
       eventBus: new EventBus(),
       recordingsDir: '/var/recordings',
+      canaryWriteFn: async () => ({ latencyMs: 1 }),
       batchSize: 50,
       // Each deletion frees 1% of the disk
       statfsFn: async () => {

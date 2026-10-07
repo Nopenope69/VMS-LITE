@@ -47,6 +47,8 @@ describe('RecordingEngine Architecture Tests', () => {
       fsUnlinkFn: mockUnlink,
       fsStatFn: mockStat,
       statfsFn: mockStatfs,
+      // The fake root is not on disk; storage counts as writable
+      canaryWriteFn: async () => ({ latencyMs: 1 }),
       scheduleIntervalMs: 60_000,
       storageIntervalMs: 60_000,
       ...opts,
