@@ -37,25 +37,15 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
   `subBitrateKbps`. H.265 warnings come from `client/src/utils/codec.ts`. Sites have
   `uplinkMbps`; summaries report `bandwidthKbps` and `linkUsage`.
 - Grids play the sub-stream; single view and recorded playback use the main stream.
-- Storage abstraction & tiering (`src/storage/`): `IStorageProvider`, `LocalStorageProvider`
-  (enforcing root path containment), and `TieredStorageManager` for asynchronous
-  offloading of mission-critical footage (bookmarks, motion alerts) to secondary object
-  storage or NAS. Video segments are addressed via canonical `recording.id` and opaque
-  artifact keys (`provider` + `key`), demoting physical file paths to internal details.
-- Versioned segment event contract (`src/events/segment-created-event.schema.ts`):
-  `SegmentCreatedEventV1` captures capture mode (`CONTINUOUS` vs `MOTION_ONLY`), motion
-  `incidentId`, and generic `analysisHints` (`priority`, `preferredStream`). Emitted
-  by `RecordingCatalog` carrying `siteId` and canonical storage URI.
-- Durable processing jobs (`src/jobs/processing-job.queue.ts`): PostgreSQL-backed
-  `ProcessingJob` queue with `UNIQUE(recordingId, jobType)`, priority claiming, and
-  exponential backoff retry. Survives appliance power cuts and restarts without Redis or
-  Kafka dependencies.
-- Spatio-temporal detection store (`src/ai/detection.repository.ts`): Dedicated `Detection`
-  table with composite indexes on `(cameraId, label, timestamp)` and `(siteId, label, timestamp)`
-  for sub-second timeline smart queries ("find person at Gate 1 between 10-11 PM").
-- AI worker harness (`src/ai/ai-pipeline-coordinator.ts`): `AiPipelineCoordinator`
-  orchestrates durable jobs and async inference (`IAiWorker`) with strict error isolation,
-  guaranteeing that worker exceptions, timeouts, or NPU OOMs never disrupt media capture.
+- **Built but not wired into production yet** (no production caller; each waits for a
+  real adapter, worker or UI before it is connected): storage tiering (`src/storage/`,
+  `IStorageProvider`, `TieredStorageManager`; segments use the local filesystem
+  directly), the AI pipeline (`src/ai/ai-pipeline-coordinator.ts`, `IAiWorker`, no
+  worker exists), the durable job queue (`src/jobs/processing-job.queue.ts`), the
+  detection store (`src/ai/detection.repository.ts`) and incident correlation
+  (`src/incidents/`, no routes). Don't describe these as running features.
+- `recording.segment_created` is emitted by Segment Ingest with the metadata in
+  `segment-ingest.ts` (`emitSegmentCreated`); that is the contract.
 - Recording lifecycle (`src/recordings/`): `segment-ingest.ts` is the only way into the
   catalog (scan of the recordings volume; every file gets one row: AVAILABLE, BUFFERED for
   MOTION_ONLY cameras, or QUARANTINED); `segment-validator.ts` checks MP4 box atoms
@@ -67,12 +57,12 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
 - Storage invariants (`storage-invariants.service.ts`): one catalog row per AVAILABLE
   recording, one object per cataloged segment (missing files become MISSING), no
   uncatalogued video after a crash, protected evidence is never retained-out, and
-  storage failure halts deletions. Deletion is two-phase: AVAILABLE -> DELETE_PENDING
+  storage failure halts deletions. The audit runs once at engine start, only on mounted,
+  writable storage; expired exports are pruned hourly. Deletion is two-phase: AVAILABLE -> DELETE_PENDING
   -> [unlink] -> DELETED or GARBAGE. `diagnostics-logger.ts` warns on slow I/O.
-- Camera abstraction (`src/cameras/camera-provider.interface.ts`, `rtsp.adapter.ts`):
-  discrete capability interfaces, primary/sub stream roles.
-- Incidents (`src/incidents/incident-correlation.service.ts`): multi-sensor event
-  correlation and evidence protection.
+- Camera abstraction (`src/cameras/camera-provider.interface.ts`): ONVIF is the one
+  provider; reachability checks use `src/cameras/tcp-probe.ts`. Health status rules are
+  the pure `src/health/camera-status.ts`.
 - Optional processing boundary: with AI disabled the core runs with zero processing
   overhead; worker failures stay isolated. Full spec: `docs/VMS_LITE_ARCHITECTURE_SPEC.md`.
 - Times in alerts and reports use the appliance timezone (`src/system/time-format.ts`);

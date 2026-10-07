@@ -22,6 +22,7 @@ import {
   PrismaRecordingRepository,
 } from './repositories/recording.repository.js';
 import { StorageController } from './storage-controller.js';
+import { StorageInvariantsService } from './storage-invariants.service.js';
 import { MotionBufferStatus, SegmentIngest } from './segment-ingest.js';
 import { getRecordingsRoot } from './recordings-root.js';
 
@@ -57,6 +58,7 @@ export class RecordingEngine implements IRecordingEngine {
   private readonly scheduler: RecordingSchedulerCollaborator;
   private readonly storageController: StorageController;
   private readonly segmentIngest: SegmentIngest;
+  private readonly invariants: StorageInvariantsService;
   private readonly clock: IClock;
   private readonly playbackBaseUrl: string;
 
@@ -138,6 +140,13 @@ export class RecordingEngine implements IRecordingEngine {
       targetThresholdPercent: opts.targetThresholdPercent,
       batchSize: opts.batchSize,
       statfsFn: opts.statfsFn,
+    });
+
+    this.invariants = new StorageInvariantsService({
+      catalog: this.catalog,
+      repository,
+      eventBus,
+      recordingsDir: opts.recordingsDir,
     });
 
     this.segmentIngest = new SegmentIngest({
@@ -245,6 +254,7 @@ export class RecordingEngine implements IRecordingEngine {
     // 1. Initial boot reconciliation (deterministic boot without waiting 60s)
     await this.tickSchedule();
     await this.tickStorage();
+    await this.auditAfterCrash();
 
     // 2. Launch periodic loops
     this.scheduleTimerId = this.clock.setInterval(async () => {
@@ -259,6 +269,24 @@ export class RecordingEngine implements IRecordingEngine {
     this.indexTimerId = this.clock.setInterval(async () => {
       await this.tickIndex();
     }, this.indexIntervalMs);
+  }
+
+  /**
+   * Crash recovery at boot: finishes interrupted deletions and marks catalogued files
+   * that are gone as MISSING. Only on mounted, writable storage: a volume that is late
+   * to mount must not make every recording look missing.
+   */
+  private async auditAfterCrash(): Promise<void> {
+    try {
+      const { healthStatus } = await this.storageController.getStorageMetrics();
+      if (healthStatus === 'MOUNT_MISSING' || healthStatus === 'WRITE_FAILED') {
+        console.warn(`[RecordingEngine] Skipping boot invariants audit: storage is ${healthStatus}`);
+        return;
+      }
+      await this.invariants.auditAndReconcile();
+    } catch (err) {
+      console.warn(`[RecordingEngine] Boot invariants audit failed: ${(err as Error).message}`);
+    }
   }
 
   /**

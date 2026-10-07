@@ -90,7 +90,7 @@ Physical media storage is abstracted via [`IStorageProvider`](src/storage/storag
 
 ### G. Versioned Segment Events & Durable Edge Job Queue (`src/events/`, `src/jobs/`)
 Downstream processing decouples into the 4-way separation architecture:
-- **Event Contract** (`src/events/segment-created-event.schema.ts`): Emits `SegmentCreatedEventV1` carrying canonical `recording.id`, capture mode (`CONTINUOUS` vs `MOTION_ONLY`), motion `incidentId`, and generic `analysisHints` (`priority: high` for incidents, `preferredStream: sub`).
+- **Event Contract**: Segment Ingest emits `recording.segment_created` for every AVAILABLE segment, carrying `recordingId`, `cameraId`, `siteId`, `storageUri`, times, `status` and `retentionTier` (see `emitSegmentCreated` in `src/recordings/segment-ingest.ts`).
 - **Durable Queue** (`src/jobs/processing-job.queue.ts`): Backed by PostgreSQL (`processing_jobs` table) with `UNIQUE(recordingId, jobType)`, priority claiming, and exponential backoff retry. Survives appliance power cuts and restarts without external broker dependencies (zero Kafka/Redis).
 
 ### H. Spatio-Temporal Detection Store & AI Coordinator (`src/ai/`)
@@ -167,7 +167,7 @@ Entitlements are cleanly segregated:
 - **State Machine**: Segments follow `DISCOVERED -> VALIDATED -> CATALOGUED / AVAILABLE -> EXPIRED -> DELETED`. `EXPORTED` is not a terminal state; segments remain `AVAILABLE` while referenced by events, incidents, bookmarks, or exports.
 - **Box Atom Validation**: Segments are validated via [`SegmentValidator`](src/recordings/segment-validator.ts) for valid fMP4 container structure (`ftyp`, `moov`, `moof`), minimum size ($\ge 1\text{KB}$), positive duration, and quiet-period file stability. Zero `fsync` in segment validation (write integrity is monitored independently via active probe).
 - **Self-Healing Ingest**: [`SegmentIngest`](src/recordings/segment-ingest.ts) scans the recordings volume every 10 s and resumes from the newest catalog row, so segments written while the control plane was down are catalogued on restart.
-- **Contract-Stable Event**: Emits `SegmentCreatedEventV1` (`recording.segment_created`) with `recordingId`, `cameraId`, `streamRole` (`PRIMARY` | `SUB`), `lifecycle`, `hasAudio`, and `sha256`.
+- **Segment event**: `recording.segment_created` is emitted only for AVAILABLE segments (see Event Contract above).
 
 ### B. Storage Reliability & Active Write Canary (Phase 2)
 - **Active Write Canary Probe**: [`StorageController`](src/recordings/storage-controller.ts) runs an active canary probe (`runWriteCanary`) writing 64KB with an explicit `fsync` sync-to-disk and latency timing. This catches dying flash controllers, read-only remounts, or I/O stalls before footage is lost.
@@ -182,7 +182,7 @@ Entitlements are cleanly segregated:
   - `ICameraDiscovery` (WS-Discovery / ONVIF probe)
   - `ICameraPtzController` (pan, tilt, zoom, presets)
   - `ICameraEventProvider` (ONVIF pull-point event subscription)
-- **Stream Roles**: Simplified to `PRIMARY` (high-res recording) and `SUB` (low-res preview/live grid), with `hasAudio` boolean capability. Generic RTSP devices implement [`RtspCameraAdapter`](src/cameras/rtsp.adapter.ts) without inheriting irrelevant ONVIF/PTZ requirements.
+- **Stream Roles**: Simplified to `PRIMARY` (high-res recording) and `SUB` (low-res preview/live grid), with `hasAudio` boolean capability. Generic RTSP cameras are onboarded by URL; reachability uses the shared TCP probe (`src/cameras/tcp-probe.ts`).
 
 ### D. Industrial Operations & Incident Correlation (Phase 4)
 - **Multi-Sensor Incident Correlation**: [`IncidentCorrelationService`](src/incidents/incident-correlation.service.ts) binds multi-sensor events (motion, line crossing, door sensor, operator bookmark) to recorded segments (`Incident`, `IncidentRecording`, `IncidentEvent`).

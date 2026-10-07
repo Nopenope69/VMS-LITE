@@ -290,6 +290,10 @@ model IncidentEvent {
 
 ## 6. Versioned Platform Event Schemas (Zod Contracts)
 
+> Status (2026-10-07): this design section was not implemented as written. The
+> `SegmentCreatedEventV1` schema and `RtspCameraAdapter` were removed as unused; see
+> ARCHITECTURE.md for what runs.
+
 ### A. Immutable `SegmentCreatedEventV1`
 This is a general-purpose platform contract declaring that **a valid media segment exists**. It contains no AI-mandating directives.
 

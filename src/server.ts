@@ -5,6 +5,7 @@ import cors from '@fastify/cors';
 import fastifyJwt from '@fastify/jwt';
 import fastifyStatic from '@fastify/static';
 import { licensingPlugin, LicensingPluginOptions } from './licensing/plugin.js';
+import { exportPruneService } from './export/export-prune.service.js';
 import { registerCameraAccess } from './users/camera-scope.js';
 import { authRoutes } from './users/auth.routes.js';
 import { eventRoutes } from './events/event.routes.js';
@@ -241,6 +242,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
       stop: () => backupScheduler.stop(),
     },
     { start: () => storageTelemetryService.start(), stop: () => storageTelemetryService.stop() },
+    { start: () => exportPruneService.start(), stop: () => exportPruneService.stop() },
     { stop: () => ptzService.destroy() },
     {
       start: () =>
