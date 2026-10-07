@@ -98,6 +98,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   const wsFeed = opts.wsFeedService || webSocketFeedService;
   const engine = opts.recordingEngine || defaultRecordingEngine;
   const onvifEvents = opts.onvifEventsService || defaultOnvifEvents;
+  settingsService.attachEngine(engine);
 
   // The UI is served from this origin; cross-origin access only for explicitly listed origins
   const corsOrigins = (process.env.CORS_ORIGINS || '')
@@ -173,7 +174,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(eventRoutes, { prefix: '/api' });
   await app.register(cameraRoutes, { prefix: '/api/cameras' });
   await app.register(ptzRoutes, { prefix: '/api/cameras' });
-  await app.register(recordingRoutes, { prefix: '/api/recordings' });
+  await app.register(recordingRoutes, { prefix: '/api/recordings', recordingEngine: engine });
   await app.register(exportRoutes, { prefix: '/api/recordings' });
   await app.register(bookmarkRoutes, { prefix: '/api/cameras' });
   await app.register(zoneRoutes, { prefix: '/api/cameras' });
@@ -181,9 +182,9 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
   await app.register(notificationRoutes, { prefix: '/api/notifications' });
   await app.register(webhookRoutes, { prefix: '/api/webhooks' });
   await app.register(streamingRoutes, { prefix: '/api/streaming' });
-  await app.register(playbackRoutes, { prefix: '/api/playback' });
+  await app.register(playbackRoutes, { prefix: '/api/playback', recordingEngine: engine });
   await app.register(settingsRoutes, { prefix: '/api/settings' });
-  await app.register(systemRoutes, { prefix: '/api/system' });
+  await app.register(systemRoutes, { prefix: '/api/system', recordingEngine: engine });
   await app.register(shutdownRoutes, { prefix: '/api/system' });
   await app.register(backupRoutes, { prefix: '/api/system' });
   await app.register(setupRoutes, { prefix: '/api/system' });
@@ -224,40 +225,42 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
     });
   }
 
-  // Attach background services when server is ready
+  // Background services: started in this order when the server is ready, stopped in
+  // reverse order when it closes. A new service is one entry here.
+  const services: Array<{ start?: () => unknown; stop?: () => unknown }> = [
+    { start: () => settingsService.load() },
+    { start: () => engine.start(), stop: () => engine.stop() },
+    { start: () => onvifEvents.start(), stop: () => onvifEvents.stop() },
+    { start: () => cameraHealthService.start(), stop: () => cameraHealthService.stop() },
+    { start: () => notificationService.start(), stop: () => notificationService.stop() },
+    { start: () => webhookDispatcherService.start(), stop: () => webhookDispatcherService.stop() },
+    { start: () => smtpDispatcherService.start(), stop: () => smtpDispatcherService.stop() },
+    { start: () => startEventRetention(), stop: () => stopEventRetention() },
+    {
+      start: () => (process.env.NODE_ENV !== 'test' ? backupScheduler.start() : undefined),
+      stop: () => backupScheduler.stop(),
+    },
+    { start: () => storageTelemetryService.start(), stop: () => storageTelemetryService.stop() },
+    { stop: () => ptzService.destroy() },
+    {
+      start: () =>
+        wsFeed.attach(app.server, async (token: string) => {
+          const payload = app.jwt.verify<UserTokenPayload>(token);
+          if (!(await isSessionValid(payload))) {
+            throw new Error('Session revoked');
+          }
+          return payload;
+        }),
+      stop: () => wsFeed.close(),
+    },
+  ];
+
   app.addHook('onReady', async () => {
-    await settingsService.load();
-    await engine.start();
-    onvifEvents.start();
-    cameraHealthService.start();
-    await notificationService.start();
-    await webhookDispatcherService.start();
-    await smtpDispatcherService.start();
-    startEventRetention();
-    if (process.env.NODE_ENV !== 'test') backupScheduler.start();
-    await storageTelemetryService.start();
-    wsFeed.attach(app.server, async (token: string) => {
-      const payload = app.jwt.verify<UserTokenPayload>(token);
-      if (!(await isSessionValid(payload))) {
-        throw new Error('Session revoked');
-      }
-      return payload;
-    });
+    for (const service of services) await service.start?.();
   });
 
-  // Clean up on server close
   app.addHook('onClose', async () => {
-    stopEventRetention();
-    backupScheduler.stop();
-    storageTelemetryService.stop();
-    notificationService.stop();
-    webhookDispatcherService.stop();
-    smtpDispatcherService.stop();
-    cameraHealthService.stop();
-    ptzService.destroy();
-    await engine.stop();
-    onvifEvents.stop();
-    wsFeed.close();
+    for (const service of [...services].reverse()) await service.stop?.();
   });
 
   // Register process signal handlers for graceful shutdown (skip in test env)

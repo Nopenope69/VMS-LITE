@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { authenticate } from '../users/rbac.guard.js';
 import { cameraHealthService } from '../health/camera-health.service.js';
-import { recordingEngine } from '../recordings/recording-engine.js';
+import { recordingEngine as defaultRecordingEngine, RecordingEngine } from '../recordings/recording-engine.js';
 import { settingsService } from '../settings/settings.service.js';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 import { getNtpStatus } from './ntp.service.js';
@@ -9,7 +9,8 @@ import { storageTelemetryService } from './storage-telemetry.service.js';
 
 const bootTimestamp = Date.now();
 
-export const systemRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
+export const systemRoutes: FastifyPluginAsync<{ recordingEngine?: RecordingEngine }> = async (app: FastifyInstance, opts) => {
+  const recordingEngine = opts.recordingEngine ?? defaultRecordingEngine;
   /**
    * GET /api/system/dashboard
    * Returns aggregated operator landing dashboard overview (MVP-11)

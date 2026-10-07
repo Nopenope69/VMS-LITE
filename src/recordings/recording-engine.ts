@@ -219,8 +219,13 @@ export class RecordingEngine implements IRecordingEngine {
     return this.storageController.purgeRetention(days);
   }
 
-  getStorageController(): StorageController {
-    return this.storageController;
+  /** Lifetime of CONTINUOUS footage (the operational "retention days" setting). */
+  setRetentionDays(days: number): void {
+    this.storageController.setRetentionDays(days);
+  }
+
+  setStorageThresholds(warningPercent: number, criticalPercent: number): void {
+    this.storageController.setThresholds(warningPercent, criticalPercent);
   }
 
   // ==========================================

@@ -2,19 +2,19 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { Role } from '@prisma/client';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { ADMIN_ONLY, CameraAccess, cameraScopeOf } from '../users/camera-scope.js';
-import { recordingEngine } from './recording-engine.js';
+import { recordingEngine as defaultRecordingEngine, RecordingEngine } from './recording-engine.js';
 import {
   RecordingQuerySchema,
   SetCameraScheduleSchema,
 } from './recording.types.js';
 
-const RECORDING_OWNER: CameraAccess = {
-  resource: async (request) =>
-    (await recordingEngine.getRecordingById((request.params as { id: string }).id))?.cameraId ?? null,
-  right: 'canViewPlayback',
-};
-
-export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
+export const recordingRoutes: FastifyPluginAsync<{ recordingEngine?: RecordingEngine }> = async (app: FastifyInstance, opts) => {
+  const recordingEngine = opts.recordingEngine ?? defaultRecordingEngine;
+  const RECORDING_OWNER: CameraAccess = {
+    resource: async (request) =>
+      (await recordingEngine.getRecordingById((request.params as { id: string }).id))?.cameraId ?? null,
+    right: 'canViewPlayback',
+  };
   /**
    * GET /api/recordings/storage
    * Returns current storage utilization metrics and thresholds (REC-04)

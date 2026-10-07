@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { prisma as defaultPrisma } from '../db/prisma.js';
-import { recordingEngine } from '../recordings/recording-engine.js';
+import { recordingEngine as defaultRecordingEngine, RecordingEngine } from '../recordings/recording-engine.js';
 import { ICapabilityRegistry } from '../licensing/types.js';
 import {
   OperationalSettings,
@@ -18,11 +18,13 @@ const OPERATIONAL_SETTINGS_KEY = 'settings.operational';
 
 export interface SettingsServiceDependencies {
   prisma?: PrismaClient;
+  recordingEngine?: RecordingEngine;
 }
 
 export class SettingsService {
   private readonly prisma: PrismaClient;
   private readonly store: SystemSettingsStore;
+  private engine: RecordingEngine;
 
   // Active operational settings state
   private operationalSettings: OperationalSettings = {
@@ -38,8 +40,12 @@ export class SettingsService {
   constructor(deps: SettingsServiceDependencies = {}) {
     this.prisma = deps.prisma || defaultPrisma;
     this.store = new SystemSettingsStore(this.prisma);
+    this.engine = deps.recordingEngine || defaultRecordingEngine;
+  }
 
-    this.applyToEngine();
+  /** The engine these settings drive (the server's, which may be injected). */
+  attachEngine(engine: RecordingEngine): void {
+    this.engine = engine;
   }
 
   /**
@@ -56,13 +62,12 @@ export class SettingsService {
   }
 
   private applyToEngine(): void {
-    const storage = recordingEngine.getStorageController();
-    storage.setRetentionDays(this.operationalSettings.retentionDays);
-    storage.setThresholds(
+    this.engine.setRetentionDays(this.operationalSettings.retentionDays);
+    this.engine.setStorageThresholds(
       this.operationalSettings.warningThresholdPercent,
       this.operationalSettings.criticalThresholdPercent
     );
-    recordingEngine.setMotionWindow(this.operationalSettings.preBufferSeconds, this.operationalSettings.postBufferSeconds);
+    this.engine.setMotionWindow(this.operationalSettings.preBufferSeconds, this.operationalSettings.postBufferSeconds);
   }
 
   /**
@@ -71,7 +76,7 @@ export class SettingsService {
   async getOperationalSettings(
     capabilities: ICapabilityRegistry
   ): Promise<OperationalSettingsResponseDto> {
-    const storageMetrics = await recordingEngine.getStorageStatus();
+    const storageMetrics = await this.engine.getStorageStatus();
 
     // Approximate estimated days remaining based on camera count and average bitrate
     let activeCameraCount = 1;
@@ -92,7 +97,7 @@ export class SettingsService {
 
     let motionBuffer: any = undefined;
     try {
-      const status = await recordingEngine.getMotionBufferStatus();
+      const status = await this.engine.getMotionBufferStatus();
       motionBuffer = {
         preBufferSeconds: this.operationalSettings.preBufferSeconds,
         postBufferSeconds: this.operationalSettings.postBufferSeconds,
@@ -139,7 +144,7 @@ export class SettingsService {
    */
   async getCameraSchedule(cameraId: string): Promise<CameraScheduleResponse> {
     // Report exactly what the scheduler applies for this camera
-    const existing = await recordingEngine.getSchedule(cameraId);
+    const existing = await this.engine.getSchedule(cameraId);
     return {
       cameraId,
       mode: existing.mode,
@@ -155,7 +160,7 @@ export class SettingsService {
     cameraId: string,
     input: UpdateCameraScheduleInput
   ): Promise<CameraScheduleResponse> {
-    const updated = await recordingEngine.setSchedule(
+    const updated = await this.engine.setSchedule(
       cameraId,
       input.mode,
       input.windows
@@ -184,12 +189,12 @@ export class SettingsService {
         : this.operationalSettings.retentionDays;
 
     // 1. Purge by retention days cutoff
-    const retentionPurge = await recordingEngine.purgeRetention(days);
+    const retentionPurge = await this.engine.purgeRetention(days);
 
     // 2. Check and purge by disk critical quota
-    const quotaCleanup = await recordingEngine.runStorageCleanup();
+    const quotaCleanup = await this.engine.runStorageCleanup();
 
-    const metricsAfter = await recordingEngine.getStorageStatus();
+    const metricsAfter = await this.engine.getStorageStatus();
 
     return {
       retentionPurge,
