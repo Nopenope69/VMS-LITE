@@ -10,7 +10,8 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
 - **Control plane**: Node 22, TypeScript, Fastify 5 (`src/`), Prisma 5 + PostgreSQL 16.
   Migrations in `prisma/migrations` (0001 to 0012); `npx prisma migrate dev --name x`.
 - **Media plane**: MediaMTX 1.11 (`mediamtx.yml`), localhost-only. The app reconciles
-  MediaMTX paths from the DB every 30 s. Browsers never talk to MediaMTX directly:
+  MediaMTX paths from the DB every 30 s and sweeps orphaned ones; path naming,
+  desired state and proxy URLs live only in `src/mediamtx/camera-media-paths.ts`. Browsers never talk to MediaMTX directly:
   WHEP, HLS and fMP4 playback go through `/api/media` (JWT or HttpOnly `vms_media` cookie).
 - **Client**: React 19 + Vite 7 + Tailwind 3 (`client/`), built into `client/dist`
   and served by the app.

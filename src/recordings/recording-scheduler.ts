@@ -1,3 +1,4 @@
+import { CameraMediaPaths } from '../mediamtx/camera-media-paths.js';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
 import { MediaMtxClient, mediaMtxClient as defaultMediaMtx } from '../mediamtx/mediamtx.client.js';
 import { IClock, systemClock } from './clock.js';
@@ -21,7 +22,7 @@ export interface RecordingSchedulerOptions {
 
 export class RecordingSchedulerCollaborator {
   private readonly repository: IRecordingRepository;
-  private readonly mediaMtx: MediaMtxClient;
+  private readonly mediaPaths: CameraMediaPaths;
   private readonly eventBus: EventBus;
   private readonly clock: IClock;
 
@@ -30,7 +31,7 @@ export class RecordingSchedulerCollaborator {
 
   constructor(opts: RecordingSchedulerOptions = {}) {
     this.repository = opts.repository || new PrismaRecordingRepository();
-    this.mediaMtx = opts.mediaMtx || defaultMediaMtx;
+    this.mediaPaths = new CameraMediaPaths(opts.mediaMtx || defaultMediaMtx);
     this.eventBus = opts.eventBus || defaultEventBus;
     this.clock = opts.clock || systemClock;
   }
@@ -131,7 +132,7 @@ export class RecordingSchedulerCollaborator {
     const previous = this.recordingStates.get(camera.id);
 
     try {
-      await this.reconcileMediaPaths(camera, shouldRecord, previous !== shouldRecord);
+      await this.mediaPaths.reconcile(camera, shouldRecord, previous !== shouldRecord);
     } catch (err) {
       // Leave state unchanged so the next tick retries
       console.warn(
@@ -158,36 +159,6 @@ export class RecordingSchedulerCollaborator {
     return shouldRecord;
   }
 
-  private async reconcileMediaPaths(
-    camera: CameraRecordSummary,
-    record: boolean,
-    stateChanged: boolean
-  ): Promise<void> {
-    if (!camera.rtspUrl) {
-      // Source unknown (legacy callers): only drive the record flag on transitions
-      if (stateChanged) {
-        await this.mediaMtx.patchPath(camera.mediaMtxPath, { record });
-      }
-      return;
-    }
-
-    const main = await this.mediaMtx.getPath(camera.mediaMtxPath);
-    const desiredSource = this.mediaMtx.sanitizeRtspUrl(camera.rtspUrl);
-    if (!main || main.conf?.source !== desiredSource) {
-      await this.mediaMtx.addPath(camera.mediaMtxPath, camera.rtspUrl, { sourceOnDemand: false, record });
-    } else if (main.conf?.record !== record) {
-      await this.mediaMtx.patchPath(camera.mediaMtxPath, { record });
-    }
-
-    if (camera.subStreamUrl) {
-      const subPath = camera.subMediaMtxPath || `${camera.mediaMtxPath}_sub`;
-      const sub = await this.mediaMtx.getPath(subPath);
-      if (!sub || sub.conf?.source !== this.mediaMtx.sanitizeRtspUrl(camera.subStreamUrl)) {
-        await this.mediaMtx.addPath(subPath, camera.subStreamUrl, { sourceOnDemand: true, record: false });
-      }
-    }
-  }
-
   /**
    * Evaluates a camera by its ID.
    */
@@ -212,6 +183,11 @@ export class RecordingSchedulerCollaborator {
       } catch (err) {
         console.warn(`[RecordingScheduler] Evaluation failed for camera ${camera.id}: ${(err as Error).message}`);
       }
+    }
+    try {
+      await this.mediaPaths.sweepOrphans(cameras);
+    } catch (err) {
+      console.warn(`[RecordingScheduler] Orphan path sweep failed: ${(err as Error).message}`);
     }
   }
 

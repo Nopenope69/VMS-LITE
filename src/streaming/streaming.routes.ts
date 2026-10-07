@@ -1,3 +1,4 @@
+import { HLS_BASE, streamUrls, WHEP_BASE } from '../mediamtx/camera-media-paths.js';
 import crypto from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { authenticate } from '../users/rbac.guard.js';
@@ -57,28 +58,12 @@ export function generateIceServers(
 }
 
 export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
-  // Browser-facing media goes through the authenticated proxy on this origin
-  const getWhepBaseUrl = () => '/api/media/whep';
-  const getHlsBaseUrl = () => '/api/media/hls';
-
-  const mapCameraToStreamInfo = (cam: any): CameraStreamInfo => {
-    const whepBase = getWhepBaseUrl().replace(/\/$/, '');
-    const hlsBase = getHlsBaseUrl().replace(/\/$/, '');
-    const mainPath = cam.mediaMtxPath;
-    const subPath = cam.subMediaMtxPath || (cam.subStreamUrl ? `${mainPath}_sub` : null);
-
-    return {
-      cameraId: cam.id,
-      name: cam.name,
-      siteId: cam.siteId ?? null,
-      mediaMtxPath: mainPath,
-      subStreamPath: subPath,
-      whepUrl: `${whepBase}/${mainPath}/whep`,
-      subStreamWhepUrl: subPath ? `${whepBase}/${subPath}/whep` : null,
-      hlsUrl: `${hlsBase}/${mainPath}/index.m3u8`,
-      subStreamHlsUrl: subPath ? `${hlsBase}/${subPath}/index.m3u8` : null,
-    };
-  };
+  const mapCameraToStreamInfo = (cam: any): CameraStreamInfo => ({
+    cameraId: cam.id,
+    name: cam.name,
+    siteId: cam.siteId ?? null,
+    ...streamUrls(cam),
+  });
 
   /**
    * GET /api/streaming/config
@@ -100,8 +85,8 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         const iceServers = generateIceServers(userId);
 
         const response: StreamingConfigDto = {
-          whepBaseUrl: getWhepBaseUrl(),
-          hlsBaseUrl: getHlsBaseUrl(),
+          whepBaseUrl: WHEP_BASE,
+          hlsBaseUrl: HLS_BASE,
           iceServers,
           cameras: cameras.map(mapCameraToStreamInfo),
         };

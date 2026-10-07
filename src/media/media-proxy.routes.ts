@@ -1,3 +1,4 @@
+import { isPreviewPath } from '../mediamtx/camera-media-paths.js';
 import { Readable } from 'node:stream';
 import { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { Role } from '@prisma/client';
@@ -92,7 +93,7 @@ async function authorizePath(
   pathName: string,
   permission: CameraPermissionFlag
 ): Promise<boolean> {
-  if (pathName.startsWith('preview_')) {
+  if (isPreviewPath(pathName)) {
     return user.role === Role.ADMIN;
   }
   const camera = await prisma.camera.findFirst({
