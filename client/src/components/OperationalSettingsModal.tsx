@@ -683,7 +683,7 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
                     }}
                   >
                     <span style={{ fontWeight: 600, color: '#f8fafc', fontSize: '15px' }}>
-                      Motion Only (Ring Buffer)
+                      Motion Only (Motion Buffer)
                     </span>
                     <Zap
                       size={18}
@@ -691,11 +691,11 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
                     />
                   </div>
                   <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>
-                    Rolling 2s fMP4 ring-buffer promoted to permanent storage on native ONVIF motion
-                    triggers. Captures pre-event buffer and post-event cooldown without transcoding.
+                    Records continuously into a Motion Buffer and keeps the footage from the pre-buffer before to the
+                    post-buffer after each ONVIF motion event, without transcoding. The rest expires.
                   </p>
 
-                  {/* Configurable Ring Buffer Inputs */}
+                  {/* Configurable Motion Buffer Inputs */}
                   {recordingMode === 'MOTION_ONLY' && (
                     <div
                       onClick={(e) => e.stopPropagation()}
@@ -812,7 +812,7 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
                           }}
                         />
                         <span>
-                          Motion Ring Buffer Live: {motionBufferStatus.totalBufferedSegments} rolling segment(s) |{' '}
+                          Motion Buffer: {motionBufferStatus.totalBufferedSegments} buffered segment(s) |{' '}
                           {motionBufferStatus.activeIncidentsCount} active incident(s)
                         </span>
                       </div>

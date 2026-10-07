@@ -108,8 +108,8 @@ export class RecordingSchedulerCollaborator {
 
   /**
    * Whether MediaMTX should write segments for this camera right now.
-   * MOTION_ONLY records continuously into the motion ring buffer, which keeps only
-   * segments around motion incidents; with record disabled it would have nothing to keep.
+   * MOTION_ONLY records continuously into the Motion Buffer, which keeps only
+   * segments around motion; with record disabled it would have nothing to keep.
    */
   shouldRecordToDisk(config: CameraScheduleConfig, date: Date = this.clock.now()): boolean {
     return config.mode === 'MOTION_ONLY' || this.isCameraActiveAt(config, date);

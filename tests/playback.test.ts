@@ -3,7 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { Role } from '@prisma/client';
 import { createServer } from '../src/server.js';
 import { cameraService } from '../src/cameras/camera.service.js';
-import { recordingEngine } from '../src/recordings/recording-engine.js';
+import { seedRecording } from './helpers/recordings.js';
 import { signAs } from './helpers/auth.js';
 
 describe('Playback API (/api/playback) (PLAY-01, PLAY-03)', () => {
@@ -39,10 +39,11 @@ describe('Playback API (/api/playback) (PLAY-01, PLAY-03)', () => {
 
     // Ingest dummy recorded segment for this camera using today's date
     const todayStr = new Date().toISOString().split('T')[0];
-    await recordingEngine.ingestSegment({
+    await seedRecording({
+      cameraId: camera.id,
       mediaMtxPath: camera.mediaMtxPath,
-      segmentPath: `/var/recordings/${camera.mediaMtxPath}/${todayStr}_10-00-00.mp4`,
-      duration: 120,
+      startTime: `${todayStr}T10:00:00Z`,
+      durationSeconds: 120,
     });
   });
 

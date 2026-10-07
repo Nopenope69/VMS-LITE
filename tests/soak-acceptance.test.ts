@@ -14,7 +14,7 @@ import { MockSmtpTransport } from '../src/notifications/smtp-client.js';
 import { StorageController } from '../src/recordings/storage-controller.js';
 import { RecordingCatalog } from '../src/recordings/recording-catalog.js';
 import { InMemoryRecordingRepository } from '../src/recordings/repositories/recording.repository.js';
-import { MotionRingBufferEngine } from '../src/recordings/motion-ring-buffer.js';
+import { SegmentIngest } from '../src/recordings/segment-ingest.js';
 import { TestClock } from '../src/recordings/clock.js';
 import { EvidenceBundleService, STANDALONE_VERIFY_SCRIPT } from '../src/export/evidence-bundle.service.js';
 import { buildZipArchive } from '../src/export/zip-builder.js';
@@ -116,12 +116,15 @@ describe('Day 75 Field Validation & 72-Hour Acceptance Gate (Phase 21 - MVP-14)'
           const camId = `cam-${String(camIdx).padStart(2, '0')}`;
           const segPath = path.join(testRecordingsDir, `${camId}_${dateStr}_${timeStr}.mp4`);
 
-          const seg = await catalog.ingestSegment({
+          const seg = await repository.createRecording({
+            cameraId: camId,
             mediaMtxPath: `path_${camId}`,
-            segmentPath: segPath,
+            filePath: segPath,
+            fileName: path.basename(segPath),
+            startTime: currentSimTime,
+            endTime: new Date(currentSimTime.getTime() + 3600 * 1000),
             duration: 3600,
-            size: 150 * 1024 * 1024,
-            startTime: currentSimTime.toISOString(),
+            sizeBytes: 150 * 1024 * 1024,
           });
 
           // Mark specific hours on Camera 1 as incident bookmarks (Hour 12, Hour 24, Hour 48)
@@ -301,100 +304,57 @@ describe('Day 75 Field Validation & 72-Hour Acceptance Gate (Phase 21 - MVP-14)'
     });
   });
 
-  describe('Gate 4: Motion Recording Ring Buffer (Camera 10)', () => {
-    it('manages 2-second short fMP4 segments, promotes 10s pre-buffer upon ONVIF motion, captures 30s post-buffer, and discards unpromoted segments', async () => {
-      const clock = new TestClock(new Date('2026-10-01T12:00:00.000Z'));
+  describe('Gate 4: Motion Buffer (Camera 10)', () => {
+    it('keeps 2-second segments from 10 s before to 30 s after ONVIF motion and expires the rest', async () => {
+      const motionAt = new Date('2026-10-01T12:00:00.000Z');
+      const clock = new TestClock(new Date(motionAt.getTime() + 60_000));
       const eventBus = new EventBus();
+      const repository = new InMemoryRecordingRepository();
+      repository.registerCamera({ id: 'cam-10', name: 'Camera-10', mediaMtxPath: 'cam_10' });
+      await repository.saveCameraSchedule('cam-10', 'MOTION_ONLY', []);
+      const camDir = path.join(testRecordingsDir, 'cam_10');
+      await fs.mkdir(camDir, { recursive: true });
 
-      const promotedSegments: any[] = [];
-      const mockCatalog: any = {
-        parseSegmentStartTime: vi.fn((segPath: string, duration: number) => ({
-          startTime: clock.now(),
-          endTime: new Date(clock.now().getTime() + duration * 1000),
-        })),
-        ingestSegment: vi.fn(async (dto) => {
-          const record = { id: `seg-${promotedSegments.length + 1}`, ...dto };
-          promotedSegments.push(record);
-          return record;
-        }),
-      };
+      // 2 s segments from T-10 s to T+46 s
+      const header = Buffer.alloc(4096);
+      header.writeUInt32BE(24, 0);
+      header.write('ftyp', 4, 'ascii');
+      const files: string[] = [];
+      for (let offset = -10; offset < 46; offset += 2) {
+        const start = new Date(motionAt.getTime() + offset * 1000);
+        const name = `${start.toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')}.mp4`;
+        const filePath = path.join(camDir, name);
+        await fs.writeFile(filePath, header);
+        const end = new Date(start.getTime() + 2000);
+        await fs.utimes(filePath, end, end);
+        files.push(filePath);
+      }
+      repository.recordMotion('cam-10', motionAt);
 
-      const unlinkedFiles: string[] = [];
-      const ringBufferEngine = new MotionRingBufferEngine({
-        catalog: mockCatalog,
+      const catalog = new RecordingCatalog({ repository, eventBus, clock, recordingsDir: testRecordingsDir });
+      const ingest = new SegmentIngest({
+        repository,
+        recordingsRoot: testRecordingsDir,
+        deleteSegment: (s) => catalog.deleteSegmentInternal(s.id, s.filePath, Number(s.sizeBytes)),
         eventBus,
         clock,
         preBufferSeconds: 10,
         postBufferSeconds: 30,
-        bufferTtlSeconds: 35,
-        fsUnlinkFn: async (filePath) => {
-          unlinkedFiles.push(filePath);
-        },
-        fsStatFn: async () => ({ size: 500000 }),
       });
+      await ingest.scan();
 
-      const cam10 = 'cam-10';
-
-      // 1. Ingest 5 pre-buffer segments before motion (2 seconds each: T-10 to T-0)
-      for (let i = 0; i < 5; i++) {
-        await ringBufferEngine.handleSegment(
-          {
-            mediaMtxPath: 'cam_10',
-            segmentPath: path.join(testRecordingsDir, `cam10_pre_${i}.mp4`),
-            duration: 2,
-            size: 500000,
-          },
-          cam10
-        );
-        clock.advance(2000);
-      }
-
-      // Status before motion: active incident false, buffer count 5
-      const statusBefore = ringBufferEngine.getBufferStatus(cam10);
-      expect(statusBefore.cameras[0].incidentActive).toBe(false);
-      expect(statusBefore.cameras[0].bufferedSegmentsCount).toBe(5);
-      expect(promotedSegments.length).toBe(0);
-
-      // 2. TRIGGER ONVIF MOTION EVENT at T=0
-      await ringBufferEngine.triggerMotion(cam10, clock.now());
-
-      // Pre-buffer segments must be promoted immediately
-      expect(promotedSegments.length).toBe(5);
-
-      // 3. Ingest post-buffer segments (simulate next 30 seconds = 15 segments)
-      for (let i = 0; i < 15; i++) {
-        clock.advance(2000);
-        await ringBufferEngine.handleSegment(
-          {
-            mediaMtxPath: 'cam_10',
-            segmentPath: path.join(testRecordingsDir, `cam10_post_${i}.mp4`),
-            duration: 2,
-            size: 500000,
-          },
-          cam10
-        );
-      }
-
-      // Post-buffer segments must also be directly promoted
-      expect(promotedSegments.length).toBeGreaterThanOrEqual(19);
-
-      // 4. Ingest segments after post-buffer expiry (> 30s after motion)
-      clock.advance(35000); // Exceeds postBufferUntil
-      await ringBufferEngine.handleSegment(
-        {
-          mediaMtxPath: 'cam_10',
-          segmentPath: path.join(testRecordingsDir, 'cam10_post_expired.mp4'),
-          duration: 2,
-          size: 500000,
-        },
-        cam10
+      const kept = await repository.findRecordingsInRange('cam-10', new Date(0), new Date(motionAt.getTime() + 3_600_000));
+      expect(kept.map((r) => r.startTime)).toEqual(
+        Array.from({ length: 21 }, (_, i) => new Date(motionAt.getTime() + (i * 2 - 10) * 1000).toISOString())
       );
+      // T+32..T+42 are buffered; T+44 is still inside its quiet period
+      expect((await ingest.bufferStatus('cam-10')).cameras[0].bufferedSegmentsCount).toBe(6);
 
-      // Advance clock past TTL and run prune
-      clock.advance(40000);
-      const purgedCount = await ringBufferEngine.pruneQueue(cam10);
-      expect(purgedCount).toBeGreaterThanOrEqual(1);
-      expect(unlinkedFiles).toContain(path.join(testRecordingsDir, 'cam10_post_expired.mp4'));
+      clock.advance(120_000);
+      await ingest.scan();
+      expect((await ingest.bufferStatus('cam-10')).totalBufferedSegments).toBe(0);
+      const remaining = new Set(await fs.readdir(camDir));
+      expect(files.filter((f) => remaining.has(path.basename(f)))).toHaveLength(21);
     });
   });
 

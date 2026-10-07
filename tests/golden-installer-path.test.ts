@@ -6,7 +6,7 @@ import { createServer } from '../src/server.js';
 import { prisma } from '../src/db/prisma.js';
 import { AuthService } from '../src/users/auth.service.js';
 import { mediaMtxClient } from '../src/mediamtx/mediamtx.client.js';
-import { recordingEngine } from '../src/recordings/recording-engine.js';
+import { seedRecording } from './helpers/recordings.js';
 import fs from 'node:fs/promises';
 import { exportService } from '../src/export/export.service.js';
 
@@ -99,13 +99,11 @@ describe('Golden Installer Path Integration Test (Phase 13 - MVP-02)', () => {
   });
 
   it('Step 5: Ingests recorded video segment and validates 24h timeline query (/api/playback/timeline)', async () => {
-    const segmentPath = `/var/recordings/${createdCamera.mediaMtxPath}/${todayStr}_11-00-00.mp4`;
-
-    // Ingest segment via recording engine
-    await recordingEngine.ingestSegment({
+    await seedRecording({
+      cameraId: createdCamera.id,
       mediaMtxPath: createdCamera.mediaMtxPath,
-      segmentPath,
-      duration: 120,
+      startTime: `${todayStr}T11:00:00Z`,
+      durationSeconds: 120,
     });
 
     // Query timeline for the camera on today's date

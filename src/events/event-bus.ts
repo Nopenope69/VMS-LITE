@@ -9,7 +9,7 @@ import {
 } from './event.types.js';
 
 /**
- * High-frequency operational events that are useful in-process (catalog, ring buffer,
+ * High-frequency operational events that are useful in-process (catalog, Motion Buffer,
  * webhooks) but would flood the events table: one per camera per segment.
  */
 const NON_PERSISTED_EVENT_TYPES = new Set(['recording.segment_created']);

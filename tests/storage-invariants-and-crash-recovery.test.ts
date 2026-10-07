@@ -1,12 +1,15 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { RecordingCatalog } from '../src/recordings/recording-catalog.js';
 import { InMemoryRecordingRepository } from '../src/recordings/repositories/recording.repository.js';
-import { SegmentIndexer } from '../src/recordings/segment-indexer.js';
+import { SegmentIngest } from '../src/recordings/segment-ingest.js';
+import { TestClock } from '../src/recordings/clock.js';
 import { StorageController } from '../src/recordings/storage-controller.js';
 import { StorageInvariantsService } from '../src/recordings/storage-invariants.service.js';
 import { EventBus } from '../src/events/event-bus.js';
-import { SegmentValidator, validateMp4ContainerHeader } from '../src/recordings/segment-validator.js';
+import { validateMp4ContainerHeader } from '../src/recordings/segment-validator.js';
 import { diagnosticsLogger } from '../src/diagnostics/diagnostics-logger.js';
 
 describe('Storage Invariants & Crash Recovery Matrix (Moonfire NVR Principles)', () => {
@@ -24,10 +27,6 @@ describe('Storage Invariants & Crash Recovery Matrix (Moonfire NVR Principles)',
       repository,
       recordingsDir: RECORDINGS_DIR,
       eventBus,
-      validator: new SegmentValidator({
-        recordingsRoot: RECORDINGS_DIR,
-        quietPeriodMs: 0,
-      }),
     });
     invariantsService = new StorageInvariantsService({
       catalog,
@@ -40,9 +39,44 @@ describe('Storage Invariants & Crash Recovery Matrix (Moonfire NVR Principles)',
       id: 'cam-gate-01',
       name: 'Gate 01',
       mediaMtxPath: 'gate_01',
-      subMediaMtxPath: 'gate_01_sub',
     });
   });
+
+  // Segments that Segment Ingest finds on a real recordings volume
+  let diskRoot: string;
+  const clock = new TestClock(new Date('2026-10-06T18:00:00.000Z'));
+
+  beforeEach(async () => {
+    diskRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'vms-crash-matrix-'));
+    await fs.mkdir(path.join(diskRoot, 'gate_01'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(diskRoot, { recursive: true, force: true });
+  });
+
+  async function writeSegment(fileName: string, durationSeconds = 60): Promise<string> {
+    const header = Buffer.alloc(4096);
+    header.writeUInt32BE(24, 0);
+    header.write('ftyp', 4, 'ascii');
+    const filePath = path.join(diskRoot, 'gate_01', fileName);
+    await fs.writeFile(filePath, header);
+    const start = Date.parse(fileName.slice(0, 10) + 'T' + fileName.slice(11, 19).replace(/-/g, ':') + 'Z');
+    const end = new Date(start + durationSeconds * 1000);
+    await fs.utimes(filePath, end, end);
+    return filePath;
+  }
+
+  function ingestFor(repo: InMemoryRecordingRepository): SegmentIngest {
+    const diskCatalog = new RecordingCatalog({ repository: repo, recordingsDir: diskRoot, eventBus });
+    return new SegmentIngest({
+      repository: repo,
+      recordingsRoot: diskRoot,
+      deleteSegment: (r) => diskCatalog.deleteSegmentInternal(r.id, r.filePath, Number(r.sizeBytes)),
+      eventBus,
+      clock,
+    });
+  }
 
   // 1. segment written
   it('Matrix 1: validates segment written by MediaMTX for valid fMP4 container atoms', () => {
@@ -62,17 +96,11 @@ describe('Storage Invariants & Crash Recovery Matrix (Moonfire NVR Principles)',
 
   // 2. segment discovered
   it('Matrix 2: discovers segment on disk and extracts accurate timestamp and path', async () => {
-    const fileName = '2026-10-06_14-30-00-000000.mp4';
-    const filePath = path.join(RECORDINGS_DIR, 'gate_01', fileName);
+    await writeSegment('2026-10-06_14-30-00-000000.mp4');
 
-    const recording = await catalog.ingestSegment({
-      mediaMtxPath: 'gate_01',
-      segmentPath: filePath,
-      duration: 60,
-      size: 5000000,
-    });
+    expect(await ingestFor(repository).scan()).toBe(1);
 
-    expect(recording.id).toBeDefined();
+    const [recording] = await repository.findOldestRecordings(10);
     expect(recording.cameraId).toBe('cam-gate-01');
     expect(recording.status).toBe('AVAILABLE');
     expect(recording.duration).toBe(60);
@@ -85,16 +113,9 @@ describe('Storage Invariants & Crash Recovery Matrix (Moonfire NVR Principles)',
     eventBus.subscribe('recording.segment_created', (evt) => {
       emittedEvent = evt;
     });
+    await writeSegment('2026-10-06_14-31-00-000000.mp4');
 
-    const fileName = '2026-10-06_14-31-00-000000.mp4';
-    const filePath = path.join(RECORDINGS_DIR, 'gate_01', fileName);
-
-    await catalog.ingestSegment({
-      mediaMtxPath: 'gate_01',
-      segmentPath: filePath,
-      duration: 60,
-      size: 4500000,
-    });
+    await ingestFor(repository).scan();
 
     expect(emittedEvent).not.toBeNull();
     expect(emittedEvent.metadata.streamRole).toBe('PRIMARY');
@@ -103,39 +124,20 @@ describe('Storage Invariants & Crash Recovery Matrix (Moonfire NVR Principles)',
   });
 
   // 4. DB write fails
-  it('Matrix 4: handles DB write failure gracefully without corrupting media or crashing', async () => {
-    const errorRepo = new InMemoryRecordingRepository();
-    errorRepo.registerCamera({
-      id: 'cam-gate-01',
-      name: 'Gate 01',
-      mediaMtxPath: 'gate_01',
-    });
-    // Simulate DB failure
-    errorRepo.createRecording = async () => {
+  it('Matrix 4: handles DB write failure without touching media, and catalogues it once the DB recovers', async () => {
+    const filePath = await writeSegment('2026-10-06_14-35-00-000000.mp4');
+    const realCreate = repository.createRecording.bind(repository);
+    repository.createRecording = async () => {
       throw new Error('PostgreSQL connection timeout: pool exhausted');
     };
+    const ingest = ingestFor(repository);
 
-    const failCatalog = new RecordingCatalog({
-      repository: errorRepo,
-      recordingsDir: RECORDINGS_DIR,
-      eventBus,
-      validator: new SegmentValidator({
-        recordingsRoot: RECORDINGS_DIR,
-        quietPeriodMs: 0,
-      }),
-    });
+    expect(await ingest.scan()).toBe(0);
+    expect(await repository.findOldestRecordings(10)).toHaveLength(0);
+    await expect(fs.access(filePath)).resolves.toBeUndefined();
 
-    await expect(
-      failCatalog.ingestSegment({
-        mediaMtxPath: 'gate_01',
-        segmentPath: path.join(RECORDINGS_DIR, 'gate_01', '2026-10-06_14-35-00-000000.mp4'),
-        duration: 60,
-      })
-    ).rejects.toThrow('PostgreSQL connection timeout');
-
-    // System state remains clean, no partial records
-    const all = await errorRepo.queryRecordings({});
-    expect(all.length).toBe(0);
+    repository.createRecording = realCreate;
+    expect(await ingest.scan()).toBe(1);
   });
 
   // 5. file disappears
@@ -347,112 +349,47 @@ describe('Storage Invariants & Crash Recovery Matrix (Moonfire NVR Principles)',
     expect(report.missingCount).toBe(5);
     expect(report.availableCount).toBe(0);
 
-    const all = await repository.queryRecordings({});
-    expect(all.every((r) => r.status === 'MISSING')).toBe(true);
+    expect(await repository.queryRecordings({})).toHaveLength(0);
+    expect(await repository.findRecordingsByStatus('MISSING')).toHaveLength(5);
   });
 
   // 12. recordings restored without database
   it('Matrix 12: reconstructs entire catalog from on-disk media when database is empty (Invariant 6)', async () => {
-    const emptyRepo = new InMemoryRecordingRepository();
-    emptyRepo.registerCamera({
-      id: 'cam-gate-01',
-      name: 'Gate 01',
-      mediaMtxPath: 'gate_01',
-    });
+    await writeSegment('2026-10-06_08-00-00-000000.mp4');
+    await writeSegment('2026-10-06_08-01-00-000000.mp4');
+    await writeSegment('2026-10-06_08-02-00-000000.mp4');
 
-    const filesOnDisk = [
-      '2026-10-06_08-00-00-000000.mp4',
-      '2026-10-06_08-01-00-000000.mp4',
-      '2026-10-06_08-02-00-000000.mp4',
-    ];
+    expect(await ingestFor(repository).scan()).toBe(3);
 
-    const catalogForIndexer = new RecordingCatalog({
-      repository: emptyRepo,
-      recordingsDir: RECORDINGS_DIR,
-      eventBus,
-      validator: new SegmentValidator({
-        recordingsRoot: RECORDINGS_DIR,
-        quietPeriodMs: 0,
-      }),
-    });
-
-    const indexer = new SegmentIndexer({
-      recordingsRoot: RECORDINGS_DIR,
-      repository: emptyRepo,
-      quietPeriodMs: 0,
-      ingest: (p) => catalogForIndexer.ingestSegment(p),
-      fsReaddirFn: async (dir) => {
-        if (dir.endsWith('gate_01')) return filesOnDisk;
-        return ['gate_01'];
-      },
-      fsStatFn: async () => ({
-        size: 2048,
-        mtimeMs: Date.now() - 10000,
-      }),
-    });
-
-    const indexedCount = await indexer.scanAll();
-    expect(indexedCount).toBe(3);
-
-    const catalogued = await emptyRepo.queryRecordings({});
-    expect(catalogued.length).toBe(3);
-    expect(catalogued.every((r) => r.status === 'AVAILABLE')).toBe(true);
+    const catalogued = await repository.findOldestRecordings(10);
+    expect(catalogued.map((r) => r.status)).toEqual(['AVAILABLE', 'AVAILABLE', 'AVAILABLE']);
     expect(catalogued[0].mediaMtxPath).toBe('gate_01');
   });
 
-  // 13. duplicate segment notification
-  it('Matrix 13: ensures duplicate segment notifications are completely idempotent (Invariant 1)', async () => {
-    const filePath = path.join(RECORDINGS_DIR, 'gate_01', '2026-10-06_15-00-00-000000.mp4');
+  // 13. the same segment seen twice
+  it('Matrix 13: scanning the same files again never duplicates catalog rows (Invariant 1)', async () => {
+    await writeSegment('2026-10-06_15-00-00-000000.mp4');
 
-    const first = await catalog.ingestSegment({
-      mediaMtxPath: 'gate_01',
-      segmentPath: filePath,
-      duration: 60,
-      size: 3000000,
-    });
+    await ingestFor(repository).scan();
+    await ingestFor(repository).scan();
 
-    // Replay same notification
-    const second = await catalog.ingestSegment({
-      mediaMtxPath: 'gate_01',
-      segmentPath: filePath,
-      duration: 60,
-      size: 3000000,
-    });
-
-    expect(second.id).toBe(first.id);
-
-    const all = await repository.queryRecordings({});
-    expect(all.length).toBe(1); // Exactly one catalog row (Invariant 1)
+    expect(await repository.findOldestRecordings(10)).toHaveLength(1);
   });
 
-  // 14. segment notification missed
-  it('Matrix 14: discovers and catalogues missed segments via background reconciliation sweep', async () => {
-    const unnotifiedFile = '2026-10-06_16-00-00-000000.mp4';
-    const indexer = new SegmentIndexer({
-      recordingsRoot: RECORDINGS_DIR,
-      repository,
-      quietPeriodMs: 0,
-      ingest: (p) => catalog.ingestSegment(p),
-      fsReaddirFn: async (dir) => {
-        if (dir.endsWith('gate_01')) return [unnotifiedFile];
-        return ['gate_01'];
-      },
-      fsStatFn: async () => ({
-        size: 3000,
-        mtimeMs: Date.now() - 5000,
-      }),
-    });
+  // 14. segments written while the control plane was down
+  it('Matrix 14: catalogues segments written while the control plane was down', async () => {
+    await writeSegment('2026-10-06_16-00-00-000000.mp4');
+    await ingestFor(repository).scan();
 
-    const before = await repository.queryRecordings({});
-    expect(before.length).toBe(0);
+    await writeSegment('2026-10-06_16-01-00-000000.mp4');
+    await writeSegment('2026-10-06_16-02-00-000000.mp4');
 
-    const count = await indexer.scanAll();
-    expect(count).toBe(1);
-
-    const after = await repository.queryRecordings({});
-    expect(after.length).toBe(1);
-    expect(after[0].fileName).toBe(unnotifiedFile);
-    expect(after[0].status).toBe('AVAILABLE');
+    expect(await ingestFor(repository).scan()).toBe(2);
+    expect((await repository.findOldestRecordings(10)).map((r) => r.fileName)).toEqual([
+      '2026-10-06_16-00-00-000000.mp4',
+      '2026-10-06_16-01-00-000000.mp4',
+      '2026-10-06_16-02-00-000000.mp4',
+    ]);
   });
 
   // Structured Logging Verification

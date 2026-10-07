@@ -2,10 +2,26 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { isWithinRoot } from './recordings-root.js';
-import { parseSegmentFileTime } from './recording-catalog.js';
 import { RetentionTierType, SegmentStatusType, StreamRoleType } from './recording.types.js';
 
 export const MIN_SEGMENT_BYTES = 1024;
+
+/**
+ * Parses the UTC start time MediaMTX encodes in segment file names
+ * (recordPath %Y-%m-%d_%H-%M-%S-%f; microseconds optional). MediaMTX runs in UTC.
+ */
+export function parseSegmentFileTime(segmentPath: string): Date | null {
+  const match = path
+    .basename(segmentPath)
+    .match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})(?:-(\d{1,6}))?/);
+  if (!match) return null;
+  const [, year, month, day, hour, min, sec, micros] = match;
+  // Round up: MediaMTX playback rejects a start even 1µs before the first segment,
+  // so span starts must never precede the real segment start.
+  const ms = micros ? Math.ceil(Number(micros.padEnd(6, '0')) / 1000) : 0;
+  const date = new Date(Date.UTC(+year, +month - 1, +day, +hour, +min, +sec, ms));
+  return isNaN(date.getTime()) ? null : date;
+}
 export const DEFAULT_QUIET_PERIOD_MS = 15_000;
 
 export interface SegmentValidationOptions {
@@ -18,8 +34,6 @@ export interface SegmentValidationOptions {
   minSizeBytes?: number;
   computeSha256?: boolean;
   now?: () => number;
-  isSubStream?: boolean;
-  allowSimulated?: boolean;
 }
 
 export type ValidationFailureReason =
@@ -122,23 +136,6 @@ export class SegmentValidator {
     try {
       stat = await fs.stat(filePath);
     } catch (err: any) {
-      if (opts.allowSimulated && err.code === 'ENOENT') {
-        const streamRole: StreamRoleType = opts.isSubStream ? 'SUB' : 'PRIMARY';
-        const start = opts.payloadStartTime ? new Date(opts.payloadStartTime) : parseSegmentFileTime(filePath) || new Date();
-        const duration = opts.duration ?? 60;
-        return {
-          isValid: true,
-          status: 'AVAILABLE',
-          streamRole,
-          retentionTier: 'CONTINUOUS',
-          sizeBytes: opts.minSizeBytes ?? 1024 * 1024,
-          duration,
-          startTime: start,
-          endTime: new Date(start.getTime() + duration * 1000),
-          videoCodec: 'h264',
-          hasAudio: false,
-        };
-      }
       return {
         isValid: false,
         status: 'QUARANTINED',
@@ -248,7 +245,7 @@ export class SegmentValidator {
       }
     }
 
-    const streamRole: StreamRoleType = opts.isSubStream ? 'SUB' : 'PRIMARY';
+    const streamRole: StreamRoleType = 'PRIMARY';
 
     return {
       isValid: true,

@@ -53,6 +53,17 @@ describe('Phase 2: Storage Reliability (Health State Machine & Tiered Retention)
   });
 
   describe('Storage Health State Machine & Active Canary', () => {
+    it('real canary fails when the recordings root is not writable, even outside test mode', async () => {
+      const previous = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const unwritable = new StorageController({ catalog, eventBus, recordingsDir: '/tmp/vms_test_missing_root/x' });
+        expect((await unwritable.runWriteCanary()).success).toBe(false);
+      } finally {
+        process.env.NODE_ENV = previous;
+      }
+    });
+
     it('evaluates HEALTHY when disk usage is low and canary latency is normal', async () => {
       const metrics = await storageController.getStorageMetrics();
       expect(metrics.healthStatus).toBe('HEALTHY');

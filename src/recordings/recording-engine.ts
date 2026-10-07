@@ -11,7 +11,6 @@ import {
   RecordingMode,
   RecordingQueryParams,
   ScheduleWindow,
-  SegmentCompleteWebhookPayload,
   StorageCleanupResult,
   StorageMetricsDto,
   TimelineQueryParams,
@@ -23,8 +22,7 @@ import {
   PrismaRecordingRepository,
 } from './repositories/recording.repository.js';
 import { StorageController } from './storage-controller.js';
-import { MotionRingBufferEngine } from './motion-ring-buffer.js';
-import { SegmentIndexer } from './segment-indexer.js';
+import { MotionBufferStatus, SegmentIngest } from './segment-ingest.js';
 import { getRecordingsRoot } from './recordings-root.js';
 
 export interface RecordingEngineOptions {
@@ -58,8 +56,7 @@ export class RecordingEngine implements IRecordingEngine {
   private readonly catalog: RecordingCatalog;
   private readonly scheduler: RecordingSchedulerCollaborator;
   private readonly storageController: StorageController;
-  private readonly motionRingBuffer: MotionRingBufferEngine;
-  private readonly segmentIndexer: SegmentIndexer;
+  private readonly segmentIngest: SegmentIngest;
   private readonly clock: IClock;
   private readonly playbackBaseUrl: string;
 
@@ -143,24 +140,22 @@ export class RecordingEngine implements IRecordingEngine {
       statfsFn: opts.statfsFn,
     });
 
-    this.segmentIndexer = new SegmentIndexer({
+    this.segmentIngest = new SegmentIngest({
       repository,
       recordingsRoot: getRecordingsRoot(opts.recordingsDir),
-      ingest: (payload) => this.ingestSegment(payload),
-      now: () => this.clock.now().getTime(),
-    });
-    eventBus.subscribe('camera.deleted', (evt: any) => {
-      if (evt.cameraId) this.segmentIndexer.forgetCamera(evt.cameraId);
-    });
-
-    this.motionRingBuffer = new MotionRingBufferEngine({
-      catalog: this.catalog,
+      deleteSegment: (segment) =>
+        this.catalog.deleteSegmentInternal(segment.id, segment.filePath, Number(segment.sizeBytes || 0)),
       eventBus,
       clock: this.clock,
       preBufferSeconds: opts.preBufferSeconds,
       postBufferSeconds: opts.postBufferSeconds,
-      fsUnlinkFn: opts.fsUnlinkFn,
-      fsStatFn: opts.fsStatFn,
+    });
+    eventBus.subscribe('camera.deleted', (evt: any) => {
+      if (evt.cameraId) this.segmentIngest.forgetCamera(evt.cameraId);
+    });
+    // Receive time, not the camera's timestamp: camera clocks often drift (no NTP)
+    eventBus.subscribe('motion.detected', async (evt: any) => {
+      if (evt.cameraId) await this.segmentIngest.onMotion(evt.cameraId, this.clock.now());
     });
   }
 
@@ -168,32 +163,16 @@ export class RecordingEngine implements IRecordingEngine {
   // Public Seam Methods
   // ==========================================
 
-  async ingestSegment(payload: SegmentCompleteWebhookPayload): Promise<RecordingDto | null> {
-    const mediaMtxPath = payload.mediaMtxPath || (payload as any).path;
-    let camera = await this.repository.getCameraByMediaMtxPath(mediaMtxPath);
-    let isMotionOnly = false;
-
-    if (camera) {
-      try {
-        const schedule = await this.scheduler.getCameraSchedule(camera.id);
-        if (schedule.mode === 'MOTION_ONLY') {
-          isMotionOnly = true;
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    if (isMotionOnly && camera) {
-      const res = await this.motionRingBuffer.handleSegment(payload, camera.id);
-      return res.recording || null;
-    }
-
-    return this.catalog.ingestSegment(payload);
+  async getMotionBufferStatus(cameraId?: string): Promise<MotionBufferStatus> {
+    return this.segmentIngest.bufferStatus(cameraId);
   }
 
-  getMotionRingBuffer(): MotionRingBufferEngine {
-    return this.motionRingBuffer;
+  setMotionWindow(preBufferSeconds: number, postBufferSeconds: number): void {
+    this.segmentIngest.setMotionWindow(preBufferSeconds, postBufferSeconds);
+  }
+
+  getMotionWindow(): { preBufferSeconds: number; postBufferSeconds: number } {
+    return this.segmentIngest.getMotionWindow();
   }
 
   async queryRecordings(params: RecordingQueryParams = {}): Promise<RecordingDto[]> {
@@ -284,16 +263,12 @@ export class RecordingEngine implements IRecordingEngine {
     if (this.isIndexing) return;
     this.isIndexing = true;
     try {
-      await this.segmentIndexer.scanAll();
+      await this.segmentIngest.scan();
     } catch (err) {
       console.warn(`[RecordingEngine] Segment indexing failed: ${(err as Error).message}`);
     } finally {
       this.isIndexing = false;
     }
-  }
-
-  getSegmentIndexer(): SegmentIndexer {
-    return this.segmentIndexer;
   }
 
   /**

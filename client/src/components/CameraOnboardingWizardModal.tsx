@@ -1073,7 +1073,7 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
                   style={{ width: '100%', padding: '10px 12px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#f8fafc', fontSize: '13px' }}
                 >
                   <option value="continuous_247">24/7 Continuous Recording (Packet-Preserving fMP4)</option>
-                  <option value="motion_buffer">Motion Ring Buffer (Pre/Post Event)</option>
+                  <option value="motion_buffer">Motion Buffer (Pre/Post Event)</option>
                   <option value="scheduled">Weekly Schedule Window</option>
                 </select>
               </div>

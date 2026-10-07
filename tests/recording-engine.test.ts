@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { EventBus } from '../src/events/event-bus.js';
 import { TestClock } from '../src/recordings/clock.js';
 import { RecordingEngine, RecordingEngineOptions } from '../src/recordings/recording-engine.js';
@@ -50,50 +53,59 @@ describe('RecordingEngine Architecture Tests', () => {
     });
   };
 
-  describe('1. Ingestion & Deterministic Timestamp Parsing', () => {
-    it('ingests segment with filename timestamp deterministically', async () => {
-      repository.registerCamera({
-        id: 'cam-1',
-        name: 'Front Door',
-        mediaMtxPath: 'front_door_1',
-      });
+  describe('1. Segment Ingest wiring', () => {
+    let root: string;
 
-      const engine = createEngine();
-      const emittedEvents: any[] = [];
-      eventBus.subscribe('recording.segment_created', (e) => emittedEvents.push(e));
-
-      const recording = await engine.ingestSegment({
-        mediaMtxPath: 'front_door_1',
-        segmentPath: '/var/recordings/front_door_1/2026-09-24_16-30-00.mp4',
-        duration: 60,
-      });
-
-      expect(recording).toBeDefined();
-      expect(recording!.cameraId).toBe('cam-1');
-      expect(recording!.startTime).toBe('2026-09-24T16:30:00.000Z');
-      expect(recording!.endTime).toBe('2026-09-24T16:31:00.000Z');
-      expect(recording!.duration).toBe(60);
-      expect(emittedEvents.length).toBe(1);
-      expect(emittedEvents[0].metadata.mediaMtxPath).toBe('front_door_1');
+    beforeEach(async () => {
+      root = await fs.mkdtemp(path.join(os.tmpdir(), 'vms-engine-ingest-'));
+      await fs.mkdir(path.join(root, 'front_door_1'));
+      repository.registerCamera({ id: 'cam-1', name: 'Front Door', mediaMtxPath: 'front_door_1' });
     });
 
-    it('accepts MediaMTX payload using "path" alias', async () => {
-      repository.registerCamera({
-        id: 'cam-2',
-        name: 'Backyard',
-        mediaMtxPath: 'backyard_stream',
-      });
+    afterEach(async () => {
+      await fs.rm(root, { recursive: true, force: true });
+    });
 
-      const engine = createEngine();
-      const recording = await engine.ingestSegment({
-        path: 'backyard_stream',
-        segmentPath: '/var/recordings/backyard_stream/2026-09-24_10-00-00.mp4',
-        duration: 30,
+    async function writeSegment(name: string, end: Date) {
+      const buf = Buffer.alloc(4096);
+      buf.writeUInt32BE(24, 0);
+      buf.write('ftyp', 4, 'ascii');
+      const filePath = path.join(root, 'front_door_1', name);
+      await fs.writeFile(filePath, buf);
+      await fs.utimes(filePath, end, end);
+    }
+
+    it('catalogues finished segments from disk when it starts', async () => {
+      await writeSegment('2026-09-24_11-58-00.mp4', new Date('2026-09-24T11:59:00.000Z'));
+      const engine = createEngine({ recordingsDir: root, fsUnlinkFn: undefined, fsStatFn: undefined });
+
+      await engine.start();
+      await engine.stop();
+
+      const [recording] = await engine.queryRecordings({ cameraId: 'cam-1' });
+      expect(recording.startTime).toBe('2026-09-24T11:58:00.000Z');
+      expect(recording.endTime).toBe('2026-09-24T11:59:00.000Z');
+    });
+
+    it('keeps Motion Buffer segments when motion.detected is published on the bus', async () => {
+      await repository.saveCameraSchedule('cam-1', 'MOTION_ONLY', []);
+      await writeSegment('2026-09-24_11-59-30.mp4', new Date('2026-09-24T11:59:40.000Z'));
+      const engine = createEngine({ recordingsDir: root, fsUnlinkFn: undefined, fsStatFn: undefined });
+      await engine.start();
+      await engine.stop();
+      expect((await engine.getMotionBufferStatus()).totalBufferedSegments).toBe(1);
+
+      // Received at 11:59:45 even though the camera's clock claims a different day
+      clock.setTime(new Date('2026-09-24T11:59:45.000Z'));
+      await eventBus.emitEvent({
+        type: 'motion.detected',
+        source: 'test',
+        cameraId: 'cam-1',
+        timestamp: '2026-09-21T03:00:00.000Z',
       } as any);
 
-      expect(recording).toBeDefined();
-      expect(recording!.cameraId).toBe('cam-2');
-      expect(recording!.mediaMtxPath).toBe('backyard_stream');
+      // Bus subscribers run asynchronously
+      await vi.waitFor(async () => expect(await engine.queryRecordings({ cameraId: 'cam-1' })).toHaveLength(1));
     });
   });
 

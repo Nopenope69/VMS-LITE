@@ -1,83 +1,13 @@
-import crypto from 'node:crypto';
-import { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
+import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { Role } from '@prisma/client';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { recordingEngine } from './recording-engine.js';
 import {
   RecordingQuerySchema,
-  SegmentCompleteWebhookSchema,
   SetCameraScheduleSchema,
 } from './recording.types.js';
 
-/**
- * The segment hook is called by MediaMTX, not by users. When MEDIAMTX_HOOK_TOKEN is set
- * (always in docker-compose), the X-VMS-Hook-Token header must match it. Without a
- * token, only loopback callers are accepted outside development/test.
- */
-function isAuthorizedHook(request: FastifyRequest): boolean {
-  const expected = process.env.MEDIAMTX_HOOK_TOKEN;
-  if (expected) {
-    const provided = request.headers['x-vms-hook-token'];
-    if (typeof provided !== 'string' || provided.length !== expected.length) {
-      return false;
-    }
-    return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
-  }
-  if (process.env.NODE_ENV === 'production') {
-    const ip = request.socket.remoteAddress || '';
-    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-  }
-  return true;
-}
-
 export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
-  /**
-   * Helper handler for MediaMTX segment complete webhook
-   */
-  const handleSegmentComplete = async (request: any, reply: any) => {
-    if (!isAuthorizedHook(request)) {
-      return reply.status(401).send({
-        error: 'Unauthorized',
-        message: 'Missing or invalid segment hook token',
-      });
-    }
-    try {
-      const payload = SegmentCompleteWebhookSchema.parse(request.body);
-      const recording = await recordingEngine.ingestSegment(payload);
-      return reply.status(201).send({
-        success: true,
-        recording,
-      });
-    } catch (err: any) {
-      if (err.name === 'UnknownCameraPathError') {
-        return reply.status(202).send({ success: false, ignored: true, message: err.message });
-      }
-      if (err.name === 'ZodError') {
-        return reply.status(400).send({
-          error: 'ValidationError',
-          message: 'Invalid segment hook payload',
-          details: err.errors,
-        });
-      }
-      return reply.status(500).send({
-        error: 'IngestionFailed',
-        message: err.message || 'Failed to ingest segment',
-      });
-    }
-  };
-
-  /**
-   * POST /api/recordings/segments
-   * Standard segment ingestion endpoint
-   */
-  app.post('/segments', handleSegmentComplete);
-
-  /**
-   * POST /api/recordings/segments/complete
-   * MediaMTX runOnRecordSegmentComplete endpoint alias (aligns with mediamtx.yml)
-   */
-  app.post('/segments/complete', handleSegmentComplete);
-
   /**
    * GET /api/recordings/storage
    * Returns current storage utilization metrics and thresholds (REC-04)
@@ -231,8 +161,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     async (request, reply) => {
       try {
         const { cameraId } = request.query;
-        const ringBuffer = recordingEngine.getMotionRingBuffer();
-        const status = ringBuffer.getBufferStatus(cameraId);
+        const status = await recordingEngine.getMotionBufferStatus(cameraId);
         return reply.send({
           success: true,
           ...status,

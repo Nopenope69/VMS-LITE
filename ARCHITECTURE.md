@@ -111,10 +111,10 @@ Browsers never talk to MediaMTX directly. The control plane proxies:
 Each request is authorised with the user's JWT and per-camera permission (`canViewLive` / `canViewPlayback`; operators need explicit grants, onboarding previews are admin-only). `<video>` and native HLS cannot send headers, so GET endpoints also accept an HttpOnly, `SameSite=Strict` cookie scoped to `/api/media`, set at login. Remote sites therefore need only the app port plus WebRTC UDP 8189 (and TURN when viewers are behind strict NAT).
 
 ### B. MediaMTX is reconciled from the database
-Paths added through the MediaMTX API are not persisted by MediaMTX. Every scheduler tick (30s) `RecordingSchedulerCollaborator` idempotently re-creates missing main/sub paths, corrects changed RTSP sources and sets the `record` flag from the camera's persisted recording mode (`CONTINUOUS`, `SCHEDULED`, `MOTION_ONLY` records into the ring buffer, `MANUAL_OFF`). Cameras therefore come back by themselves after an appliance reboot or MediaMTX restart.
+Paths added through the MediaMTX API are not persisted by MediaMTX. Every scheduler tick (30s) `RecordingSchedulerCollaborator` idempotently re-creates missing main/sub paths, corrects changed RTSP sources and sets the `record` flag from the camera's persisted recording mode (`CONTINUOUS`, `SCHEDULED`, `MOTION_ONLY` records into the Motion Buffer, `MANUAL_OFF`). Cameras therefore come back by themselves after an appliance reboot or MediaMTX restart.
 
-### C. Segment indexing (`src/recordings/segment-indexer.ts`)
-The control plane catalogues finished segments by scanning the shared recordings volume (start time from the file name, end from the last write; MediaMTX runs in UTC). This does not depend on MediaMTX hooks (the official image has no shell or HTTP client) and is self-healing for segments written while the app was down. Ingestion is idempotent (`recordings.file_path` is unique), so the optional `/api/recordings/segments/complete` hook can coexist. Retention (days) and capacity FIFO run every storage tick and page past bookmarked evidence.
+### C. Segment Ingest (`src/recordings/segment-ingest.ts`)
+Segment Ingest is the only way a segment enters the catalog. It scans the shared recordings volume (start time from the file name, end from the last write; MediaMTX runs in UTC); MediaMTX hooks are not used (the official image has no shell or HTTP client). Every finished file gets exactly one catalog row: `AVAILABLE`, `QUARANTINED` (failed validation, reclaimable by FIFO rollover) or, for `MOTION_ONLY` cameras, `BUFFERED` until a motion event keeps it or it expires through the two-phase delete. Because every outcome is a row, the newest row is a restart-safe resume point and segments written while the app was down are picked up. Motion Buffer decisions compare segment time with the appliance's receive time of persisted `motion.detected` events (camera clocks often drift). Retention (days) and capacity FIFO run every storage tick and page past bookmarked evidence.
 
 ### D. Deployment (docker-compose)
 `app` and `mediamtx` use host networking (real WebRTC host candidates, ONVIF multicast discovery); PostgreSQL and every MediaMTX HTTP listener are bound to localhost. Exposed ports: `3000/tcp` and `8189/udp`, plus TURN if the `turn` profile is enabled. With the `https` profile, Caddy terminates TLS on `443/tcp` (`80/tcp` redirects), the app binds to localhost, and `TRUST_PROXY=true` makes it trust `X-Forwarded-*` from that local proxy only. Both containers run as uid 1000 so the app can prune what MediaMTX records. The JWT secret is taken from `JWT_SECRET`, or generated once and stored in the database.
@@ -166,7 +166,7 @@ Entitlements are cleanly segregated:
 ### A. Recording Correctness & Segment Lifecycle (Phase 1)
 - **State Machine**: Segments follow `DISCOVERED -> VALIDATED -> CATALOGUED / AVAILABLE -> EXPIRED -> DELETED`. `EXPORTED` is not a terminal state; segments remain `AVAILABLE` while referenced by events, incidents, bookmarks, or exports.
 - **Box Atom Validation**: Segments are validated via [`SegmentValidator`](src/recordings/segment-validator.ts) for valid fMP4 container structure (`ftyp`, `moov`, `moof`), minimum size ($\ge 1\text{KB}$), positive duration, and quiet-period file stability. Zero `fsync` in segment validation (write integrity is monitored independently via active probe).
-- **Dual-Path Self-Healing Reconciliation**: Combines an event-driven fast path (`/api/recordings/segments/complete` webhook or file notifications) with periodic background filesystem reconciliation sweeps in [`SegmentIndexer`](src/recordings/segment-indexer.ts). If the Node control plane restarts, the reconciliation path automatically audits on-disk media and repairs missed catalog entries.
+- **Self-Healing Ingest**: [`SegmentIngest`](src/recordings/segment-ingest.ts) scans the recordings volume every 10 s and resumes from the newest catalog row, so segments written while the control plane was down are catalogued on restart.
 - **Contract-Stable Event**: Emits `SegmentCreatedEventV1` (`recording.segment_created`) with `recordingId`, `cameraId`, `streamRole` (`PRIMARY` | `SUB`), `lifecycle`, `hasAudio`, and `sha256`.
 
 ### B. Storage Reliability & Active Write Canary (Phase 2)
@@ -211,7 +211,7 @@ VMS-Lite incorporates the core storage and database discipline of Moonfire NVR: 
    ```
    If a crash or power cut occurs during `DELETE_PENDING`, startup reconciliation inspects the disk, completes the unlink, and purges the catalog row or records `GARBAGE`.
 5. **Invariant 5 (Evidence Immutability)**: Retention and FIFO rollover cannot delete protected evidence (`isProtected: true` or `retentionTier: PROTECTED`).
-6. **Invariant 6 (Self-Healing Catalog)**: A crash cannot permanently create uncatalogued video. The dual-path `SegmentIndexer` reconciles on startup and periodically, reconstructing missing metadata from disk.
+6. **Invariant 6 (Self-Healing Catalog)**: A crash cannot permanently create uncatalogued video. `SegmentIngest` scans on startup and periodically, cataloguing every file on disk (including quarantined ones).
 7. **Invariant 7 (Storage Fault Isolation)**: When storage is degraded, read-only (`EROFS`), or unmounted, deletions and state mutations halt immediately to prevent catalog drift.
 
 ### B. High-Context Structured Diagnostics Logging

@@ -11,12 +11,10 @@ import {
   PlaybackStreamUrlDto,
   RecordingDto,
   RecordingQueryParams,
-  SegmentCompleteWebhookPayload,
   TimelineQueryParams,
   TimelineResponseDto,
   TimelineSpanDto,
 } from './recording.types.js';
-import { SegmentValidator } from './segment-validator.js';
 
 export interface RecordingCatalogOptions {
   repository?: IRecordingRepository;
@@ -27,35 +25,10 @@ export interface RecordingCatalogOptions {
   fsUnlinkFn?: (filePath: string) => Promise<void>;
   fsAccessFn?: (filePath: string) => Promise<void>;
   cameraLookup?: (cameraId: string) => Promise<{ id: string; name: string; mediaMtxPath: string } | null>;
-  validator?: SegmentValidator;
 }
 
 /** Segments closer than this are shown as one continuous span on the timeline. */
 const SPAN_GAP_TOLERANCE_MS = 5_000;
-
-/**
- * Parses the UTC start time MediaMTX encodes in segment file names
- * (recordPath %Y-%m-%d_%H-%M-%S-%f; microseconds optional). MediaMTX runs in UTC.
- */
-export function parseSegmentFileTime(segmentPath: string): Date | null {
-  const match = path
-    .basename(segmentPath)
-    .match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})(?:-(\d{1,6}))?/);
-  if (!match) return null;
-  const [, year, month, day, hour, min, sec, micros] = match;
-  // Round up: MediaMTX playback rejects a start even 1µs before the first segment,
-  // so span starts must never precede the real segment start.
-  const ms = micros ? Math.ceil(Number(micros.padEnd(6, '0')) / 1000) : 0;
-  const date = new Date(Date.UTC(+year, +month - 1, +day, +hour, +min, +sec, ms));
-  return isNaN(date.getTime()) ? null : date;
-}
-
-export class UnknownCameraPathError extends Error {
-  constructor(mediaMtxPath: string) {
-    super(`No camera is registered for media path '${mediaMtxPath}'`);
-    this.name = 'UnknownCameraPathError';
-  }
-}
 
 export interface SegmentDeletionResult {
   success: boolean;
@@ -74,7 +47,6 @@ export class RecordingCatalog {
   private readonly fsUnlinkFn: (filePath: string) => Promise<void>;
   private readonly fsAccessFn: (filePath: string) => Promise<void>;
   private readonly cameraLookup?: (cameraId: string) => Promise<{ id: string; name: string; mediaMtxPath: string } | null>;
-  private readonly validator: SegmentValidator;
 
   constructor(opts: RecordingCatalogOptions = {}) {
     this.repository = opts.repository || new PrismaRecordingRepository();
@@ -85,197 +57,6 @@ export class RecordingCatalog {
     this.fsUnlinkFn = opts.fsUnlinkFn || (async (p) => fs.unlink(p));
     this.fsAccessFn = opts.fsAccessFn || (async (p) => fs.access(p));
     this.cameraLookup = opts.cameraLookup;
-    this.validator = opts.validator || new SegmentValidator({
-      recordingsRoot: this.recordingsRoot,
-      quietPeriodMs: 0,
-      now: () => this.clock.now().getTime(),
-    });
-  }
-
-  /**
-   * Deterministically parses segment timestamp from filename or payload.
-   * Format example: 2026-09-24_16-40-00.mp4
-   */
-  parseSegmentStartTime(segmentPath: string, duration: number, payloadStartTime?: string): { startTime: Date; endTime: Date } {
-    if (payloadStartTime) {
-      const parsed = new Date(payloadStartTime);
-      if (!isNaN(parsed.getTime())) {
-        return {
-          startTime: parsed,
-          endTime: new Date(parsed.getTime() + duration * 1000),
-        };
-      }
-    }
-
-    const fileTime = parseSegmentFileTime(segmentPath);
-    if (fileTime) {
-      return {
-        startTime: fileTime,
-        endTime: new Date(fileTime.getTime() + duration * 1000),
-      };
-    }
-
-    // Fallback: derive from clock
-    const endTime = this.clock.now();
-    const startTime = new Date(endTime.getTime() - duration * 1000);
-    return { startTime, endTime };
-  }
-
-  /**
-   * Catalogues a segment that failed validation as QUARANTINED: hidden from playback,
-   * but tracked so FIFO rollover can reclaim its disk space.
-   */
-  private async quarantineSegment(
-    payload: SegmentCompleteWebhookPayload,
-    cameraId: string,
-    mediaMtxPath: string,
-    fileName: string,
-    validation: { reason: string; error?: string }
-  ): Promise<RecordingDto> {
-    const duration = payload.duration > 0 ? payload.duration : 0;
-    const { startTime, endTime } = this.parseSegmentStartTime(payload.segmentPath, duration, payload.startTime);
-    let sizeBytes = payload.size ?? 0;
-    try {
-      sizeBytes = (await this.fsStatFn(payload.segmentPath)).size;
-    } catch {
-      // Keep the reported size
-    }
-    console.warn(`[RecordingCatalog] Segment quarantined for camera ${cameraId}: ${validation.reason} ${validation.error || ''}`);
-    return this.repository.createRecording({
-      cameraId,
-      mediaMtxPath,
-      filePath: payload.segmentPath,
-      fileName,
-      startTime,
-      endTime,
-      duration,
-      sizeBytes,
-      format: 'fmp4',
-      status: 'QUARANTINED',
-      retentionTier: 'CONTINUOUS',
-      isProtected: false,
-      errorReason: `${validation.reason}${validation.error ? `: ${validation.error}` : ''}`,
-      validatedAt: new Date(),
-    });
-  }
-
-  /**
-   * Catalogs a completed video segment notification from MediaMTX.
-   */
-  async ingestSegment(payload: SegmentCompleteWebhookPayload): Promise<RecordingDto> {
-    const mediaMtxPath = payload.mediaMtxPath || (payload as any).path;
-    let camera = await this.repository.getCameraByMediaMtxPath(mediaMtxPath);
-
-    if (!camera) {
-      try {
-        const { cameraService } = await import('../cameras/camera.service.js');
-        const cams = await cameraService.listCameras();
-        const found = cams.find((c) => c.mediaMtxPath === mediaMtxPath);
-        if (found) {
-          camera = { id: found.id, name: found.name, mediaMtxPath: found.mediaMtxPath };
-        }
-      } catch {
-        // Ignored
-      }
-    }
-
-    if (!camera) {
-      // Recording rows reference cameras; segments of deleted cameras or preview
-      // paths must not be catalogued.
-      throw new UnknownCameraPathError(mediaMtxPath);
-    }
-    if (!isWithinRoot(this.recordingsRoot, payload.segmentPath)) {
-      throw new Error(`Segment path ${payload.segmentPath} is outside the recordings root ${this.recordingsRoot}`);
-    }
-
-    // Idempotent: the segment indexer and the MediaMTX hook may both report a file
-    const existing = await this.repository.findRecordingByFilePath(payload.segmentPath);
-    if (existing) {
-      return existing;
-    }
-
-    const cameraId = camera.id;
-    const fileName = path.basename(payload.segmentPath);
-
-    const isSubStream = Boolean(camera && (camera as any).subMediaMtxPath === mediaMtxPath);
-    const isTestMode = process.env.NODE_ENV === 'test';
-    const validation = await this.validator.validate({
-      filePath: payload.segmentPath,
-      recordingsRoot: this.recordingsRoot,
-      mediaMtxPath,
-      duration: payload.duration,
-      payloadStartTime: payload.startTime,
-      quietPeriodMs: 0,
-      isSubStream,
-      allowSimulated: isTestMode,
-    });
-
-    if (!validation.isValid) {
-      if (validation.status === 'VALIDATING') {
-        return null as any;
-      }
-      if (validation.reason === 'FILE_NOT_FOUND' || validation.reason === 'OUTSIDE_ROOT') {
-        throw new Error(`Segment validation failed: ${validation.reason} (${validation.error || ''})`);
-      }
-      return this.quarantineSegment(payload, cameraId, mediaMtxPath, fileName, validation);
-    }
-
-    let sizeBytes = validation.sizeBytes ?? payload.size ?? 1024 * 1024;
-    try {
-      const stat = await this.fsStatFn(payload.segmentPath);
-      sizeBytes = stat.size;
-    } catch {
-      // Retain existing size
-    }
-
-    const startTime = validation.startTime;
-    const endTime = validation.endTime;
-    const duration = validation.duration;
-
-    const recording = await this.repository.createRecording({
-      cameraId,
-      mediaMtxPath,
-      filePath: payload.segmentPath,
-      fileName,
-      startTime,
-      endTime,
-      duration,
-      sizeBytes,
-      format: 'fmp4',
-      streamRole: validation.streamRole,
-      status: validation.status,
-      retentionTier: validation.retentionTier,
-      isProtected: false,
-      videoCodec: validation.videoCodec,
-      hasAudio: validation.hasAudio,
-      sha256: validation.sha256,
-      validatedAt: new Date(),
-    });
-
-    await this.eventBus.emitEvent({
-      type: 'recording.segment_created',
-      source: 'recording.engine',
-      cameraId,
-      metadata: {
-        recordingId: recording.id,
-        cameraId,
-        siteId: camera.siteId ?? null,
-        mediaMtxPath: payload.mediaMtxPath,
-        filePath: payload.segmentPath,
-        storageUri: `file://${path.resolve(payload.segmentPath)}`,
-        duration: payload.duration,
-        sizeBytes: Number(recording.sizeBytes),
-        startTime: recording.startTime,
-        endTime: recording.endTime,
-        format: recording.format || 'fmp4',
-        streamRole: recording.streamRole || 'PRIMARY',
-        status: recording.status || 'AVAILABLE',
-        retentionTier: recording.retentionTier || 'CONTINUOUS',
-        isProtected: recording.isProtected ?? false,
-      },
-    });
-
-    return recording;
   }
 
   /**

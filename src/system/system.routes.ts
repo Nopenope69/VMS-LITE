@@ -48,7 +48,7 @@ export const systemRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         let motionBufferedSegments = 0;
         let activeIncidentsCount = 0;
         try {
-          const ringBufferStatus = recordingEngine.getMotionRingBuffer().getBufferStatus();
+          const ringBufferStatus = await recordingEngine.getMotionBufferStatus();
           motionBufferedSegments = ringBufferStatus.totalBufferedSegments;
           activeIncidentsCount = ringBufferStatus.activeIncidentsCount;
         } catch {

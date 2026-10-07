@@ -66,9 +66,7 @@ export class SettingsService {
       this.operationalSettings.warningThresholdPercent,
       this.operationalSettings.criticalThresholdPercent
     );
-    recordingEngine
-      .getMotionRingBuffer()
-      .setWindowDurations(this.operationalSettings.preBufferSeconds, this.operationalSettings.postBufferSeconds);
+    recordingEngine.setMotionWindow(this.operationalSettings.preBufferSeconds, this.operationalSettings.postBufferSeconds);
   }
 
   /**
@@ -122,8 +120,7 @@ export class SettingsService {
 
     let motionBuffer: any = undefined;
     try {
-      const ringBuffer = recordingEngine.getMotionRingBuffer();
-      const status = ringBuffer.getBufferStatus();
+      const status = await recordingEngine.getMotionBufferStatus();
       motionBuffer = {
         preBufferSeconds: this.operationalSettings.preBufferSeconds,
         postBufferSeconds: this.operationalSettings.postBufferSeconds,

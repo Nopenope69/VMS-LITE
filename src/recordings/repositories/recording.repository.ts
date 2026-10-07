@@ -56,11 +56,16 @@ export interface IRecordingRepository {
 
   findRecordingById(id: string): Promise<RecordingDto | null>;
   findRecordingByFilePath(filePath: string): Promise<RecordingDto | null>;
-  /** Most recent catalogued segment start for a camera (segment indexer watermark). */
+  /** Most recent catalogued segment start for a camera (Segment Ingest resume point). */
   findLatestStartTime(cameraId: string): Promise<Date | null>;
   queryRecordings(params: RecordingQueryParams): Promise<RecordingDto[]>;
-  /** Segments overlapping [start, end) for one camera, ascending by start time. */
-  findRecordingsInRange(cameraId: string, start: Date, end: Date): Promise<RecordingDto[]>;
+  /** Segments with the given status (default AVAILABLE) overlapping [start, end) for one camera, ascending by start time. */
+  findRecordingsInRange(cameraId: string, start: Date, end: Date, status?: SegmentStatusType): Promise<RecordingDto[]>;
+  /**
+   * When the appliance received persisted motion.detected events for one camera, within
+   * [from, to]. Receive time, not the camera's own timestamp: camera clocks often drift.
+   */
+  findMotionTimes(cameraId: string, from: Date, to: Date): Promise<Date[]>;
   findOldestRecordings(limit: number, skip?: number): Promise<RecordingDto[]>;
   deleteRecording(id: string): Promise<boolean>;
   updateRecordingStatus(id: string, status: SegmentStatusType, errorReason?: string | null): Promise<RecordingDto | null>;
@@ -188,11 +193,16 @@ export class PrismaRecordingRepository implements IRecordingRepository {
     return latest ? new Date(latest.startTime) : null;
   }
 
-  async findRecordingsInRange(cameraId: string, start: Date, end: Date): Promise<RecordingDto[]> {
+  async findRecordingsInRange(
+    cameraId: string,
+    start: Date,
+    end: Date,
+    status: SegmentStatusType = 'AVAILABLE'
+  ): Promise<RecordingDto[]> {
     const records = await this.prisma.recording.findMany({
       where: {
         cameraId,
-        status: 'AVAILABLE',
+        status: status as any,
         startTime: { lt: end },
         endTime: { gt: start },
       },
@@ -200,6 +210,14 @@ export class PrismaRecordingRepository implements IRecordingRepository {
       take: MAX_TIMELINE_SEGMENTS,
     });
     return records.map((r) => this.toDto(r));
+  }
+
+  async findMotionTimes(cameraId: string, from: Date, to: Date): Promise<Date[]> {
+    const events = await this.prisma.event.findMany({
+      where: { cameraId, type: 'motion.detected', createdAt: { gte: from, lte: to } },
+      orderBy: { createdAt: 'asc' },
+    });
+    return events.map((e: { createdAt: Date | string }) => new Date(e.createdAt));
   }
 
   async findOldestRecordings(limit: number, skip = 0): Promise<RecordingDto[]> {
@@ -392,9 +410,23 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
   private readonly recordings = new Map<string, RecordingDto>();
   private readonly schedules = new Map<string, CameraScheduleConfig>();
   private readonly cameras = new Map<string, CameraRecordSummary>();
+  private readonly motionTimes = new Map<string, Date[]>();
 
   registerCamera(camera: CameraRecordSummary): void {
     this.cameras.set(camera.id, camera);
+  }
+
+  /** Test stand-in for a persisted motion.detected event. */
+  recordMotion(cameraId: string, at: Date): void {
+    const times = this.motionTimes.get(cameraId) || [];
+    times.push(at);
+    this.motionTimes.set(cameraId, times);
+  }
+
+  async findMotionTimes(cameraId: string, from: Date, to: Date): Promise<Date[]> {
+    return (this.motionTimes.get(cameraId) || [])
+      .filter((t) => t.getTime() >= from.getTime() && t.getTime() <= to.getTime())
+      .sort((a, b) => a.getTime() - b.getTime());
   }
 
   async createRecording(data: {
@@ -496,12 +528,17 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
     return latest === null ? null : new Date(latest);
   }
 
-  async findRecordingsInRange(cameraId: string, start: Date, end: Date): Promise<RecordingDto[]> {
+  async findRecordingsInRange(
+    cameraId: string,
+    start: Date,
+    end: Date,
+    status: SegmentStatusType = 'AVAILABLE'
+  ): Promise<RecordingDto[]> {
     return Array.from(this.recordings.values())
       .filter(
         (r) =>
           r.cameraId === cameraId &&
-          (r.status === 'AVAILABLE' || !r.status) &&
+          (r.status || 'AVAILABLE') === status &&
           new Date(r.startTime).getTime() < end.getTime() &&
           new Date(r.endTime).getTime() > start.getTime()
       )

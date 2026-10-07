@@ -8,7 +8,7 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
 ## Architecture (see ARCHITECTURE.md for detail)
 
 - **Control plane**: Node 22, TypeScript, Fastify 5 (`src/`), Prisma 5 + PostgreSQL 16.
-  Migrations in `prisma/migrations` (0001 to 0011); `npx prisma migrate dev --name x`.
+  Migrations in `prisma/migrations` (0001 to 0012); `npx prisma migrate dev --name x`.
 - **Media plane**: MediaMTX 1.11 (`mediamtx.yml`), localhost-only. The app reconciles
   MediaMTX paths from the DB every 30 s. Browsers never talk to MediaMTX directly:
   WHEP, HLS and fMP4 playback go through `/api/media` (JWT or HttpOnly `vms_media` cookie).
@@ -48,8 +48,10 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
 - AI worker harness (`src/ai/ai-pipeline-coordinator.ts`): `AiPipelineCoordinator`
   orchestrates durable jobs and async inference (`IAiWorker`) with strict error isolation,
   guaranteeing that worker exceptions, timeouts, or NPU OOMs never disrupt media capture.
-- Recording lifecycle (`src/recordings/`): `segment-validator.ts` checks MP4 box atoms
-  without fsync; the indexer self-heals via a dual path. Storage health state machine,
+- Recording lifecycle (`src/recordings/`): `segment-ingest.ts` is the only way into the
+  catalog (scan of the recordings volume; every file gets one row: AVAILABLE, BUFFERED for
+  MOTION_ONLY cameras, or QUARANTINED); `segment-validator.ts` checks MP4 box atoms
+  without fsync. Storage health state machine,
   write-canary probe, multi-tier retention and a 25% protected-storage safeguard live
   in `storage-controller.ts`.
 - Storage invariants (`storage-invariants.service.ts`): one catalog row per AVAILABLE
