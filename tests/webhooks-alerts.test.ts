@@ -369,7 +369,8 @@ describe('WhatsApp Alerts & Outbound Webhooks (Phase 12 - Plan 02 - EXT-07, EXT-
       expect(enqueuedEvents).toContain('motion.detected');
 
       // Internal event: user.password_changed -> must NEVER be forwarded
-      await mockBus.emitEvent({ type: 'user.password_changed', source: 'auth' });
+      // Not an EventType: simulates an internal event reaching the bus
+      await mockBus.emitEvent({ type: 'user.password_changed' as any, source: 'auth' });
       await new Promise((r) => setTimeout(r, 25));
       expect(enqueuedEvents).not.toContain('user.password_changed');
 

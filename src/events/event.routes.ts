@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { Role } from '@prisma/client';
 import { eventBus } from './event-bus.js';
-import { EmitEventInput, EventQueryFilter } from './event.types.js';
+import { EmitEventInput, EventQueryFilter, isEventType } from './event.types.js';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { ADMIN_ONLY, cameraScopeOf } from '../users/camera-scope.js';
 import { parseSiteFilter } from '../cameras/camera.routes.js';
@@ -77,6 +77,9 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
         error: 'Bad Request',
         message: 'Event type and source are required',
       });
+    }
+    if (!isEventType(type)) {
+      return reply.status(400).send({ error: 'Bad Request', message: `Unknown event type '${type}'` });
     }
 
     const event = await eventBus.emitEvent({
