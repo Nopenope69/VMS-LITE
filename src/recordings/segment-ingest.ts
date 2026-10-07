@@ -43,7 +43,8 @@ export interface MotionBufferStatus {
  *
  * Each scan walks every camera's directory on the recordings volume (MediaMTX has no
  * completion hook in this deployment) and gives each finished file exactly one fate:
- * - AVAILABLE: valid, and the camera records continuously or motion is near it
+ * - AVAILABLE: valid, and the camera records continuously or motion is near it;
+ *   footage near motion gets the EVENT retention tier
  * - BUFFERED: valid, but the camera is MOTION_ONLY and no motion is near it yet
  * - QUARANTINED: failed validation; kept in the catalog so FIFO rollover reclaims it
  *
@@ -95,17 +96,22 @@ export class SegmentIngest {
     return catalogued;
   }
 
-  /** Keeps every Motion Buffer segment near a motion event. Returns how many were kept. */
+  /**
+   * Marks footage near a motion event as EVENT tier (kept longer), and keeps every Motion
+   * Buffer segment near it. Returns how many buffered segments were kept.
+   */
   async onMotion(cameraId: string, at: Date): Promise<number> {
-    const buffered = await this.repository.findRecordingsInRange(
-      cameraId,
-      new Date(at.getTime() - this.preBufferSeconds * 1000),
-      new Date(at.getTime() + this.postBufferSeconds * 1000),
-      'BUFFERED'
-    );
+    const from = new Date(at.getTime() - this.preBufferSeconds * 1000);
+    const to = new Date(at.getTime() + this.postBufferSeconds * 1000);
+    const buffered = await this.repository.findRecordingsInRange(cameraId, from, to, 'BUFFERED');
     for (const segment of buffered) {
+      await this.repository.updateRecordingTier(segment.id, 'EVENT');
       const kept = await this.repository.updateRecordingStatus(segment.id, 'AVAILABLE');
       if (kept) await this.emitSegmentCreated(kept);
+    }
+    const available = await this.repository.findRecordingsInRange(cameraId, from, to, 'AVAILABLE');
+    for (const segment of available) {
+      if (segment.retentionTier === 'CONTINUOUS') await this.repository.updateRecordingTier(segment.id, 'EVENT');
     }
     return buffered.length;
   }
@@ -254,10 +260,8 @@ export class SegmentIngest {
       });
     }
 
-    const status: SegmentStatusType =
-      mode === 'MOTION_ONLY' && !(await this.isNearMotion(camera.id, validation.startTime, validation.endTime))
-        ? 'BUFFERED'
-        : 'AVAILABLE';
+    const nearMotion = await this.isNearMotion(camera.id, validation.startTime, validation.endTime);
+    const status: SegmentStatusType = mode === 'MOTION_ONLY' && !nearMotion ? 'BUFFERED' : 'AVAILABLE';
 
     const recording = await this.repository.createRecording({
       ...base,
@@ -267,6 +271,7 @@ export class SegmentIngest {
       sizeBytes: validation.sizeBytes,
       streamRole: validation.streamRole,
       status,
+      retentionTier: nearMotion ? 'EVENT' : 'CONTINUOUS',
       videoCodec: validation.videoCodec,
       hasAudio: validation.hasAudio,
       sha256: validation.sha256,

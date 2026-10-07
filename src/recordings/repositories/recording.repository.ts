@@ -66,7 +66,11 @@ export interface IRecordingRepository {
    * [from, to]. Receive time, not the camera's own timestamp: camera clocks often drift.
    */
   findMotionTimes(cameraId: string, from: Date, to: Date): Promise<Date[]>;
-  findOldestRecordings(limit: number, skip?: number): Promise<RecordingDto[]>;
+  /** Oldest first; `statuses` limits to those statuses (default: every status). */
+  findOldestRecordings(limit: number, skip?: number, statuses?: SegmentStatusType[]): Promise<RecordingDto[]>;
+  /** AVAILABLE segments on legal hold, or overlapping any of the given windows. */
+  findHeldRecordings(windows: Array<{ cameraId: string; start: Date; end: Date }>): Promise<RecordingDto[]>;
+  updateRecordingTier(id: string, tier: RetentionTierType): Promise<RecordingDto | null>;
   deleteRecording(id: string): Promise<boolean>;
   updateRecordingStatus(id: string, status: SegmentStatusType, errorReason?: string | null): Promise<RecordingDto | null>;
   findRecordingsByStatus(status: SegmentStatusType, limit?: number): Promise<RecordingDto[]>;
@@ -222,8 +226,32 @@ export class PrismaRecordingRepository implements IRecordingRepository {
     return events.map((e: { createdAt: Date | string }) => new Date(e.createdAt));
   }
 
-  async findOldestRecordings(limit: number, skip = 0): Promise<RecordingDto[]> {
+  async findHeldRecordings(windows: Array<{ cameraId: string; start: Date; end: Date }>): Promise<RecordingDto[]> {
     const records = await this.prisma.recording.findMany({
+      where: {
+        status: 'AVAILABLE',
+        OR: [
+          { isProtected: true },
+          { retentionTier: 'PROTECTED' },
+          ...windows.map((w) => ({ cameraId: w.cameraId, startTime: { lt: w.end }, endTime: { gt: w.start } })),
+        ],
+      },
+    });
+    return records.map((r) => this.toDto(r));
+  }
+
+  async updateRecordingTier(id: string, tier: RetentionTierType): Promise<RecordingDto | null> {
+    try {
+      const record = await this.prisma.recording.update({ where: { id }, data: { retentionTier: tier as any } });
+      return this.toDto(record);
+    } catch {
+      return null;
+    }
+  }
+
+  async findOldestRecordings(limit: number, skip = 0, statuses?: SegmentStatusType[]): Promise<RecordingDto[]> {
+    const records = await this.prisma.recording.findMany({
+      ...(statuses ? { where: { status: { in: statuses as any[] } } } : {}),
       orderBy: { startTime: 'asc' },
       take: limit,
       skip,
@@ -551,8 +579,25 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
       .slice(0, MAX_TIMELINE_SEGMENTS);
   }
 
-  async findOldestRecordings(limit: number, skip = 0): Promise<RecordingDto[]> {
-    const list = Array.from(this.recordings.values());
+  async findHeldRecordings(windows: Array<{ cameraId: string; start: Date; end: Date }>): Promise<RecordingDto[]> {
+    return Array.from(this.recordings.values()).filter((r) => {
+      if ((r.status || 'AVAILABLE') !== 'AVAILABLE') return false;
+      if (r.isProtected || r.retentionTier === 'PROTECTED') return true;
+      const start = new Date(r.startTime).getTime();
+      const end = new Date(r.endTime).getTime();
+      return windows.some((w) => w.cameraId === r.cameraId && start < w.end.getTime() && end > w.start.getTime());
+    });
+  }
+
+  async updateRecordingTier(id: string, tier: RetentionTierType): Promise<RecordingDto | null> {
+    const rec = this.recordings.get(id);
+    if (!rec) return null;
+    rec.retentionTier = tier;
+    return { ...rec };
+  }
+
+  async findOldestRecordings(limit: number, skip = 0, statuses?: SegmentStatusType[]): Promise<RecordingDto[]> {
+    const list = Array.from(this.recordings.values()).filter((r) => !statuses || statuses.includes(r.status || 'AVAILABLE'));
     list.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
     return list.slice(skip, skip + limit);
   }

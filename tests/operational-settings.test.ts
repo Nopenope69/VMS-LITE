@@ -279,7 +279,7 @@ describe('Operational Settings & Core Health Licensing Realignment (Phase 16 - M
 
       const regularSegment = {
         id: 'seg-regular-02',
-        cameraId: 'cam-test',
+        cameraId: 'cam-other',
         filePath: '/var/recordings/cam-test/seg2.mp4',
         startTime: new Date(Date.now() - 40 * 86400000).toISOString(), // 40 days old
         endTime: new Date(Date.now() - 40 * 86400000 + 60000).toISOString(),
@@ -297,9 +297,10 @@ describe('Operational Settings & Core Health Licensing Realignment (Phase 16 - M
         freedBytes: 1048576,
       });
 
-      // Mock bookmark checker so seg-bookmarked-01 returns true
-      storageController.setBookmarkChecker(async (seg) => {
-        return seg.id === 'seg-bookmarked-01';
+      // A real bookmark in the middle of seg-bookmarked-01
+      const { prisma } = await import('../src/db/prisma.js');
+      const bookmark = await prisma.bookmark.create({
+        data: { cameraId: 'cam-test', timestamp: new Date(new Date(bookmarkedSegment.startTime).getTime() + 30_000), title: 'Evidence' },
       });
 
       const result = await storageController.purgeRetention(15);
@@ -312,6 +313,7 @@ describe('Operational Settings & Core Health Licensing Realignment (Phase 16 - M
         regularSegment.sizeBytes
       );
       expect(result.deletedSegmentsCount).toBe(1);
+      await prisma.bookmark.delete({ where: { id: bookmark.id } });
     });
   });
 });

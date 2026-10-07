@@ -11,6 +11,7 @@ import {
   PlaybackStreamUrlDto,
   RecordingDto,
   RecordingQueryParams,
+  SegmentStatusType,
   TimelineQueryParams,
   TimelineResponseDto,
   TimelineSpanDto,
@@ -59,6 +60,10 @@ export class RecordingCatalog {
     this.cameraLookup = opts.cameraLookup;
   }
 
+  getRepository(): IRecordingRepository {
+    return this.repository;
+  }
+
   /**
    * Queries catalog recordings.
    */
@@ -76,8 +81,8 @@ export class RecordingCatalog {
   /**
    * Retrieves oldest recordings for FIFO rollover.
    */
-  async getOldestRecordings(limit: number, skip = 0): Promise<RecordingDto[]> {
-    return this.repository.findOldestRecordings(limit, skip);
+  async getOldestRecordings(limit: number, skip = 0, statuses?: SegmentStatusType[]): Promise<RecordingDto[]> {
+    return this.repository.findOldestRecordings(limit, skip, statuses);
   }
 
   /**

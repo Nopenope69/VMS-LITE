@@ -1,3 +1,4 @@
+import { PrismaRecordingRepository } from '../recordings/repositories/recording.repository.js';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
@@ -294,16 +295,10 @@ export class ExportService {
       return await this.recordingLookup(cameraId, startTime, endTime);
     }
 
-    const recordings = await this.prisma.recording.findMany({
-      where: {
-        cameraId,
-        startTime: { lte: endTime },
-        endTime: { gte: startTime },
-      },
-      orderBy: { startTime: 'asc' },
-    });
+    // Only AVAILABLE segments; the Retention Policy holds them while the export runs
+    const recordings = await new PrismaRecordingRepository(this.prisma).findRecordingsInRange(cameraId, startTime, endTime);
 
-    return recordings.map((r: any) => ({
+    return recordings.map((r) => ({
       filePath: r.filePath,
       format: r.format,
     }));

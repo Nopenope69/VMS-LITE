@@ -15,6 +15,7 @@ import { StorageController } from '../src/recordings/storage-controller.js';
 import { RecordingCatalog } from '../src/recordings/recording-catalog.js';
 import { InMemoryRecordingRepository } from '../src/recordings/repositories/recording.repository.js';
 import { SegmentIngest } from '../src/recordings/segment-ingest.js';
+import { RetentionPolicy } from '../src/recordings/retention-policy.js';
 import { TestClock } from '../src/recordings/clock.js';
 import { EvidenceBundleService, STANDALONE_VERIFY_SCRIPT } from '../src/export/evidence-bundle.service.js';
 import { buildZipArchive } from '../src/export/zip-builder.js';
@@ -104,6 +105,7 @@ describe('Day 75 Field Validation & 72-Hour Acceptance Gate (Phase 21 - MVP-14)'
       });
 
       const bookmarkedSegmentIds = new Set<string>();
+      const bookmarks: Array<{ cameraId: string; timestamp: Date }> = [];
 
       // 72 virtual hours simulation (1 tick per hour)
       // 8 continuous cameras each produce a segment record per hour
@@ -130,6 +132,7 @@ describe('Day 75 Field Validation & 72-Hour Acceptance Gate (Phase 21 - MVP-14)'
           // Mark specific hours on Camera 1 as incident bookmarks (Hour 12, Hour 24, Hour 48)
           if (camIdx === 1 && (hour === 12 || hour === 24 || hour === 48)) {
             bookmarkedSegmentIds.add(seg.id);
+            bookmarks.push({ cameraId: camId, timestamp: new Date(currentSimTime.getTime() + 1_800_000) });
           }
         }
 
@@ -158,7 +161,12 @@ describe('Day 75 Field Validation & 72-Hour Acceptance Gate (Phase 21 - MVP-14)'
             bfree: BigInt(Math.floor((100 - simulatedUsedPercent) * 1000000)),
           };
         },
-        isBookmarkedFn: async (seg) => bookmarkedSegmentIds.has(seg.id),
+        retention: new RetentionPolicy({
+          repository,
+          clock,
+          bookmarkWindowSeconds: 0,
+          holds: { bookmarks: async () => bookmarks, activeExports: async () => [] },
+        }),
       });
 
       // Hook catalog deletion to simulate freeing disk space

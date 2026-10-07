@@ -55,9 +55,11 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
 - Recording lifecycle (`src/recordings/`): `segment-ingest.ts` is the only way into the
   catalog (scan of the recordings volume; every file gets one row: AVAILABLE, BUFFERED for
   MOTION_ONLY cameras, or QUARANTINED); `segment-validator.ts` checks MP4 box atoms
-  without fsync. Storage health state machine,
-  write-canary probe, multi-tier retention and a 25% protected-storage safeguard live
-  in `storage-controller.ts`.
+  without fsync. `retention-policy.ts` alone decides what may be deleted (tier
+  lifetimes CONTINUOUS <= EVENT <= INCIDENT; holds: legal hold, bookmark +/- 2 min,
+  running exports). `storage-controller.ts` keeps disk health, the write canary and
+  FIFO rollover (quarantined first); protected footage over 25% alerts once, never
+  auto-deletes.
 - Storage invariants (`storage-invariants.service.ts`): one catalog row per AVAILABLE
   recording, one object per cataloged segment (missing files become MISSING), no
   uncatalogued video after a crash, protected evidence is never retained-out, and

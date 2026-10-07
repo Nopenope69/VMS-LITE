@@ -36,8 +36,21 @@ A time interval bounded by start hour/minute and end hour/minute on a specified 
 ### Storage Controller
 The internal engine component responsible for monitoring disk capacity via filesystem metrics (`statfs`), detecting threshold violations, and executing FIFO rollover.
 
+### Retention Policy
+The one place that decides whether a Video Segment may be deleted: by its Retention Tier's lifetime, and never while it is on a Hold.
+
+### Retention Tier
+How long footage lives: `CONTINUOUS` (ordinary footage), `EVENT` (footage near motion), `INCIDENT` (footage linked to an incident). A longer-lived tier never expires sooner than a shorter one.
+
+### Hold
+A reason footage must stay whatever its age or the disk pressure: a Legal Hold, a bookmark (the segments within 2 minutes of it), or a queued or running export.
+
+### Legal Hold
+A permanent hold a person places on footage (`isProtected`). The system never places or lifts one by itself.
+_Avoid_: lock, protected tier
+
 ### FIFO Rollover
-The deterministic pruning of the oldest recorded video segments when disk usage exceeds the critical threshold (`criticalThresholdPercent`), unlinking files and purging database catalog entries until usage drops to the target threshold (`targetThresholdPercent`).
+The pruning of the oldest Video Segments not on a Hold when disk usage exceeds the critical threshold (`criticalThresholdPercent`), until usage drops to the target threshold (`targetThresholdPercent`). Quarantined Segments go first.
 
 ---
 

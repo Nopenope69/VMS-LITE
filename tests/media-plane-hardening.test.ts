@@ -4,6 +4,7 @@ import { RecordingEngine } from '../src/recordings/recording-engine.js';
 import { InMemoryRecordingRepository } from '../src/recordings/repositories/recording.repository.js';
 import { RecordingCatalog } from '../src/recordings/recording-catalog.js';
 import { StorageController } from '../src/recordings/storage-controller.js';
+import { RetentionPolicy } from '../src/recordings/retention-policy.js';
 import { EventBus } from '../src/events/event-bus.js';
 import { TestClock } from '../src/recordings/clock.js';
 
@@ -138,8 +139,16 @@ describe('Storage FIFO rollover', () => {
         usedPercent = 95 - deleted.length;
         return { bsize: 1, blocks: 100, bfree: 100 - usedPercent };
       },
-      // The oldest 60 segments are evidence
-      isBookmarkedFn: async (seg) => Number(seg.fileName.split('.')[0]) < 60,
+      // The oldest 60 segments are evidence: one bookmark in the middle of each
+      retention: new RetentionPolicy({
+        repository,
+        bookmarkWindowSeconds: 0,
+        holds: {
+          bookmarks: async () =>
+            Array.from({ length: 60 }, (_, i) => ({ cameraId: 'cam-4', timestamp: new Date(Date.UTC(2026, 0, 1, 0, i, 30)) })),
+          activeExports: async () => [],
+        },
+      }),
     });
 
     const result = await controller.checkStorage();

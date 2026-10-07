@@ -103,13 +103,13 @@ export class IncidentCorrelationService {
         },
       }).catch(() => {});
 
-      // Lock footage: protect from normal FIFO rollover and bump retention
+      // Incident footage is kept for the INCIDENT tier's lifetime; a permanent legal hold
+      // (isProtected) is a person's decision, not an automatic one
       await this.prisma.recording.update({
         where: { id: rec.id },
         data: {
           retentionTier: 'INCIDENT',
-          isProtected: true,
-          protectionReason: `Locked by Incident #${incident.incidentNumber}: ${incident.title}`,
+          protectionReason: `Incident #${incident.incidentNumber}: ${incident.title}`,
         },
       }).catch(() => {});
     }

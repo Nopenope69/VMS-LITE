@@ -92,11 +92,11 @@ describe('Phase 4: Industrial Operations (Incident Correlation & Evidence Protec
     expect(incident.events.length).toBe(2);
     expect(incident.recordings.length).toBe(1);
 
-    // 5. Verify recording is locked and protected
+    // 5. Incident footage moves to the INCIDENT tier; it is not a permanent legal hold
     const lockedRecording = await mockPrisma.recording.findUnique({
       where: { id: rec1.id },
     });
-    expect(lockedRecording.isProtected).toBe(true);
+    expect(lockedRecording.isProtected).toBe(false);
     expect(lockedRecording.retentionTier).toBe('INCIDENT');
     expect(lockedRecording.protectionReason).toContain('Unauthorized Loading Dock Access');
 

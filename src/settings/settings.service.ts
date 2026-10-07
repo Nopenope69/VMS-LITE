@@ -39,10 +39,6 @@ export class SettingsService {
     this.prisma = deps.prisma || defaultPrisma;
     this.store = new SystemSettingsStore(this.prisma);
 
-    // Attach bookmark preservation checker to StorageController
-    recordingEngine.getStorageController().setBookmarkChecker(async (segment) => {
-      return this.isSegmentBookmarked(segment);
-    });
     this.applyToEngine();
   }
 
@@ -67,30 +63,6 @@ export class SettingsService {
       this.operationalSettings.criticalThresholdPercent
     );
     recordingEngine.setMotionWindow(this.operationalSettings.preBufferSeconds, this.operationalSettings.postBufferSeconds);
-  }
-
-  /**
-   * Checks whether a recording segment contains or overlaps any timeline bookmarks.
-   */
-  async isSegmentBookmarked(segment: {
-    cameraId: string;
-    startTime: string | Date;
-    endTime: string | Date;
-  }): Promise<boolean> {
-    try {
-      const count = await this.prisma.bookmark.count({
-        where: {
-          cameraId: segment.cameraId,
-          timestamp: {
-            gte: new Date(segment.startTime),
-            lte: new Date(segment.endTime),
-          },
-        },
-      });
-      return count > 0;
-    } catch {
-      return false;
-    }
   }
 
   /**

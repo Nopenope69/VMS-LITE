@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
 import { RecordingCatalog } from './recording-catalog.js';
+import { RetentionPolicy } from './retention-policy.js';
 import { getRecordingsRoot } from './recordings-root.js';
 import {
   StorageCleanupResult,
@@ -28,9 +29,9 @@ export interface StorageControllerOptions {
     blocks: number | bigint;
     bfree: number | bigint;
   }>;
-  isBookmarkedFn?: (segment: any) => Promise<boolean>;
+  /** Decides which segments may be deleted; defaults to one over the catalog's repository. */
+  retention?: RetentionPolicy;
   canaryWriteFn?: (probePath: string) => Promise<{ latencyMs: number }>;
-  getProtectedBytesFn?: () => Promise<number>;
 }
 
 export class StorageController {
@@ -40,10 +41,7 @@ export class StorageController {
   private warningThresholdPercent: number;
   private criticalThresholdPercent: number;
   private targetThresholdPercent: number;
-  private retentionDays: number;
-  private continuousRetentionDays: number;
-  private eventRetentionDays: number;
-  private incidentRetentionDays: number;
+  private readonly retention: RetentionPolicy;
   private maxProtectedThresholdPercent: number;
   private readonly batchSize: number;
   private readonly maxIterations: number;
@@ -52,9 +50,9 @@ export class StorageController {
     blocks: number | bigint;
     bfree: number | bigint;
   }>;
-  private isBookmarkedFn?: (segment: any) => Promise<boolean>;
   private readonly canaryWriteFn?: (probePath: string) => Promise<{ latencyMs: number }>;
-  private readonly getProtectedBytesFn?: () => Promise<number>;
+  /** Whether the last metrics read found protected footage above its share of the disk */
+  private protectedOverflow = false;
 
   private lastHealthStatus: StorageHealthStatus = 'HEALTHY';
   private lastCanaryLatencyMs: number | null = null;
@@ -66,44 +64,36 @@ export class StorageController {
     this.warningThresholdPercent = opts.warningThresholdPercent ?? 80;
     this.criticalThresholdPercent = opts.criticalThresholdPercent ?? 90;
     this.targetThresholdPercent = opts.targetThresholdPercent ?? 80;
-    this.retentionDays = opts.retentionDays ?? 15;
-    this.continuousRetentionDays = opts.continuousRetentionDays ?? 7;
-    this.eventRetentionDays = opts.eventRetentionDays ?? 15;
-    this.incidentRetentionDays = opts.incidentRetentionDays ?? 60;
+    this.retention = opts.retention || new RetentionPolicy({ repository: opts.catalog.getRepository() });
+    this.retention.setDays({
+      ...(opts.continuousRetentionDays !== undefined || opts.retentionDays !== undefined
+        ? { continuous: opts.continuousRetentionDays ?? opts.retentionDays }
+        : {}),
+      ...(opts.eventRetentionDays !== undefined ? { event: opts.eventRetentionDays } : {}),
+      ...(opts.incidentRetentionDays !== undefined ? { incident: opts.incidentRetentionDays } : {}),
+    });
     this.maxProtectedThresholdPercent = opts.maxProtectedThresholdPercent ?? 25;
     this.batchSize = opts.batchSize ?? 50;
     this.maxIterations = opts.maxIterations ?? 10;
     this.statfsFn = opts.statfsFn || (async (p) => fs.statfs(p));
-    this.isBookmarkedFn = opts.isBookmarkedFn;
     this.canaryWriteFn = opts.canaryWriteFn;
-    this.getProtectedBytesFn = opts.getProtectedBytesFn;
   }
 
+  /** Lifetime of CONTINUOUS footage (the operational "retention days" setting). */
   setRetentionDays(days: number): void {
-    this.retentionDays = Math.max(0, days);
-    this.continuousRetentionDays = Math.max(0, days);
+    this.retention.setDays({ continuous: days });
   }
 
   getRetentionDays(): number {
-    return this.retentionDays;
+    return this.retention.getDays().continuous;
   }
 
-  setTieredRetentionDays(tiers: {
-    continuous?: number;
-    event?: number;
-    incident?: number;
-  }): void {
-    if (tiers.continuous !== undefined) this.continuousRetentionDays = Math.max(0, tiers.continuous);
-    if (tiers.event !== undefined) this.eventRetentionDays = Math.max(0, tiers.event);
-    if (tiers.incident !== undefined) this.incidentRetentionDays = Math.max(0, tiers.incident);
+  setTieredRetentionDays(tiers: { continuous?: number; event?: number; incident?: number }): void {
+    this.retention.setDays(tiers);
   }
 
   getTieredRetentionDays() {
-    return {
-      continuous: this.continuousRetentionDays,
-      event: this.eventRetentionDays,
-      incident: this.incidentRetentionDays,
-    };
+    return this.retention.getDays();
   }
 
   setThresholds(warning: number, critical: number, target?: number, maxProtected?: number): void {
@@ -115,10 +105,6 @@ export class StorageController {
     if (maxProtected !== undefined) {
       this.maxProtectedThresholdPercent = maxProtected;
     }
-  }
-
-  setBookmarkChecker(fn: (segment: any) => Promise<boolean>): void {
-    this.isBookmarkedFn = fn;
   }
 
   /**
@@ -164,32 +150,14 @@ export class StorageController {
   }
 
   /**
-   * Computes bytes consumed by protected evidence (bookmarked, legal hold, incidents).
+   * Bytes held by legal holds, bookmarks and running exports, which rollover never frees.
    */
   async calculateProtectedBytes(): Promise<number> {
-    if (this.getProtectedBytesFn) {
-      try {
-        return await this.getProtectedBytesFn();
-      } catch {
-        return 0;
-      }
-    }
-
-    // Default: query oldest recordings in catalog and sum sizes of protected segments
-    let protectedSum = 0;
     try {
-      const records = await this.catalog.queryRecordings({ limit: 500 });
-      for (const rec of records) {
-        if (rec.isProtected || rec.retentionTier === 'PROTECTED') {
-          protectedSum += Number(rec.sizeBytes);
-        } else if (this.isBookmarkedFn && (await this.isBookmarkedFn(rec))) {
-          protectedSum += Number(rec.sizeBytes);
-        }
-      }
+      return await this.retention.protectedBytes();
     } catch {
-      // In-memory or initial empty state
+      return 0;
     }
-    return protectedSum;
   }
 
   /**
@@ -257,8 +225,10 @@ export class StorageController {
       });
     }
 
-    // Check protected footage pressure rule (Rule 5)
-    if (protectedPercent >= this.maxProtectedThresholdPercent) {
+    // Protected footage pressure (Rule 5): alert once on crossing, once on recovery.
+    // Protected evidence is never deleted automatically.
+    const overflow = protectedPercent >= this.maxProtectedThresholdPercent;
+    if (overflow && !this.protectedOverflow) {
       await this.eventBus.emitEvent({
         type: 'storage.protected_overflow',
         source: 'storage.controller',
@@ -269,7 +239,14 @@ export class StorageController {
           usedPercent,
         },
       });
+    } else if (!overflow && this.protectedOverflow) {
+      await this.eventBus.emitEvent({
+        type: 'storage.protected_recovered',
+        source: 'storage.controller',
+        metadata: { protectedBytes, protectedPercent, maxProtectedThresholdPercent: this.maxProtectedThresholdPercent },
+      });
     }
+    this.protectedOverflow = overflow;
 
     return {
       totalBytes,
@@ -284,9 +261,9 @@ export class StorageController {
       protectedBytes,
       protectedPercent,
       maxProtectedThresholdPercent: this.maxProtectedThresholdPercent,
-      continuousRetentionDays: this.continuousRetentionDays,
-      eventRetentionDays: this.eventRetentionDays,
-      incidentRetentionDays: this.incidentRetentionDays,
+      continuousRetentionDays: this.retention.getDays().continuous,
+      eventRetentionDays: this.retention.getDays().event,
+      incidentRetentionDays: this.retention.getDays().incident,
     };
   }
 
@@ -389,6 +366,7 @@ export class StorageController {
 
     let currentMetrics = initialMetrics;
     const { deletedSegmentsCount, freedBytes: totalFreedBytes, allRemainingProtected } = await this.deleteOldestSegments({
+      mode: 'capacity',
       shouldContinue: async () => {
         currentMetrics = await this.getStorageMetrics();
         return currentMetrics.usedPercent > this.targetThresholdPercent;
@@ -440,92 +418,66 @@ export class StorageController {
    * Purges recordings exceeding target retention days based on their retention tier.
    */
   async purgeRetention(overrideDays?: number): Promise<{ deletedSegmentsCount: number; freedBytes: number }> {
-    const now = Date.now();
-    const continuousCutoff = new Date(now - (overrideDays ?? this.continuousRetentionDays) * 24 * 60 * 60 * 1000);
-    const eventCutoff = new Date(now - (overrideDays ?? this.eventRetentionDays) * 24 * 60 * 60 * 1000);
-    const incidentCutoff = new Date(now - (overrideDays ?? this.incidentRetentionDays) * 24 * 60 * 60 * 1000);
-
-    const result = await this.deleteOldestSegments({
-      isEligible: (segment) => {
-        if (segment.isProtected || segment.retentionTier === 'PROTECTED') {
-          return false;
-        }
-        const start = new Date(segment.startTime);
-        if (segment.retentionTier === 'INCIDENT') {
-          return start < incidentCutoff;
-        }
-        if (segment.retentionTier === 'EVENT') {
-          return start < eventCutoff;
-        }
-        return start < continuousCutoff;
-      },
-    });
+    const result = await this.deleteOldestSegments({ mode: 'age', overrideDays });
     return { deletedSegmentsCount: result.deletedSegmentsCount, freedBytes: result.freedBytes };
   }
 
   /**
-   * Deletes catalogued segments oldest-first.
-   *
-   * Skips protected segments (bookmarks, incidents, exports) so they are preserved.
+   * Deletes catalogued segments oldest-first, as far as the Retention Policy allows.
+   * Under capacity pressure, quarantined segments go before any good footage.
    */
   private async deleteOldestSegments(opts: {
-    isEligible?: (segment: any) => boolean;
+    mode: 'age' | 'capacity';
+    overrideDays?: number;
     shouldContinue?: () => Promise<boolean>;
   }): Promise<{ deletedSegmentsCount: number; freedBytes: number; allRemainingProtected: boolean }> {
     let deletedSegmentsCount = 0;
     let freedBytes = 0;
-    let skip = 0;
     let allRemainingProtected = false;
+    const passes = opts.mode === 'capacity' ? [['QUARANTINED'] as const, undefined] : [undefined];
 
-    for (let iteration = 0; iteration < this.maxIterations; iteration++) {
-      if (opts.shouldContinue && !(await opts.shouldContinue())) break;
+    for (const statuses of passes) {
+      let skip = 0;
+      for (let iteration = 0; iteration < this.maxIterations; iteration++) {
+        const candidates = await this.catalog.getOldestRecordings(this.batchSize, skip, statuses ? [...statuses] : undefined);
+        if (candidates.length === 0) {
+          allRemainingProtected = statuses === undefined && skip > 0;
+          break;
+        }
+        // Checked only when there is something to delete: each check runs the write canary
+        if (opts.shouldContinue && !(await opts.shouldContinue())) {
+          return { deletedSegmentsCount, freedBytes, allRemainingProtected: false };
+        }
 
-      const candidates = await this.catalog.getOldestRecordings(this.batchSize, skip);
-      if (candidates.length === 0) {
-        if (skip > 0) {
-          allRemainingProtected = true;
-        }
-        break;
-      }
-
-      let batchDeleted = 0;
-      for (const segment of candidates) {
-        if (opts.isEligible && !opts.isEligible(segment)) {
-          skip++;
-          continue;
-        }
-        if (segment.isProtected || segment.retentionTier === 'PROTECTED') {
-          skip++;
-          continue;
-        }
-        if (this.isBookmarkedFn && (await this.isBookmarkedFn(segment))) {
-          skip++;
-          continue;
-        }
-        try {
-          const res = await this.catalog.deleteSegmentInternal(
-            segment.id,
-            segment.filePath,
-            Number(segment.sizeBytes)
-          );
-          if (res.success) {
-            deletedSegmentsCount++;
-            freedBytes += res.freedBytes || 0;
-            batchDeleted++;
-          } else {
+        const deletable = new Set((await this.retention.deletable(candidates, opts.mode, opts.overrideDays)).map((s) => s.id));
+        let batchDeleted = 0;
+        for (const segment of candidates) {
+          if (!deletable.has(segment.id)) {
+            skip++;
+            continue;
+          }
+          try {
+            const res = await this.catalog.deleteSegmentInternal(segment.id, segment.filePath, Number(segment.sizeBytes));
+            if (res.success) {
+              deletedSegmentsCount++;
+              freedBytes += res.freedBytes || 0;
+              batchDeleted++;
+            } else {
+              skip++;
+            }
+          } catch {
             skip++;
           }
-        } catch {
-          skip++;
         }
-      }
-      if (batchDeleted === 0 && candidates.length < this.batchSize) {
-        // Every remaining candidate in the catalog was protected
-        allRemainingProtected = true;
-        break;
+        if (batchDeleted === 0 && candidates.length < this.batchSize) {
+          // Every remaining candidate is held
+          allRemainingProtected = statuses === undefined;
+          break;
+        }
       }
     }
 
     return { deletedSegmentsCount, freedBytes, allRemainingProtected };
   }
+
 }
