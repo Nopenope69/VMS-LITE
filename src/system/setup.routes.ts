@@ -3,6 +3,7 @@ import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { setupService } from './setup.service.js';
 import { AuthService } from '../users/auth.service.js';
 import { setMediaCookie } from '../media/media-proxy.routes.js';
+import { ADMIN_ONLY } from '../users/camera-scope.js';
 
 export const setupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
@@ -11,6 +12,7 @@ export const setupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
    */
   app.get(
     '/setup-status',
+    { config: { cameraAccess: { none: 'first-boot status, no camera data' } } },
     async (_request, reply) => {
       try {
         const status = await setupService.getSetupStatus();
@@ -35,6 +37,7 @@ export const setupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     '/setup-complete',
     {
       preHandler: [authenticate, requireRole('ADMIN')],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       try {

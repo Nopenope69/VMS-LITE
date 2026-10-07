@@ -6,6 +6,7 @@ import { settingsService } from '../settings/settings.service.js';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 import { getNtpStatus } from './ntp.service.js';
 import { storageTelemetryService } from './storage-telemetry.service.js';
+import { cameraScopeOf } from '../users/camera-scope.js';
 
 const bootTimestamp = Date.now();
 
@@ -19,16 +20,21 @@ export const systemRoutes: FastifyPluginAsync<{ recordingEngine?: RecordingEngin
     '/dashboard',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { list: 'view' } },
     },
     async (request, reply) => {
       try {
         const capabilities = request.server.capabilities;
 
+        // Everything below covers only the cameras this user may see
+        const scope = await cameraScopeOf(request);
+        const visible = scope.cameraIds('view');
+
         // 1. Camera Fleet Health
-        const healthSummary = cameraHealthService.getAllTelemetry();
+        const healthSummary = cameraHealthService.getAllTelemetry((cameraId) => scope.can(cameraId, 'view'));
         let totalCamerasInDb = healthSummary.totalCameras;
         try {
-          totalCamerasInDb = await defaultPrisma.camera.count();
+          totalCamerasInDb = await defaultPrisma.camera.count(visible ? { where: { id: { in: visible } } } : undefined);
         } catch {
           // Fallback to health summary total
         }
@@ -67,6 +73,8 @@ export const systemRoutes: FastifyPluginAsync<{ recordingEngine?: RecordingEngin
         let recentEvents: any[] = [];
         try {
           const events = await defaultPrisma.event.findMany({
+            // Restricted users: their cameras' events and camera-less system events
+            ...(visible ? { where: { OR: [{ cameraId: { in: visible } }, { cameraId: null }] } } : {}),
             orderBy: { timestamp: 'desc' },
             take: 10,
           });
@@ -149,6 +157,7 @@ export const systemRoutes: FastifyPluginAsync<{ recordingEngine?: RecordingEngin
     '/ntp-status',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { none: 'clock status, no camera data' } },
     },
     async (_request, reply) => {
       try {

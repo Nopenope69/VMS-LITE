@@ -112,6 +112,14 @@ describe('Camera access matrix', () => {
       expect(await status('op', 'GET', `/api/audit/snapshot/${res.snapshot.A}/download`)).toBe(200);
     });
 
+    it('system dashboard and installer report', async () => {
+      await prisma.event.create({ data: { cameraId: cam.B, type: 'motion.detected', source: 'test', timestamp: new Date(), metadata: { cameraName: 'Matrix B' } } });
+      const dashboard = (await call('op', 'GET', '/api/system/dashboard')).json();
+      expect(dashboard.recentEvents.map((e: any) => e.cameraId)).not.toContain(cam.B);
+      expect(dashboard.fleet.total).toBe(1);
+      expect(await status('op', 'GET', '/api/system/handoff-report')).toBe(403);
+    });
+
     it('camera details need live or playback rights', async () => {
       expect(await status('opPlayback', 'GET', `/api/cameras/${cam.A}`)).toBe(200);
       expect(await status('opPlayback', 'GET', `/api/cameras/${cam.B}`)).toBe(403);

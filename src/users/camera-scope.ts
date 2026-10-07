@@ -144,6 +144,7 @@ export const CAMERA_ROUTE_PREFIXES = [
   '/api/audit',
   '/api/sites',
   '/api/events',
+  '/api/system',
 ];
 
 function cameraIdFrom(request: FastifyRequest, source: CameraIdSource): string | undefined {

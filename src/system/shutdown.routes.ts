@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { initiateGracefulShutdown } from './shutdown.service.js';
+import { ADMIN_ONLY } from '../users/camera-scope.js';
 
 export const shutdownRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
@@ -14,6 +15,7 @@ export const shutdownRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
     '/shutdown',
     {
       preHandler: [authenticate, requireRole('ADMIN')],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (_request, reply) => {
       // Send the response before shutting down
