@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { Role } from '@prisma/client';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
-import { getVisibleCameraIds } from '../users/camera-access.js';
+import { ADMIN_ONLY, cameraScopeOf } from '../users/camera-scope.js';
 import { auditService } from '../audit/audit.service.js';
 import { SiteError, SiteInputSchema, SiteUpdateSchema, siteService } from './site.service.js';
 
@@ -17,14 +17,14 @@ function sendError(reply: FastifyReply, err: any) {
 
 export const siteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   // GET /api/sites - sites with camera counts and live health (operators: their cameras only)
-  app.get('/', { preHandler: [authenticate] }, async (request) => {
-    const visible = await getVisibleCameraIds(request.user);
+  app.get('/', { preHandler: [authenticate], config: { cameraAccess: { list: 'view' } } }, async (request) => {
+    const visible = (await cameraScopeOf(request)).cameraIds('view');
     const sites = await siteService.listSummaries(visible);
     return { count: sites.length, sites };
   });
 
   // POST /api/sites (Admin)
-  app.post('/', { preHandler: [requireRole([Role.ADMIN])] }, async (request, reply) => {
+  app.post('/', { preHandler: [requireRole([Role.ADMIN])], config: { cameraAccess: ADMIN_ONLY } }, async (request, reply) => {
     try {
       const site = await siteService.createSite(SiteInputSchema.parse(request.body ?? {}));
       await auditService.log({
@@ -44,7 +44,7 @@ export const siteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   // PATCH /api/sites/:id (Admin)
   app.patch<{ Params: { id: string } }>(
     '/:id',
-    { preHandler: [requireRole([Role.ADMIN])] },
+    { preHandler: [requireRole([Role.ADMIN])], config: { cameraAccess: ADMIN_ONLY } },
     async (request, reply) => {
       try {
         const site = await siteService.updateSite(request.params.id, SiteUpdateSchema.parse(request.body ?? {}));
@@ -66,7 +66,7 @@ export const siteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   // DELETE /api/sites/:id (Admin) - only when the site has no cameras
   app.delete<{ Params: { id: string } }>(
     '/:id',
-    { preHandler: [requireRole([Role.ADMIN])] },
+    { preHandler: [requireRole([Role.ADMIN])], config: { cameraAccess: ADMIN_ONLY } },
     async (request, reply) => {
       try {
         const site = await siteService.deleteSite(request.params.id);

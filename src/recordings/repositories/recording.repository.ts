@@ -163,6 +163,8 @@ export class PrismaRecordingRepository implements IRecordingRepository {
     const where: any = { status: 'AVAILABLE' };
     if (params.cameraId) {
       where.cameraId = params.cameraId;
+    } else if (params.cameraIds) {
+      where.cameraId = { in: params.cameraIds };
     }
     if (params.startTime || params.endTime) {
       where.startTime = {};
@@ -497,6 +499,9 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
 
     if (params.cameraId) {
       list = list.filter((r) => r.cameraId === params.cameraId);
+    } else if (params.cameraIds) {
+      const allowed = new Set(params.cameraIds);
+      list = list.filter((r) => allowed.has(r.cameraId));
     }
     if (params.startTime) {
       const since = new Date(params.startTime).getTime();

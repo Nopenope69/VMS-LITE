@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { authenticate, requireCameraPermission } from '../users/rbac.guard.js';
+import { authenticate } from '../users/rbac.guard.js';
 import { recordingEngine } from '../recordings/recording-engine.js';
 import { TimelineQuerySchema } from './playback.types.js';
 
@@ -18,7 +18,8 @@ export const playbackRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
   app.get(
     '/timeline',
     {
-      preHandler: [authenticate, requireCameraPermission('canViewPlayback')],
+      preHandler: [authenticate],
+      config: { cameraAccess: { camera: 'query.cameraId', right: 'canViewPlayback' } },
     },
     async (request, reply) => {
       try {
@@ -51,7 +52,8 @@ export const playbackRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
   app.get(
     '/stream',
     {
-      preHandler: [authenticate, requireCameraPermission('canViewPlayback')],
+      preHandler: [authenticate],
+      config: { cameraAccess: { camera: 'query.cameraId', right: 'canViewPlayback' } },
     },
     async (request, reply) => {
       try {

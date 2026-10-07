@@ -5,6 +5,7 @@ import cors from '@fastify/cors';
 import fastifyJwt from '@fastify/jwt';
 import fastifyStatic from '@fastify/static';
 import { licensingPlugin, LicensingPluginOptions } from './licensing/plugin.js';
+import { registerCameraAccess } from './users/camera-scope.js';
 import { authRoutes } from './users/auth.routes.js';
 import { eventRoutes } from './events/event.routes.js';
 import { cameraRoutes } from './cameras/camera.routes.js';
@@ -163,6 +164,9 @@ export async function createServer(opts: ServerOptions = {}): Promise<FastifyIns
       message: error.message || 'An unexpected error occurred',
     });
   });
+
+  // Every camera-related route must declare its camera access (see camera-scope.ts)
+  registerCameraAccess(app);
 
   // Domain route registration
   await app.register(authRoutes, { prefix: '/api/auth' });

@@ -3,7 +3,7 @@ import { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } fro
 import { Role } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { UserTokenPayload } from '../users/rbac.guard.js';
-import { CameraPermissionFlag, hasCameraPermission } from '../users/camera-access.js';
+import { CameraAccess, CameraPermissionFlag, CameraScope } from '../users/camera-scope.js';
 import { isSessionValid } from '../users/session.js';
 
 /**
@@ -100,7 +100,7 @@ async function authorizePath(
     select: { id: true },
   });
   if (!camera) return false;
-  return hasCameraPermission(user, camera.id, permission);
+  return (await CameraScope.forUser(user)).can(camera.id, permission);
 }
 
 async function forward(
@@ -140,6 +140,8 @@ async function forward(
   return reply.send(Readable.fromWeb(res.body as any));
 }
 
+const BY_STREAM_PATH: CameraAccess = { custom: 'guard() resolves the MediaMTX path to its camera and checks the Camera Scope' };
+
 export const mediaProxyRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   app.addContentTypeParser(
     ['application/sdp', 'application/trickle-ice-sdpfrag'],
@@ -177,7 +179,7 @@ export const mediaProxyRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
   app.post<{ Params: { path: string } }>(
     '/whep/:path/whep',
-    { preHandler: guard('canViewLive', false) },
+    { preHandler: guard('canViewLive', false), config: { cameraAccess: BY_STREAM_PATH } },
     async (request, reply) =>
       forward(
         request,
@@ -190,7 +192,7 @@ export const mediaProxyRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
   app.patch<{ Params: { path: string; session: string } }>(
     '/whep/:path/whep/:session',
-    { preHandler: guard('canViewLive', false) },
+    { preHandler: guard('canViewLive', false), config: { cameraAccess: BY_STREAM_PATH } },
     async (request, reply) =>
       forward(request, reply, sessionUrl(request.params.path, request.params.session), {
         method: 'PATCH',
@@ -204,7 +206,7 @@ export const mediaProxyRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
   app.delete<{ Params: { path: string; session: string } }>(
     '/whep/:path/whep/:session',
-    { preHandler: guard('canViewLive', false) },
+    { preHandler: guard('canViewLive', false), config: { cameraAccess: BY_STREAM_PATH } },
     async (request, reply) =>
       forward(request, reply, sessionUrl(request.params.path, request.params.session), { method: 'DELETE' })
   );
@@ -212,7 +214,7 @@ export const mediaProxyRoutes: FastifyPluginAsync = async (app: FastifyInstance)
   // ---- HLS fallback -----------------------------------------------------------------
   app.get<{ Params: { path: string; '*': string } }>(
     '/hls/:path/*',
-    { preHandler: guard('canViewLive', true) },
+    { preHandler: guard('canViewLive', true), config: { cameraAccess: BY_STREAM_PATH } },
     async (request, reply) => {
       const rest = request.params['*'];
       if (!rest || rest.split('/').some((seg) => seg === '..' || seg === '.')) {
@@ -228,7 +230,7 @@ export const mediaProxyRoutes: FastifyPluginAsync = async (app: FastifyInstance)
   // ---- Recorded playback (fMP4) -------------------------------------------------------
   app.get<{ Querystring: { path?: string; start?: string; duration?: string } }>(
     '/playback/get',
-    { preHandler: guard('canViewPlayback', true, (request) => (request.query as any).path) },
+    { preHandler: guard('canViewPlayback', true, (request) => (request.query as any).path), config: { cameraAccess: BY_STREAM_PATH } },
     async (request, reply) => {
       const { path, start, duration } = request.query;
       const startDate = new Date(start ?? '');

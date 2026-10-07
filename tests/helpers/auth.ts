@@ -28,3 +28,19 @@ export async function signAs(
   invalidateSessionCache(claims.id);
   return app.jwt.sign({ ...claims, tv: user.tokenVersion ?? 0 } as any);
 }
+
+/** Gives an operator rights on a camera (a real CameraPermission row). */
+export async function grantCamera(
+  userId: string,
+  cameraId: string,
+  rights: Partial<Record<'canViewLive' | 'canViewPlayback' | 'canControlPtz' | 'canExportClips', boolean>>
+): Promise<void> {
+  const { prisma } = await import('../../src/db/prisma.js');
+  const data = { canViewLive: false, canViewPlayback: false, canControlPtz: false, canExportClips: false, ...rights };
+  const existing = await prisma.cameraPermission.findUnique({ where: { userId_cameraId: { userId, cameraId } } });
+  if (existing) {
+    await prisma.cameraPermission.update({ where: { userId_cameraId: { userId, cameraId } }, data });
+  } else {
+    await prisma.cameraPermission.create({ data: { userId, cameraId, ...data } });
+  }
+}

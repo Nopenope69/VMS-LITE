@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
-import { authenticate, requireCameraPermission, requireRole } from '../users/rbac.guard.js';
+import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { requireCapability } from '../licensing/plugin.js';
 import { bookmarkService } from './bookmark.service.js';
 
@@ -28,9 +28,9 @@ export const bookmarkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
     {
       preHandler: [
         authenticate,
-        requireCameraPermission('canViewPlayback'),
         requireCapability('extended.bookmarks'),
       ],
+      config: { cameraAccess: { camera: 'params.id', right: 'canViewPlayback' } },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -60,9 +60,9 @@ export const bookmarkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
     {
       preHandler: [
         authenticate,
-        requireCameraPermission('canViewPlayback'),
         requireCapability('extended.bookmarks'),
       ],
+      config: { cameraAccess: { camera: 'params.id', right: 'canViewPlayback' } },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -100,10 +100,11 @@ export const bookmarkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
         requireRole([Role.ADMIN, Role.OPERATOR]),
         requireCapability('extended.bookmarks'),
       ],
+      config: { cameraAccess: { camera: 'params.id', right: 'canViewPlayback' } },
     },
     async (request, reply) => {
-      const { bookmarkId } = request.params;
-      const deleted = await bookmarkService.deleteBookmark(bookmarkId);
+      const { id, bookmarkId } = request.params;
+      const deleted = await bookmarkService.deleteBookmark(bookmarkId, id);
 
       if (!deleted) {
         return reply.status(404).send({

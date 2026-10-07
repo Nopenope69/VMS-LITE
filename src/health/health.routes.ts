@@ -13,6 +13,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { Role } from '@prisma/client';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
+import { cameraScopeOf } from '../users/camera-scope.js';
 import { requireCapability } from '../licensing/plugin.js';
 import { cameraHealthService } from './camera-health.service.js';
 
@@ -29,9 +30,11 @@ export const healthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         requireRole([Role.ADMIN, Role.OPERATOR]),
         requireCapability('extended.camera_health'),
       ],
+      config: { cameraAccess: { list: 'view' } },
     },
-    async (_request, reply) => {
-      const summary = cameraHealthService.getAllTelemetry();
+    async (request, reply) => {
+      const scope = await cameraScopeOf(request);
+      const summary = cameraHealthService.getAllTelemetry((cameraId) => scope.can(cameraId, 'view'));
       return reply.code(200).send(summary);
     }
   );
@@ -48,6 +51,7 @@ export const healthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         requireRole([Role.ADMIN, Role.OPERATOR]),
         requireCapability('extended.camera_health'),
       ],
+      config: { cameraAccess: { camera: 'params.id', right: 'view' } },
     },
     async (request, reply) => {
       const { id } = request.params;

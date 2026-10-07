@@ -4,7 +4,8 @@ import { AuthService, MIN_PASSWORD_LENGTH, UserAdminError } from './auth.service
 import { authenticate, requireRole } from './rbac.guard.js';
 import { auditService } from '../audit/audit.service.js';
 import { LoginThrottle } from './login-throttle.js';
-import { getEffectiveCameraPermissions } from './camera-access.js';
+import { cameraScopeOf } from './camera-scope.js';
+import { prisma } from '../db/prisma.js';
 import { clearMediaCookie, setMediaCookie } from '../media/media-proxy.routes.js';
 
 const VALID_ROLES = new Set<string>(Object.values(Role));
@@ -79,14 +80,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
     // Refresh the media cookie for sessions restored from a stored token
     const token = request.headers.authorization?.slice(7).trim();
     if (token) setMediaCookie(request, reply, token);
-    // Lets the UI hide controls the user cannot use (licensing and operator grants)
-    // Effective per-camera rights (camera grants merged with site grants)
-    const cameraPermissions =
-      request.user.role === Role.OPERATOR ? await getEffectiveCameraPermissions(request.user.id) : undefined;
+    // Effective per-camera rights for every role, so the UI needs no role rules
+    const scope = await cameraScopeOf(request);
+    const allCameraIds = (await prisma.camera.findMany({ select: { id: true } })).map((c: { id: string }) => c.id);
+    const cameraPermissions = scope.permissions(allCameraIds);
     return {
       user: {
         ...request.user,
-        cameraPermissions: cameraPermissions?.map((p) => ({
+        cameraPermissions: cameraPermissions.map((p) => ({
           cameraId: p.cameraId,
           canViewLive: p.canViewLive,
           canViewPlayback: p.canViewPlayback,

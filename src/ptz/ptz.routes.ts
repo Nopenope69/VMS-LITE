@@ -1,7 +1,8 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
-import { authenticate, requireCameraPermission, requireRole } from '../users/rbac.guard.js';
+import { authenticate, requireRole } from '../users/rbac.guard.js';
+import { ADMIN_ONLY } from '../users/camera-scope.js';
 import { requireCapability } from '../licensing/plugin.js';
 import {
   CameraNotFoundError,
@@ -58,9 +59,9 @@ export const ptzRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     {
       preHandler: [
         authenticate,
-        requireCameraPermission('canControlPtz'),
         requireCapability('extended.ptz'),
       ],
+      config: { cameraAccess: { camera: 'params.id', right: 'canControlPtz' } },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -83,9 +84,9 @@ export const ptzRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     {
       preHandler: [
         authenticate,
-        requireCameraPermission('canControlPtz'),
         requireCapability('extended.ptz'),
       ],
+      config: { cameraAccess: { camera: 'params.id', right: 'canControlPtz' } },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -107,9 +108,9 @@ export const ptzRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     {
       preHandler: [
         authenticate,
-        requireCameraPermission('canControlPtz'),
         requireCapability('extended.ptz'),
       ],
+      config: { cameraAccess: { camera: 'params.id', right: 'canControlPtz' } },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -131,9 +132,9 @@ export const ptzRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     {
       preHandler: [
         authenticate,
-        requireCameraPermission('canControlPtz'),
         requireCapability('extended.ptz'),
       ],
+      config: { cameraAccess: { camera: 'params.id', right: 'canControlPtz' } },
     },
     async (request, reply) => {
       const { id, token } = request.params;
@@ -158,6 +159,7 @@ export const ptzRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         requireRole([Role.ADMIN]),
         requireCapability('extended.ptz'),
       ],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -183,6 +185,7 @@ export const ptzRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         requireRole([Role.ADMIN]),
         requireCapability('extended.ptz'),
       ],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const { id, token } = request.params;

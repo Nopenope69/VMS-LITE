@@ -726,14 +726,18 @@ export class CameraHealthService {
   /**
    * Returns summary response for all cached camera health records.
    */
-  getAllTelemetry(): CameraHealthSummaryResponse {
+  /** Health of every camera, or only those `include` accepts (a user's Camera Scope). */
+  getAllTelemetry(include: (cameraId: string) => boolean = () => true): CameraHealthSummaryResponse {
     let onlineCount = 0;
     let degradedCount = 0;
     let offlineCount = 0;
     let unknownCount = 0;
     const cameras: Record<string, CameraHealthTelemetry> = {};
 
+    let totalCameras = 0;
     for (const [id, state] of this.cameraStates.entries()) {
+      if (!include(id)) continue;
+      totalCameras++;
       if (state.status === 'ONLINE') onlineCount++;
       else if (state.status === 'DEGRADED') degradedCount++;
       else if (state.status === 'OFFLINE') offlineCount++;
@@ -743,7 +747,7 @@ export class CameraHealthService {
     }
 
     return {
-      totalCameras: this.cameraStates.size,
+      totalCameras,
       onlineCount,
       degradedCount,
       offlineCount,

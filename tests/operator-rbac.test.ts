@@ -3,7 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { Role } from '@prisma/client';
 import { createServer } from '../src/server.js';
 import { prisma } from '../src/db/prisma.js';
-import { signAs } from './helpers/auth.js';
+import { grantCamera, signAs } from './helpers/auth.js';
 
 describe('Operator Role & Camera ACL RBAC (Phase 8)', () => {
   let app: FastifyInstance;
@@ -261,17 +261,7 @@ describe('Operator Role & Camera ACL RBAC (Phase 8)', () => {
 
     it('allows Operator to access permitted camera detail', async () => {
       vi.spyOn(prisma.camera, 'findUnique').mockResolvedValue(mockCameras[0] as any);
-      vi.spyOn(prisma.cameraPermission, 'findUnique').mockResolvedValue({
-        id: 'perm-1',
-        userId: testOperatorId,
-        cameraId: permittedCamId,
-        canViewLive: true,
-        canViewPlayback: true,
-        canControlPtz: false,
-        canExportClips: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      await grantCamera(testOperatorId, permittedCamId, { canViewLive: true, canViewPlayback: true });
 
       const res = await app.inject({
         method: 'GET',
@@ -287,8 +277,6 @@ describe('Operator Role & Camera ACL RBAC (Phase 8)', () => {
     });
 
     it('rejects Operator with 403 when accessing unauthorized camera detail', async () => {
-      vi.spyOn(prisma.cameraPermission, 'findUnique').mockResolvedValue(null);
-
       const res = await app.inject({
         method: 'GET',
         url: `/api/cameras/${restrictedCamId}`,
@@ -298,7 +286,7 @@ describe('Operator Role & Camera ACL RBAC (Phase 8)', () => {
       expect(res.statusCode).toBe(403);
       const body = res.json();
       expect(body.error).toBe('Forbidden');
-      expect(body.message).toContain('Operator lacks \'canViewLive\' permission');
+      expect(body.cameraId).toBe(restrictedCamId);
 
       vi.restoreAllMocks();
     });

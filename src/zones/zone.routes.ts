@@ -9,6 +9,7 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
+import { ADMIN_ONLY } from '../users/camera-scope.js';
 import { requireCapability } from '../licensing/plugin.js';
 import { motionZoneService } from './motion-zone.service.js';
 import { spatialMotionFilter } from './spatial-motion-filter.js';
@@ -58,6 +59,7 @@ export const zoneRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         authenticate,
         requireCapability('extended.motion_zones'),
       ],
+      config: { cameraAccess: { camera: 'params.id', right: 'view' } },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -82,6 +84,7 @@ export const zoneRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         requireRole([Role.ADMIN]),
         requireCapability('extended.motion_zones'),
       ],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -122,6 +125,7 @@ export const zoneRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         requireRole([Role.ADMIN]),
         requireCapability('extended.motion_zones'),
       ],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const { zoneId } = request.params;
@@ -163,6 +167,7 @@ export const zoneRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         requireRole([Role.ADMIN]),
         requireCapability('extended.motion_zones'),
       ],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const { zoneId } = request.params;
@@ -193,6 +198,7 @@ export const zoneRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         authenticate,
         requireCapability('extended.motion_zones'),
       ],
+      config: { cameraAccess: { camera: 'params.id', right: 'canViewLive' } },
     },
     async (request, reply) => {
       const { id } = request.params;

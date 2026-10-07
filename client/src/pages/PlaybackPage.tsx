@@ -30,7 +30,7 @@ import {
   CameraOption,
   TimelineSpan,
 } from '../hooks/usePlaybackSession.js';
-import { useAuth, CameraPermissionDto } from '../context/AuthContext.js';
+import { useAuth } from '../context/AuthContext.js';
 import { ALL_SITES, matchesSiteFilter } from '../types/sites.js';
 import { orderLanesBySite } from '../utils/site-lanes.js';
 import { OperatorBanner } from '../components/OperatorBanner.js';
@@ -375,7 +375,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   sites = [],
   onNavigateLive,
 }) => {
-  const { token: authContextToken, user } = useAuth();
+  const { token: authContextToken, can } = useAuth();
   const effectiveToken = authToken || authContextToken || '';
 
   const {
@@ -424,11 +424,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   const dayBeforeStr = getTodayString(new Date(Date.now() - 2 * 86400000));
 
   // Determine export permissions
-  const canExport =
-    user?.role === 'ADMIN' ||
-    (user?.role === 'OPERATOR' &&
-      user?.cameraPermissions?.find((p: CameraPermissionDto) => p.cameraId === primaryCameraId)
-        ?.canExportClips !== false);
+  const canExport = Boolean(primaryCameraId) && can(primaryCameraId, 'canExportClips');
 
   const selectedCameraIdsRef = useRef<string[]>(selectedCameraIds);
   selectedCameraIdsRef.current = selectedCameraIds;

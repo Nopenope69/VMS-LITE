@@ -1,11 +1,18 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { Role } from '@prisma/client';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
+import { ADMIN_ONLY, CameraAccess, cameraScopeOf } from '../users/camera-scope.js';
 import { recordingEngine } from './recording-engine.js';
 import {
   RecordingQuerySchema,
   SetCameraScheduleSchema,
 } from './recording.types.js';
+
+const RECORDING_OWNER: CameraAccess = {
+  resource: async (request) =>
+    (await recordingEngine.getRecordingById((request.params as { id: string }).id))?.cameraId ?? null,
+  right: 'canViewPlayback',
+};
 
 export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
@@ -16,6 +23,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     '/storage',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { none: 'appliance-wide storage metrics' } },
     },
     async (_request, reply) => {
       try {
@@ -41,6 +49,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     '/storage/cleanup',
     {
       preHandler: [authenticate, requireRole(Role.ADMIN)],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (_request, reply) => {
       try {
@@ -66,6 +75,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     '/schedules/:cameraId',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { camera: 'params.cameraId', right: 'view' } },
     },
     async (request, reply) => {
       const { cameraId } = request.params;
@@ -86,6 +96,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     '/schedules/:cameraId',
     {
       preHandler: [authenticate, requireRole(Role.ADMIN)],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const { cameraId } = request.params;
@@ -124,11 +135,17 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     '/',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { list: 'canViewPlayback' } },
     },
     async (request, reply) => {
       try {
         const query = RecordingQuerySchema.parse(request.query);
-        const recordings = await recordingEngine.queryRecordings(query);
+        const scope = await cameraScopeOf(request);
+        if (query.cameraId && !scope.can(query.cameraId, 'canViewPlayback')) {
+          return reply.status(403).send({ error: 'Forbidden', message: `No playback access to camera '${query.cameraId}'` });
+        }
+        const cameraIds = scope.cameraIds('canViewPlayback') ?? undefined;
+        const recordings = await recordingEngine.queryRecordings({ ...query, cameraIds });
         return reply.send({
           count: recordings.length,
           recordings,
@@ -157,14 +174,24 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     '/motion-buffer/status',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { list: 'view' } },
     },
     async (request, reply) => {
       try {
         const { cameraId } = request.query;
+        const scope = await cameraScopeOf(request);
+        if (cameraId && !scope.can(cameraId, 'view')) {
+          return reply.status(403).send({ error: 'Forbidden', message: `No access to camera '${cameraId}'` });
+        }
         const status = await recordingEngine.getMotionBufferStatus(cameraId);
+        const cameras = status.cameras.filter((c) => scope.can(c.cameraId, 'view'));
         return reply.send({
           success: true,
           ...status,
+          totalBufferedSegments: cameras.reduce((sum, c) => sum + c.bufferedSegmentsCount, 0),
+          totalBufferedBytes: cameras.reduce((sum, c) => sum + c.bufferedBytes, 0),
+          activeIncidentsCount: cameras.filter((c) => c.incidentActive).length,
+          cameras,
         });
       } catch (err: any) {
         return reply.status(500).send({
@@ -183,6 +210,7 @@ export const recordingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     '/:id',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: RECORDING_OWNER },
     },
     async (request, reply) => {
       const { id } = request.params;

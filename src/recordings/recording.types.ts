@@ -7,7 +7,10 @@ export const RecordingQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(500).default(100),
 });
 
-export type RecordingQueryParams = z.input<typeof RecordingQuerySchema>;
+export type RecordingQueryParams = z.input<typeof RecordingQuerySchema> & {
+  /** Only these cameras (a user's Camera Scope); undefined = every camera */
+  cameraIds?: string[];
+};
 
 export type SegmentStatusType =
   | 'DISCOVERED'

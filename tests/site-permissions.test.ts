@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { createServer } from '../src/server.js';
 import { createMockPrisma } from '../src/db/mock-prisma.js';
-import { getEffectiveCameraPermissions, hasCameraPermission } from '../src/users/camera-access.js';
+import { CameraScope } from '../src/users/camera-scope.js';
 import { signAs } from './helpers/auth.js';
 import { extendedLicense } from './helpers/license.js';
 
@@ -124,13 +124,13 @@ describe('Effective permission merge', () => {
       data: { userId: 'u', siteId: 's1', canViewLive: false, canViewPlayback: true, canControlPtz: false, canExportClips: false },
     });
 
-    const effective = await getEffectiveCameraPermissions('u', prisma);
-    expect(effective).toEqual([
+    const scope = await CameraScope.forUser({ id: 'u', role: 'OPERATOR' as any }, prisma);
+    expect(scope.permissions(['c1', 'c2'])).toEqual([
       { cameraId: 'c1', canViewLive: true, canViewPlayback: true, canControlPtz: false, canExportClips: true, viaCamera: true, viaSite: true },
     ]);
-    const op = { id: 'u', role: 'OPERATOR' as any };
-    expect(await hasCameraPermission(op, 'c1', 'canViewPlayback', prisma)).toBe(true);
-    expect(await hasCameraPermission(op, 'c1', 'canControlPtz', prisma)).toBe(false);
-    expect(await hasCameraPermission(op, 'c2', 'canViewLive', prisma)).toBe(false);
+    expect(scope.can('c1', 'canViewPlayback')).toBe(true);
+    expect(scope.can('c1', 'canControlPtz')).toBe(false);
+    expect(scope.can('c2', 'canViewLive')).toBe(false);
+    expect(scope.cameraIds('view')).toEqual(['c1']);
   });
 });

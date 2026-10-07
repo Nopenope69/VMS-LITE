@@ -93,13 +93,16 @@ export class BookmarkService {
     return this.mapPrismaBookmark(b);
   }
 
-  async deleteBookmark(id: string): Promise<boolean> {
+  /** Deletes a bookmark of the given camera; false when it does not exist there. */
+  async deleteBookmark(id: string, cameraId: string): Promise<boolean> {
+    const bookmark = await this.prisma.bookmark.findUnique({ where: { id } });
+    if (!bookmark || bookmark.cameraId !== cameraId) return false;
     try {
       await this.prisma.bookmark.delete({ where: { id } });
       return true;
     } catch (err: any) {
       if (err?.code === 'P2025') {
-        // Record not found in Prisma
+        // Deleted concurrently
         return false;
       }
       throw err;

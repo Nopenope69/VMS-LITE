@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { authenticate, requireCameraPermission } from '../users/rbac.guard.js';
-import { getVisibleCameraIds } from '../users/camera-access.js';
+import { authenticate } from '../users/rbac.guard.js';
+import { cameraScopeOf } from '../users/camera-scope.js';
 import { parseSiteFilter } from '../cameras/camera.routes.js';
 import { cameraService } from '../cameras/camera.service.js';
 import {
@@ -88,12 +88,13 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     '/config',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { list: 'canViewLive' } },
     },
     async (request, reply) => {
       try {
-        const visible = await getVisibleCameraIds(request.user);
+        const scope = await cameraScopeOf(request);
         const cameras = (await cameraService.listCameras(parseSiteFilter((request.query as any)?.siteId))).filter(
-          (c) => !visible || visible.includes(c.id)
+          (c) => scope.can(c.id, 'canViewLive')
         );
         const userId = request.user?.id || 'vms_client';
         const iceServers = generateIceServers(userId);
@@ -122,6 +123,7 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     '/ice-servers',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { none: 'ICE servers carry no camera data' } },
     },
     async (request, reply) => {
       try {
@@ -147,7 +149,8 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
   app.get<{ Params: { id: string } }>(
     '/cameras/:id',
     {
-      preHandler: [authenticate, requireCameraPermission('canViewLive')],
+      preHandler: [authenticate],
+      config: { cameraAccess: { camera: 'params.id', right: 'canViewLive' } },
     },
     async (request, reply) => {
       const { id } = request.params;

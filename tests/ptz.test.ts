@@ -5,7 +5,7 @@ import { createServer } from '../src/server.js';
 import { prisma } from '../src/db/prisma.js';
 import { ptzService, PtzService } from '../src/ptz/ptz.service.js';
 import { onvifCameraProvider } from '../src/cameras/onvif.provider.js';
-import { signAs } from './helpers/auth.js';
+import { grantCamera, signAs } from './helpers/auth.js';
 
 describe('ONVIF PTZ Controls & Camera Presets (Phase 9 - EXT-03)', () => {
   let app: FastifyInstance;
@@ -117,21 +117,11 @@ describe('ONVIF PTZ Controls & Camera Presets (Phase 9 - EXT-03)', () => {
       expect(res.statusCode).toBe(403);
       const body = res.json();
       expect(body.error).toBe('Forbidden');
-      expect(body.message).toContain("Viewers do not have permission to perform 'canControlPtz'");
+      expect(body.permission).toBe('canControlPtz');
     });
 
     it('rejects Operator without canControlPtz permission with 403', async () => {
-      vi.spyOn(prisma.cameraPermission, 'findUnique').mockResolvedValue({
-        id: 'perm-denied',
-        userId: deniedOperatorId,
-        cameraId: testCameraId,
-        canViewLive: true,
-        canViewPlayback: true,
-        canControlPtz: false,
-        canExportClips: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      await grantCamera(deniedOperatorId, testCameraId, { canViewLive: true, canViewPlayback: true });
 
       const res = await app.inject({
         method: 'POST',
@@ -143,21 +133,11 @@ describe('ONVIF PTZ Controls & Camera Presets (Phase 9 - EXT-03)', () => {
       expect(res.statusCode).toBe(403);
       const body = res.json();
       expect(body.error).toBe('Forbidden');
-      expect(body.message).toContain("Operator lacks 'canControlPtz' permission");
+      expect(body.permission).toBe('canControlPtz');
     });
 
     it('allows Operator with canControlPtz permission to command movement', async () => {
-      vi.spyOn(prisma.cameraPermission, 'findUnique').mockResolvedValue({
-        id: 'perm-allowed',
-        userId: allowedOperatorId,
-        cameraId: testCameraId,
-        canViewLive: true,
-        canViewPlayback: true,
-        canControlPtz: true,
-        canExportClips: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      await grantCamera(allowedOperatorId, testCameraId, { canViewLive: true, canViewPlayback: true, canControlPtz: true });
 
       const res = await app.inject({
         method: 'POST',
