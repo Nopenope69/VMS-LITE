@@ -430,17 +430,7 @@ export class CameraService {
     // an orphaned path that the scheduler's orphan sweep removes)
     await this.mediaPaths.remove(existingCamera);
 
-    // Emit lifecycle event
-    await this.eventBus.emitEvent({
-      type: 'camera.offline',
-      source: 'camera.service',
-      cameraId: id,
-      metadata: {
-        name: existingCamera.name,
-        mediaMtxPath: existingCamera.mediaMtxPath,
-      },
-    });
-
+    // Deletion is not an outage: listeners stop watching the camera on camera.deleted
     await this.eventBus.emitEvent({
       type: 'camera.deleted',
       source: 'camera.service',

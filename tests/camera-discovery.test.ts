@@ -135,16 +135,15 @@ describe('CameraService (CAM-01, CAM-02, CAM-03, CAM-05)', () => {
   });
 
   describe('Camera Deletion & Teardown', () => {
-    it('removes camera, tears down MediaMTX path, and emits camera.offline event', async () => {
+    it('removes camera, tears down MediaMTX path, and announces camera.deleted (not an outage)', async () => {
       const camera = await service.onboardManualCamera(
         { name: 'Temporary Cam', rtspUrl: 'rtsp://10.0.0.10/live' },
         5
       );
 
-      let offlineEvent: any = null;
-      eventBus.subscribe('camera.offline', (evt) => {
-        offlineEvent = evt;
-      });
+      const seen: string[] = [];
+      eventBus.subscribe('camera.offline', () => { seen.push('camera.offline'); });
+      eventBus.subscribe('camera.deleted', (evt) => { seen.push(`camera.deleted:${evt.cameraId}`); });
 
       const deleted = await service.removeCamera(camera.id);
       expect(deleted).toBe(true);
@@ -152,8 +151,7 @@ describe('CameraService (CAM-01, CAM-02, CAM-03, CAM-05)', () => {
       const path = await mediaMtx.getPath(camera.mediaMtxPath);
       expect(path).toBeNull();
 
-      expect(offlineEvent).not.toBeNull();
-      expect(offlineEvent.cameraId).toBe(camera.id);
+      expect(seen).toEqual([`camera.deleted:${camera.id}`]);
     });
   });
 });

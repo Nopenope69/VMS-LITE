@@ -29,7 +29,10 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
   reports effective per-camera rights for every role; the client uses `can()` only.
 - Site link outage: all cameras of a site (2 or more) unreachable gives one
   `site.offline` alert; covered camera alerts are tagged `metadata.siteOutage` and
-  skipped by email/WhatsApp (`src/health/site-outage.ts`). Events have a `site_id`.
+  skipped by email, WhatsApp and webhooks alike (`src/health/site-outage.ts`). Whether an
+  event alerts, its cooldown key and its link are decided only in
+  `src/notifications/alert-policy.ts`; channels just format and deliver. Deleting a
+  camera emits `camera.deleted` only. Events have a `site_id`.
 - Health telemetry carries `videoCodec`, `hasSubStream`, `subVideoCodec`,
   `subBitrateKbps`. H.265 warnings come from `client/src/utils/codec.ts`. Sites have
   `uplinkMbps`; summaries report `bandwidthKbps` and `linkUsage`.

@@ -247,7 +247,7 @@ export const App: React.FC = () => {
       setUnreadCount((c) => c + 1);
 
       // Refresh health if camera online/offline event occurs
-      if (event.type === 'camera.offline' || event.type === 'camera.online') {
+      if (event.type === 'camera.offline' || event.type === 'camera.online' || event.type === 'camera.deleted') {
         refreshHealth();
       }
       if (event.type === 'site.offline' || event.type === 'site.online') {

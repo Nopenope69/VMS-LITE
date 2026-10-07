@@ -9,6 +9,7 @@
  * - Wildcard expansion restricted to ALLOWED_WEBHOOK_EVENTS
  */
 
+import { alertFor } from '../notifications/alert-policy.js';
 import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
 import { PrismaClient } from '@prisma/client';
@@ -463,6 +464,9 @@ export class WebhookDispatcherService {
    * Resolves endpoints interested in an event and queues deliveries.
    */
   private async handleEvent(event: any): Promise<void> {
+    // Same suppression as every other channel: no camera alerts covered by a site alert
+    if (!alertFor(event)) return;
+
     const endpoints = await this.prisma.webhookEndpoint.findMany({
       where: { enabled: true },
     });

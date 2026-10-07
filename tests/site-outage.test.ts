@@ -12,7 +12,7 @@ import { createMockPrisma } from '../src/db/mock-prisma.js';
 import { TokenBucketRateLimiter } from '../src/notifications/token-bucket-rate-limiter.js';
 import { MockSmtpTransport } from '../src/notifications/smtp-client.js';
 import { SmtpDispatcherService } from '../src/notifications/smtp-dispatcher.service.js';
-import { channelWantsEvent } from '../src/notifications/site-alerts.js';
+import { channelWantsEvent } from '../src/notifications/alert-policy.js';
 import { signAs } from './helpers/auth.js';
 import { extendedLicense } from './helpers/license.js';
 

@@ -18,7 +18,7 @@ import {
   UpdateNotificationConfigInput,
   WhatsAppCloudCredentials,
 } from './notification.types.js';
-import { SITE_ALERT_EVENTS, channelWantsEvent, isCoveredBySiteAlert, siteAlertDetails } from './site-alerts.js';
+import { ALERT_EVENTS, alertFor, channelWantsEvent, cooldownKey, publicBaseUrl as resolveBaseUrl } from './alert-policy.js';
 import { formatLocalTimestamp } from '../system/time-format.js';
 
 export class MockNotificationDispatcher implements INotificationDispatcher {
@@ -211,7 +211,7 @@ export class NotificationService {
    * Generates a signed, 15-minute expiring snapshot URL for external delivery.
    */
   generateSignedSnapshotUrl(cameraId: string, publicBaseUrl?: string): string {
-    const baseUrl = (publicBaseUrl || process.env.PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
+    const baseUrl = resolveBaseUrl(publicBaseUrl);
     const expires = Math.floor(Date.now() / 1000) + 15 * 60; // 15 mins
     const hmac = crypto.createHmac('sha256', this.signingSecret);
     hmac.update(`${cameraId}:${expires}`);
@@ -415,9 +415,7 @@ export class NotificationService {
 
     await this.getConfig();
 
-    const allowedEvents = ['motion.detected', 'camera.offline', 'camera.degraded', 'camera.tamper', ...SITE_ALERT_EVENTS];
-
-    const unsubscribers = allowedEvents.map((eventType) =>
+    const unsubscribers = ALERT_EVENTS.map((eventType) =>
       this.eventBus.subscribe(eventType, async (event) => {
         try {
           await this.handleEvent(event);
@@ -449,24 +447,20 @@ export class NotificationService {
     const config = await this.getConfig();
     if (!config.enabled) return;
 
-    // Filter event against configured events
-    if (!channelWantsEvent(config.events, event.type) || isCoveredBySiteAlert(event)) {
+    const alert = alertFor(event);
+    if (!alert || !channelWantsEvent(config.events, alert.type)) {
       return;
     }
 
-    const isSiteEvent = Boolean(event.siteId) && event.type.startsWith('site.');
-    const cameraId = event.cameraId || 'system';
-    const rateLimitKey = isSiteEvent ? `site:${event.siteId}:${event.type}` : `${cameraId}:${event.type}`;
-
     const dispatcher = this.getDispatcher(config.provider);
-    const rateResult = this.rateLimiter.tryAcquire(rateLimitKey, config.cooldownSeconds);
+    const rateResult = this.rateLimiter.tryAcquire(cooldownKey('whatsapp', alert), config.cooldownSeconds);
     if (!rateResult.allowed) {
       return;
     }
 
-    if (isSiteEvent) {
-      const site = siteAlertDetails(event);
-      const timestamp = this.formatLocalTimestamp(new Date(event.timestamp || Date.now()));
+    const timestamp = this.formatLocalTimestamp(alert.at);
+    if (alert.site) {
+      const site = alert.site;
       let messageText = `${event.type === 'site.offline' ? '🔴' : '🟢'} *VMS ALERT: ${site.title}*\n`;
       messageText += `• *Site:* ${site.siteName}\n`;
       messageText += `• *Cameras:* ${site.cameraCount}\n`;
@@ -492,12 +486,8 @@ export class NotificationService {
       return;
     }
 
-    const cameraName =
-      event.metadata?.cameraName ||
-      (event.metadata as any)?.name ||
-      `Camera ${cameraId.slice(0, 8)}`;
-
-    const timestamp = this.formatLocalTimestamp(new Date(event.timestamp || Date.now()));
+    const cameraId = alert.cameraId || 'system';
+    const cameraName = alert.subjectName;
     const snapshotUrl = cameraId !== 'system' ? this.generateSignedSnapshotUrl(cameraId) : undefined;
     const messageText = this.formatAlertMessage(event.type, cameraName, timestamp, snapshotUrl);
 
