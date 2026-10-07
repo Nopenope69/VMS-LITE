@@ -14,6 +14,7 @@ import {
   Save,
   Trash2,
 } from 'lucide-react';
+import { apiFetch } from '../api/client.js';
 
 export interface OperationalSettingsModalProps {
   isOpen: boolean;
@@ -126,7 +127,7 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
     setLoading(true);
     setFeedback(null);
     try {
-      const res = await fetch('/api/settings/operational', {
+      const res = await apiFetch('/api/settings/operational', {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -172,7 +173,7 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
 
     try {
       setLoading(true);
-      const res = await fetch(`/api/settings/schedule/${camId}`, {
+      const res = await apiFetch(`/api/settings/schedule/${camId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -299,7 +300,7 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
 
       if (selectedCameraId === 'all') {
         // Save global operational settings
-        const res = await fetch('/api/settings/operational', {
+        const res = await apiFetch('/api/settings/operational', {
           method: 'PUT',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -322,7 +323,7 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
         }
       } else {
         // Save camera-specific schedule
-        const res = await fetch(`/api/settings/schedule/${selectedCameraId}`, {
+        const res = await apiFetch(`/api/settings/schedule/${selectedCameraId}`, {
           method: 'PUT',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -363,7 +364,7 @@ export const OperationalSettingsModal: React.FC<OperationalSettingsModalProps> =
     setPurging(true);
     setFeedback(null);
     try {
-      const res = await fetch(`/api/settings/storage/purge?retentionDays=${retentionDays}`, {
+      const res = await apiFetch(`/api/settings/storage/purge?retentionDays=${retentionDays}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });

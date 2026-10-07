@@ -14,6 +14,7 @@ import {
   Server,
   Lock,
 } from 'lucide-react';
+import { apiFetch } from '../api/client.js';
 
 export interface NotificationSettingsModalProps {
   isOpen: boolean;
@@ -76,7 +77,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
   }, [isOpen]);
 
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('vms_token') || localStorage.getItem('token');
+    const token = localStorage.getItem('vms_token');
     return {
       'Content-Type': 'application/json',
       Authorization: token ? `Bearer ${token}` : '',
@@ -89,7 +90,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
     try {
       // 1. Fetch Built-in SMTP Email Settings (Core)
       try {
-        const smtpRes = await fetch('/api/notifications/smtp', { headers: getAuthHeaders() });
+        const smtpRes = await apiFetch('/api/notifications/smtp', { headers: getAuthHeaders() });
         if (smtpRes.ok) {
           const smtpData = await smtpRes.json();
           setSmtpHost(smtpData.host || 'localhost');
@@ -115,7 +116,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
 
       // 2. Fetch WhatsApp Notification Settings (Package 2)
       try {
-        const notifRes = await fetch('/api/notifications/settings', { headers: getAuthHeaders() });
+        const notifRes = await apiFetch('/api/notifications/settings', { headers: getAuthHeaders() });
         if (notifRes.ok) {
           const notifData = await notifRes.json();
           setProvider(notifData.provider || 'mock');
@@ -131,7 +132,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
 
       // 3. Fetch Webhooks (Package 2)
       try {
-        const whRes = await fetch('/api/webhooks', { headers: getAuthHeaders() });
+        const whRes = await apiFetch('/api/webhooks', { headers: getAuthHeaders() });
         if (whRes.ok) {
           const whData = await whRes.json();
           setWebhooks(Array.isArray(whData) ? whData : []);
@@ -167,7 +168,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
         payload.pass = smtpPass;
       }
 
-      const res = await fetch('/api/notifications/smtp', {
+      const res = await apiFetch('/api/notifications/smtp', {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify(payload),
@@ -192,7 +193,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
     setStatusMessage(null);
     setIsSendingTestEmail(true);
     try {
-      const res = await fetch('/api/notifications/smtp/test', {
+      const res = await apiFetch('/api/notifications/smtp/test', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ recipient: testEmailRecipient.trim() || undefined }),
@@ -239,7 +240,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
     }
 
     try {
-      const res = await fetch('/api/notifications/settings', {
+      const res = await apiFetch('/api/notifications/settings', {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -269,7 +270,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
   const handleSendTestNotification = async () => {
     setStatusMessage(null);
     try {
-      const res = await fetch('/api/notifications/test', {
+      const res = await apiFetch('/api/notifications/test', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({}),
@@ -288,7 +289,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
 
     setStatusMessage(null);
     try {
-      const res = await fetch('/api/webhooks', {
+      const res = await apiFetch('/api/webhooks', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -317,7 +318,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
 
   const handleDeleteWebhook = async (id: string) => {
     try {
-      const res = await fetch(`/api/webhooks/${id}`, {
+      const res = await apiFetch(`/api/webhooks/${id}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -331,7 +332,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
 
   const handleTestWebhook = async (id: string) => {
     try {
-      const res = await fetch(`/api/webhooks/${id}/test`, {
+      const res = await apiFetch(`/api/webhooks/${id}/test`, {
         method: 'POST',
         headers: getAuthHeaders(),
       });

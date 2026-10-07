@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldAlert, KeyRound, Globe, CheckCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
+import { apiFetch } from '../api/client.js';
 
 export interface FirstBootWizardModalProps {
   isOpen: boolean;
@@ -38,7 +39,7 @@ export const FirstBootWizardModal: React.FC<FirstBootWizardModalProps> = ({
     setError(null);
 
     try {
-      const res = await fetch('/api/system/setup-complete', {
+      const res = await apiFetch('/api/system/setup-complete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

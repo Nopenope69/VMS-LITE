@@ -15,6 +15,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
+import { apiFetch } from '../api/client.js';
 
 export interface Point {
   x: number;
@@ -91,7 +92,7 @@ export const MotionZoneEditorModal: React.FC<MotionZoneEditorModalProps> = ({
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const res = await fetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones`, {
+      const res = await apiFetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones`, {
         headers: {
           Authorization: `Bearer ${effectiveToken}`,
         },
@@ -168,7 +169,7 @@ export const MotionZoneEditorModal: React.FC<MotionZoneEditorModalProps> = ({
       setTestPoint(pt);
       setIsTesting(true);
       try {
-        const res = await fetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones/test`, {
+        const res = await apiFetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones/test`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -206,7 +207,7 @@ export const MotionZoneEditorModal: React.FC<MotionZoneEditorModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const res = await fetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones`, {
+      const res = await apiFetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -271,7 +272,7 @@ export const MotionZoneEditorModal: React.FC<MotionZoneEditorModalProps> = ({
       if (currentZone) {
         // Persist updated coordinates
         try {
-          await fetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones/${selectedZoneId}`, {
+          await apiFetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones/${selectedZoneId}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -296,7 +297,7 @@ export const MotionZoneEditorModal: React.FC<MotionZoneEditorModalProps> = ({
     );
 
     try {
-      await fetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones/${zone.id}`, {
+      await apiFetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones/${zone.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -315,7 +316,7 @@ export const MotionZoneEditorModal: React.FC<MotionZoneEditorModalProps> = ({
     if (!window.confirm('Are you sure you want to delete this motion zone?')) return;
 
     try {
-      const res = await fetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones/${zoneId}`, {
+      const res = await apiFetch(`${apiBaseUrl}/api/cameras/${cameraId}/zones/${zoneId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${effectiveToken}`,

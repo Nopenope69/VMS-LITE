@@ -24,9 +24,12 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
 - Sites: `Site` table, `camera.siteId`, site filter everywhere, per-site health.
   Operators get camera grants and/or site grants. `src/users/camera-scope.ts` is the one
   place that decides who may do what on which camera; every route under `/api/cameras`,
-  `/recordings`, `/playback`, `/streaming`, `/media`, `/audit`, `/sites` and `/events`
+  `/recordings`, `/playback`, `/streaming`, `/media`, `/audit`, `/sites`, `/events` and
+  `/system`
   must declare `config.cameraAccess` or the server refuses to start. `/api/auth/me`
   reports effective per-camera rights for every role; the client uses `can()` only.
+  Browser API calls go through `apiFetch()` (`client/src/api/client.ts`): token and
+  401 handling in one place.
 - Site link outage: all cameras of a site (2 or more) unreachable gives one
   `site.offline` alert; covered camera alerts are tagged `metadata.siteOutage` and
   skipped by email, WhatsApp and webhooks alike (`src/health/site-outage.ts`). Whether an

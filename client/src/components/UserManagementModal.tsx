@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth, UserRole } from '../context/AuthContext.js';
+import { apiFetch } from '../api/client.js';
 
 export interface UserItem {
   id: string;
@@ -75,7 +76,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/auth/users', {
+      const res = await apiFetch('/api/auth/users', {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -98,7 +99,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     if (confirmText && !window.confirm(confirmText)) return;
     setStatusMessage(null);
     try {
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         body: body ? JSON.stringify(body) : undefined,
@@ -124,7 +125,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     }
 
     try {
-      const res = await fetch(`/api/auth/users/${user.id}/permissions`, {
+      const res = await apiFetch(`/api/auth/users/${user.id}/permissions`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -159,7 +160,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
       // Site-wide grants (cover every camera at the site, including future ones)
       const siteMap: Record<string, PermissionFlags> = {};
       sites.forEach((site) => (siteMap[site.id] = { ...NO_FLAGS }));
-      const siteRes = await fetch(`/api/auth/users/${user.id}/site-permissions`, {
+      const siteRes = await apiFetch(`/api/auth/users/${user.id}/site-permissions`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (siteRes.ok) {
@@ -199,7 +200,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     const payload = Object.values(permissions);
 
     try {
-      const res = await fetch(`/api/auth/users/${selectedUser.id}/permissions`, {
+      const res = await apiFetch(`/api/auth/users/${selectedUser.id}/permissions`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -214,7 +215,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
         return;
       }
       if (sites.length > 0) {
-        const siteRes = await fetch(`/api/auth/users/${selectedUser.id}/site-permissions`, {
+        const siteRes = await apiFetch(`/api/auth/users/${selectedUser.id}/site-permissions`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
@@ -245,7 +246,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     }
 
     try {
-      const res = await fetch('/api/auth/users', {
+      const res = await apiFetch('/api/auth/users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

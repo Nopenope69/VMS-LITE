@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ShieldCheck, Search, Filter, Download, X, Calendar, RefreshCw } from 'lucide-react';
+import { apiFetch } from '../api/client.js';
 
 export interface AuditLogItem {
   id: string;
@@ -38,7 +39,7 @@ export const AuditLogViewerModal: React.FC<AuditLogViewerModalProps> = ({
       if (usernameFilter) params.append('username', usernameFilter);
       params.append('limit', '100');
 
-      const res = await fetch(`/api/audit/logs?${params.toString()}`, {
+      const res = await apiFetch(`/api/audit/logs?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {

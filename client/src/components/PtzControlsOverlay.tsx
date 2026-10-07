@@ -20,6 +20,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
+import { apiFetch } from '../api/client.js';
 
 export interface CameraPreset {
   token: string;
@@ -60,7 +61,7 @@ export const PtzControlsOverlay: React.FC<PtzControlsOverlayProps> = ({
       try {
         isMovingRef.current = true;
         if (directionLabel) setActiveDirection(directionLabel);
-        await fetch(`/api/cameras/${cameraId}/ptz/move`, {
+        await apiFetch(`/api/cameras/${cameraId}/ptz/move`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -81,7 +82,7 @@ export const PtzControlsOverlay: React.FC<PtzControlsOverlayProps> = ({
     try {
       isMovingRef.current = false;
       setActiveDirection(null);
-      await fetch(`/api/cameras/${cameraId}/ptz/stop`, {
+      await apiFetch(`/api/cameras/${cameraId}/ptz/stop`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -98,7 +99,7 @@ export const PtzControlsOverlay: React.FC<PtzControlsOverlayProps> = ({
     if (!token) return;
     setIsLoadingPresets(true);
     try {
-      const res = await fetch(`/api/cameras/${cameraId}/ptz/presets`, {
+      const res = await apiFetch(`/api/cameras/${cameraId}/ptz/presets`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -123,7 +124,7 @@ export const PtzControlsOverlay: React.FC<PtzControlsOverlayProps> = ({
     if (!token) return;
     try {
       setStatusMessage(`Navigating to ${presetName}...`);
-      await fetch(`/api/cameras/${cameraId}/ptz/presets/${presetToken}/goto`, {
+      await apiFetch(`/api/cameras/${cameraId}/ptz/presets/${presetToken}/goto`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -142,7 +143,7 @@ export const PtzControlsOverlay: React.FC<PtzControlsOverlayProps> = ({
     if (!token || !newPresetName.trim()) return;
     setIsSavingPreset(true);
     try {
-      const res = await fetch(`/api/cameras/${cameraId}/ptz/presets`, {
+      const res = await apiFetch(`/api/cameras/${cameraId}/ptz/presets`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

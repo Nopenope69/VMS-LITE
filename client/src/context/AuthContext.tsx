@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { configureApi } from '../api/client.js';
 
 export type UserRole = 'ADMIN' | 'OPERATOR' | 'VIEWER';
 
@@ -128,6 +129,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     },
     [logout]
   );
+
+  // Every API call (apiFetch) uses this session's token and reports 401s here
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
+  useEffect(() => {
+    configureApi({ getToken: () => tokenRef.current, onUnauthorized: handleUnauthorized });
+  }, [handleUnauthorized]);
 
   const role = user?.role ?? null;
   const can = useCallback(

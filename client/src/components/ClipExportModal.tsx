@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   FileArchive,
 } from 'lucide-react';
+import { apiFetch } from '../api/client.js';
 
 export type ExportMode = 'STREAM_COPY' | 'TRANSCODED_OSD';
 
@@ -90,7 +91,7 @@ export const ClipExportModal: React.FC<ClipExportModalProps> = ({
         const headers: Record<string, string> = {};
         if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-        const res = await fetch(`${apiBaseUrl}/api/recordings/export/${activeJob.id}`, {
+        const res = await apiFetch(`${apiBaseUrl}/api/recordings/export/${activeJob.id}`, {
           headers,
         });
 
@@ -140,7 +141,7 @@ export const ClipExportModal: React.FC<ClipExportModalProps> = ({
       };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-      const res = await fetch(`${apiBaseUrl}/api/recordings/export`, {
+      const res = await apiFetch(`${apiBaseUrl}/api/recordings/export`, {
         method: 'POST',
         headers,
         body: JSON.stringify({

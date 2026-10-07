@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { KeyRound, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
+import { apiFetch } from '../api/client.js';
 
 /**
  * Self-service account security: change own password (other sessions are signed
@@ -23,7 +24,7 @@ export const AccountSecurityCard: React.FC = () => {
     setBusy(true);
     setMessage(null);
     try {
-      const res = await fetch('/api/auth/me/password', {
+      const res = await apiFetch('/api/auth/me/password', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword: current, newPassword: next }),
@@ -44,7 +45,7 @@ export const AccountSecurityCard: React.FC = () => {
 
   const signOutEverywhere = async () => {
     if (!user || !window.confirm('Sign out of all devices, including this one?')) return;
-    await fetch(`/api/auth/users/${user.id}/revoke-sessions`, {
+    await apiFetch(`/api/auth/users/${user.id}/revoke-sessions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     }).catch(() => {});

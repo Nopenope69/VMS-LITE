@@ -9,6 +9,7 @@ import {
   Tag,
   Check,
 } from 'lucide-react';
+import { apiFetch } from '../api/client.js';
 
 export interface BookmarkModalProps {
   isOpen: boolean;
@@ -55,7 +56,7 @@ export const BookmarkModal: React.FC<BookmarkModalProps> = ({
       };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-      const res = await fetch(`${apiBaseUrl}/api/cameras/${cameraId}/bookmarks`, {
+      const res = await apiFetch(`${apiBaseUrl}/api/cameras/${cameraId}/bookmarks`, {
         method: 'POST',
         headers,
         body: JSON.stringify({

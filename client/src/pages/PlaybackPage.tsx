@@ -39,6 +39,7 @@ import {
   usePlaybackSync,
   calculatePlayerAlignment,
 } from '../context/PlaybackSyncContext.js';
+import { apiFetch } from '../api/client.js';
 
 export type { CameraOption };
 
@@ -155,7 +156,7 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
         const headers: Record<string, string> = {};
         if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-        const res = await fetch(
+        const res = await apiFetch(
           `${apiBaseUrl}/api/playback/stream?cameraId=${encodeURIComponent(
             camera.id
           )}&startTime=${encodeURIComponent(isoTimestamp)}&duration=300`,
@@ -437,9 +438,9 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
         const headers: Record<string, string> = {};
         if (effectiveToken) headers['Authorization'] = `Bearer ${effectiveToken}`;
 
-        let res = await fetch(`${apiBaseUrl}/api/cameras`, { headers });
+        let res = await apiFetch(`${apiBaseUrl}/api/cameras`, { headers });
         if (!res.ok) {
-          res = await fetch(`${apiBaseUrl}/api/streaming/config`, { headers });
+          res = await apiFetch(`${apiBaseUrl}/api/streaming/config`, { headers });
         }
         if (!res.ok) {
           throw new Error(`Failed to load camera list: HTTP ${res.status}`);
@@ -501,7 +502,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
     try {
       const timelinePromises = selectedCameraIds.map(async (camId) => {
         try {
-          const res = await fetch(
+          const res = await apiFetch(
             `${apiBaseUrl}/api/playback/timeline?cameraId=${encodeURIComponent(
               camId
             )}&date=${encodeURIComponent(selectedDate)}`,
@@ -527,7 +528,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
 
       const bookmarkPromises = selectedCameraIds.map(async (camId) => {
         try {
-          const res = await fetch(
+          const res = await apiFetch(
             `${apiBaseUrl}/api/cameras/${encodeURIComponent(
               camId
             )}/bookmarks?from=${encodeURIComponent(dayStart)}&to=${encodeURIComponent(dayEnd)}`,

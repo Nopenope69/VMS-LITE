@@ -32,6 +32,7 @@ import { EventsWsClient, EventPayload } from './utils/events-ws-client.js';
 import { SitesModal } from './components/SitesModal.js';
 import { ALL_SITES, SiteFilter, SiteSummary, UNASSIGNED_SITE, matchesSiteFilter } from './types/sites.js';
 import { parsePlaybackLink } from './utils/playback-link.js';
+import { apiFetch } from './api/client.js';
 
 const SITE_FILTER_KEY = 'vms_site_filter';
 function readStoredSiteFilter(): SiteFilter {
@@ -153,8 +154,8 @@ export const App: React.FC = () => {
     try {
       const headers = { Authorization: `Bearer ${token}` };
       const [res, streamingRes] = await Promise.all([
-        fetch('/api/cameras', { headers }),
-        fetch('/api/streaming/config', { headers }),
+        apiFetch('/api/cameras', { headers }),
+        apiFetch('/api/streaming/config', { headers }),
       ]);
       if (res.status === 401) {
         handleUnauthorized(token);
@@ -197,7 +198,7 @@ export const App: React.FC = () => {
   // Check initial first-boot setup status
   useEffect(() => {
     if (!token || !isAdmin) return;
-    fetch('/api/system/setup-status')
+    apiFetch('/api/system/setup-status')
       .then((r) => r.json())
       .then((data) => {
         if (data.isFirstBoot || data.defaultPasswordActive) {
@@ -211,7 +212,7 @@ export const App: React.FC = () => {
   const fetchEvents = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch('/api/events?limit=50', {
+      const res = await apiFetch('/api/events?limit=50', {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -268,7 +269,7 @@ export const App: React.FC = () => {
     setLoginError(null);
     setIsLoggingIn(true);
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -295,7 +296,7 @@ export const App: React.FC = () => {
   const fetchSites = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch('/api/sites', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await apiFetch('/api/sites', { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setSites((await res.json()).sites || []);
     } catch (err) {
       console.warn('[App] Failed to fetch sites:', err);
@@ -550,7 +551,7 @@ export const App: React.FC = () => {
             sites={sites}
             groupBySite={siteFilter === ALL_SITES}
             onMoveCamera={async (cameraId, siteId) => {
-              const res = await fetch(`/api/cameras/${cameraId}`, {
+              const res = await apiFetch(`/api/cameras/${cameraId}`, {
                 method: 'PATCH',
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ siteId }),
