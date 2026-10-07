@@ -1,4 +1,4 @@
-import net from 'node:net';
+import { probeTcp } from './tcp-probe.js';
 import {
   CameraConnectionParams,
   CameraDeviceDetails,
@@ -33,27 +33,7 @@ export class RtspCameraAdapter implements ICameraStreamProvider, ICameraDeviceIn
    */
   async probe(ip: string, port: number = 554, timeoutMs?: number): Promise<boolean> {
     const timeout = timeoutMs ?? this.defaultTimeoutMs;
-    return new Promise<boolean>((resolve) => {
-      const socket = new net.Socket();
-      socket.setTimeout(timeout);
-
-      socket.once('connect', () => {
-        socket.destroy();
-        resolve(true);
-      });
-
-      socket.once('timeout', () => {
-        socket.destroy();
-        resolve(false);
-      });
-
-      socket.once('error', () => {
-        socket.destroy();
-        resolve(false);
-      });
-
-      socket.connect(port, ip);
-    });
+    return (await probeTcp(ip, port, timeout)).reachable;
   }
 
   /**

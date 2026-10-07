@@ -1,6 +1,6 @@
+import { probeTcp } from './tcp-probe.js';
 import { CameraMediaPaths, subPathName } from '../mediamtx/camera-media-paths.js';
 import crypto from 'node:crypto';
-import net from 'node:net';
 import { PrismaClient } from '@prisma/client';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
@@ -76,38 +76,7 @@ export class CameraService {
     port = 554,
     timeoutMs = 2500
   ): Promise<{ reachable: boolean; latencyMs: number | null; error?: string }> {
-    return new Promise((resolve) => {
-      const start = Date.now();
-      const socket = net.createConnection({ host: ip, port });
-      let resolved = false;
-
-      const timer = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          socket.destroy();
-          resolve({ reachable: false, latencyMs: null, error: `Connection timed out after ${timeoutMs}ms` });
-        }
-      }, timeoutMs);
-
-      socket.on('connect', () => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timer);
-          const latencyMs = Date.now() - start;
-          socket.destroy();
-          resolve({ reachable: true, latencyMs });
-        }
-      });
-
-      socket.on('error', (err) => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timer);
-          socket.destroy();
-          resolve({ reachable: false, latencyMs: null, error: err.message });
-        }
-      });
-    });
+    return probeTcp(ip, port, timeoutMs);
   }
 
   /**
