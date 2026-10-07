@@ -6,10 +6,11 @@ import {
   EventQueryFilter,
   EventRecord,
   EventSeverity,
+  EventType,
 } from './event.types.js';
 
 /**
- * High-frequency operational events that are useful in-process (catalog, ring buffer,
+ * High-frequency operational events that are useful in-process (catalog, Motion Buffer,
  * webhooks) but would flood the events table: one per camera per segment.
  */
 const NON_PERSISTED_EVENT_TYPES = new Set(['recording.segment_created']);
@@ -81,7 +82,7 @@ export class EventBus extends EventEmitter {
         cameraId: created.cameraId,
         siteId: created.siteId ?? null,
         timestamp: created.timestamp,
-        type: created.type,
+        type: created.type as EventType, // persisted by emitEvent, so always an EventType
         source: created.source,
         severity: created.severity as EventSeverity,
         metadata: created.metadata as T,
@@ -113,7 +114,7 @@ export class EventBus extends EventEmitter {
    * Subscribes to events of a specific type (or '*' for all events).
    */
   subscribe<T = Record<string, unknown>>(
-    eventType: string,
+    eventType: EventType | '*',
     listener: (event: EventRecord<T>) => unknown
   ): () => void {
     // A throwing or rejecting subscriber must neither break the emitter nor surface
@@ -184,7 +185,7 @@ export class EventBus extends EventEmitter {
         cameraId: e.cameraId,
         siteId: e.siteId ?? null,
         timestamp: e.timestamp,
-        type: e.type,
+        type: e.type as EventType,
         source: e.source,
         severity: e.severity as EventSeverity,
         metadata: e.metadata as Record<string, unknown>,

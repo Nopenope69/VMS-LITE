@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { Role } from '@prisma/client';
-import { authenticate, requireRole, requireCameraPermission } from '../users/rbac.guard.js';
+import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { cameraService, LicenseLimitExceededError } from './camera.service.js';
 import {
   ManualCameraSchema,
@@ -10,7 +10,7 @@ import {
   ProvisionPreviewSchema,
   CommitCameraSchema,
 } from './camera.types.js';
-import { getVisibleCameraIds } from '../users/camera-access.js';
+import { ADMIN_ONLY, cameraScopeOf } from '../users/camera-scope.js';
 import { SiteError, siteService } from '../sites/site.service.js';
 import { UpdateCameraSchema } from './camera.types.js';
 
@@ -29,6 +29,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     '/discover',
     {
       preHandler: [requireRole([Role.ADMIN])],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const body = (request.body as { timeoutMs?: number }) || {};
@@ -51,6 +52,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     {
       // Admin only: lets the server open TCP connections to arbitrary hosts/ports
       preHandler: [requireRole([Role.ADMIN])],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       try {
@@ -81,6 +83,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     '/probe-auth',
     {
       preHandler: [requireRole([Role.ADMIN])],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       try {
@@ -111,6 +114,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     '/provision-preview',
     {
       preHandler: [requireRole([Role.ADMIN])],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       try {
@@ -141,6 +145,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     '/teardown-preview',
     {
       preHandler: [requireRole([Role.ADMIN])],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const body = request.body as { pathName?: string };
@@ -159,6 +164,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     '/commit',
     {
       preHandler: [requireRole([Role.ADMIN])],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const cameraLimit = request.server.capabilities.getCameraLimit();
@@ -218,6 +224,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     '/',
     {
       preHandler: [requireRole([Role.ADMIN])],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const body = request.body as any;
@@ -285,24 +292,16 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     '/',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { list: 'view' } },
     },
     async (request, reply) => {
       const cameras = await cameraService.listCameras(parseSiteFilter((request.query as any)?.siteId));
 
-      // Operators: cameras granted directly or through a site grant
-      const visible = await getVisibleCameraIds(request.user);
-      if (visible) {
-        const allowedIds = new Set(visible);
-        const filtered = cameras.filter((c) => allowedIds.has(c.id));
-        return reply.send({
-          count: filtered.length,
-          cameras: filtered,
-        });
-      }
-
+      const scope = await cameraScopeOf(request);
+      const visible = cameras.filter((c) => scope.can(c.id, 'view'));
       return reply.send({
-        count: cameras.length,
-        cameras,
+        count: visible.length,
+        cameras: visible,
       });
     }
   );
@@ -314,7 +313,8 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
   app.get<{ Params: { id: string } }>(
     '/:id',
     {
-      preHandler: [authenticate, requireCameraPermission('canViewLive')],
+      preHandler: [authenticate],
+      config: { cameraAccess: { camera: 'params.id', right: 'view' } },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -339,6 +339,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     '/:id',
     {
       preHandler: [requireRole([Role.ADMIN])],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       try {
@@ -369,6 +370,7 @@ export const cameraRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     '/:id',
     {
       preHandler: [requireRole([Role.ADMIN])],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const { id } = request.params;

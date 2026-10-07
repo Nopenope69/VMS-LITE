@@ -164,25 +164,4 @@ describe('SegmentValidator (zero-fsync media verification)', () => {
       expect(res.reason).toBe('OUTSIDE_ROOT');
     }
   });
-
-  it('assigns SUB streamRole when marked as sub-stream', async () => {
-    const segmentName = '2026-10-06_12-00-00.mp4';
-    const filePath = path.join(root, segmentName);
-    await fs.writeFile(filePath, createValidFmp4Buffer(2048));
-
-    const mtime = new Date(fixedNow - 30_000);
-    await fs.utimes(filePath, mtime, mtime);
-
-    const res = await validator.validate({
-      filePath,
-      recordingsRoot: root,
-      mediaMtxPath: 'cam1_sub',
-      isSubStream: true,
-    });
-
-    expect(res.isValid).toBe(true);
-    if (res.isValid) {
-      expect(res.streamRole).toBe('SUB');
-    }
-  });
 });

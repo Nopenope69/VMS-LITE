@@ -9,7 +9,7 @@ import { ExportCompatibilityValidator } from '../src/export/export-compatibility
 import { ExportService } from '../src/export/export.service.js';
 import { ExportPruneService } from '../src/export/export-prune.service.js';
 import { BookmarkService } from '../src/bookmarks/bookmark.service.js';
-import { signAs } from './helpers/auth.js';
+import { grantCamera, signAs } from './helpers/auth.js';
 
 describe('Server-Side Clip Export & Timeline Bookmarks (Phase 10 - EXT-04, EXT-05)', () => {
   let app: FastifyInstance;
@@ -55,41 +55,8 @@ describe('Server-Side Clip Export & Timeline Bookmarks (Phase 10 - EXT-04, EXT-0
       role: Role.VIEWER,
     });
 
-    // Mock CameraPermission lookups in prisma
-    vi.spyOn(prisma.cameraPermission as any, 'findUnique').mockImplementation(async (args: any): Promise<any> => {
-      const { userId, cameraId } = args.where.userId_cameraId;
-      if (cameraId !== testCameraId) return null;
-
-      if (userId === opWithExportId) {
-        return {
-          id: 'perm-1',
-          userId,
-          cameraId,
-          canViewLive: true,
-          canViewPlayback: true,
-          canControlPtz: true,
-          canExportClips: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-      }
-
-      if (userId === opNoExportId) {
-        return {
-          id: 'perm-2',
-          userId,
-          cameraId,
-          canViewLive: true,
-          canViewPlayback: true,
-          canControlPtz: false,
-          canExportClips: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-      }
-
-      return null;
-    });
+    await grantCamera(opWithExportId, testCameraId, { canViewLive: true, canViewPlayback: true, canControlPtz: true, canExportClips: true });
+    await grantCamera(opNoExportId, testCameraId, { canViewLive: true, canViewPlayback: true });
   });
 
   afterAll(async () => {
@@ -481,7 +448,7 @@ describe('Server-Side Clip Export & Timeline Bookmarks (Phase 10 - EXT-04, EXT-0
       expect(visitorList[0].id).toBe(b2.id);
 
       // Delete bookmark
-      const deleted = await bookmarkService.deleteBookmark(b1.id);
+      const deleted = await bookmarkService.deleteBookmark(b1.id, b1.cameraId);
       expect(deleted).toBe(true);
 
       const afterDelete = await bookmarkService.listBookmarks(testCameraId);

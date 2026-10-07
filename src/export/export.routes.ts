@@ -1,7 +1,8 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { createReadStream } from 'node:fs';
-import { authenticate, requireCameraPermission } from '../users/rbac.guard.js';
+import { authenticate } from '../users/rbac.guard.js';
+import { CameraAccess, CameraRight } from '../users/camera-scope.js';
 import { requireCapability } from '../licensing/plugin.js';
 import { exportService } from './export.service.js';
 import { evidenceBundleService } from './evidence-bundle.service.js';
@@ -15,6 +16,13 @@ const CreateExportBodySchema = z.object({
   includeOsd: z.boolean().optional(),
 });
 
+/** Downloading an export is exporting; seeing its status is playback. */
+const exportOwner = (right: CameraRight): CameraAccess => ({
+  resource: async (request) =>
+    (await exportService.getExportJob((request.params as { id: string }).id))?.cameraId ?? null,
+  right,
+});
+
 export const exportRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
    * POST /api/recordings/export
@@ -25,9 +33,9 @@ export const exportRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     {
       preHandler: [
         authenticate,
-        requireCameraPermission('canExportClips'),
         requireCapability('extended.clip_export'),
       ],
+      config: { cameraAccess: { camera: 'body.cameraId', right: 'canExportClips' } },
     },
     async (request, reply) => {
       const parsed = CreateExportBodySchema.safeParse(request.body);
@@ -97,6 +105,7 @@ export const exportRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         authenticate,
         requireCapability('extended.clip_export'),
       ],
+      config: { cameraAccess: exportOwner('canViewPlayback') },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -127,6 +136,7 @@ export const exportRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         authenticate,
         requireCapability('extended.clip_export'),
       ],
+      config: { cameraAccess: exportOwner('canExportClips') },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -161,6 +171,7 @@ export const exportRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         authenticate,
         requireCapability('extended.clip_export'),
       ],
+      config: { cameraAccess: exportOwner('canExportClips') },
     },
     async (request, reply) => {
       const { id } = request.params;

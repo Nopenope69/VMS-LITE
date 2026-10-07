@@ -1,7 +1,8 @@
+import { HLS_BASE, streamUrls, WHEP_BASE } from '../mediamtx/camera-media-paths.js';
 import crypto from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { authenticate, requireCameraPermission } from '../users/rbac.guard.js';
-import { getVisibleCameraIds } from '../users/camera-access.js';
+import { authenticate } from '../users/rbac.guard.js';
+import { cameraScopeOf } from '../users/camera-scope.js';
 import { parseSiteFilter } from '../cameras/camera.routes.js';
 import { cameraService } from '../cameras/camera.service.js';
 import {
@@ -57,28 +58,12 @@ export function generateIceServers(
 }
 
 export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
-  // Browser-facing media goes through the authenticated proxy on this origin
-  const getWhepBaseUrl = () => '/api/media/whep';
-  const getHlsBaseUrl = () => '/api/media/hls';
-
-  const mapCameraToStreamInfo = (cam: any): CameraStreamInfo => {
-    const whepBase = getWhepBaseUrl().replace(/\/$/, '');
-    const hlsBase = getHlsBaseUrl().replace(/\/$/, '');
-    const mainPath = cam.mediaMtxPath;
-    const subPath = cam.subMediaMtxPath || (cam.subStreamUrl ? `${mainPath}_sub` : null);
-
-    return {
-      cameraId: cam.id,
-      name: cam.name,
-      siteId: cam.siteId ?? null,
-      mediaMtxPath: mainPath,
-      subStreamPath: subPath,
-      whepUrl: `${whepBase}/${mainPath}/whep`,
-      subStreamWhepUrl: subPath ? `${whepBase}/${subPath}/whep` : null,
-      hlsUrl: `${hlsBase}/${mainPath}/index.m3u8`,
-      subStreamHlsUrl: subPath ? `${hlsBase}/${subPath}/index.m3u8` : null,
-    };
-  };
+  const mapCameraToStreamInfo = (cam: any): CameraStreamInfo => ({
+    cameraId: cam.id,
+    name: cam.name,
+    siteId: cam.siteId ?? null,
+    ...streamUrls(cam),
+  });
 
   /**
    * GET /api/streaming/config
@@ -88,19 +73,20 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     '/config',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { list: 'canViewLive' } },
     },
     async (request, reply) => {
       try {
-        const visible = await getVisibleCameraIds(request.user);
+        const scope = await cameraScopeOf(request);
         const cameras = (await cameraService.listCameras(parseSiteFilter((request.query as any)?.siteId))).filter(
-          (c) => !visible || visible.includes(c.id)
+          (c) => scope.can(c.id, 'canViewLive')
         );
         const userId = request.user?.id || 'vms_client';
         const iceServers = generateIceServers(userId);
 
         const response: StreamingConfigDto = {
-          whepBaseUrl: getWhepBaseUrl(),
-          hlsBaseUrl: getHlsBaseUrl(),
+          whepBaseUrl: WHEP_BASE,
+          hlsBaseUrl: HLS_BASE,
           iceServers,
           cameras: cameras.map(mapCameraToStreamInfo),
         };
@@ -122,6 +108,7 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     '/ice-servers',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { none: 'ICE servers carry no camera data' } },
     },
     async (request, reply) => {
       try {
@@ -147,7 +134,8 @@ export const streamingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
   app.get<{ Params: { id: string } }>(
     '/cameras/:id',
     {
-      preHandler: [authenticate, requireCameraPermission('canViewLive')],
+      preHandler: [authenticate],
+      config: { cameraAccess: { camera: 'params.id', right: 'canViewLive' } },
     },
     async (request, reply) => {
       const { id } = request.params;

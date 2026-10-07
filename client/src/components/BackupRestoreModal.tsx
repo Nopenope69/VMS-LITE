@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Download, Upload, AlertTriangle, CheckCircle, RefreshCw, X } from 'lucide-react';
+import { apiFetch } from '../api/client.js';
 
 export interface BackupRestoreModalProps {
   isOpen: boolean;
@@ -25,7 +26,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
     setDownloading(true);
     setError(null);
     try {
-      const res = await fetch('/api/system/backup', {
+      const res = await apiFetch('/api/system/backup', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -55,7 +56,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
     setResult(null);
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const res = await fetch(`/api/system/restore?mode=${mode}`, {
+      const res = await apiFetch(`/api/system/restore?mode=${mode}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

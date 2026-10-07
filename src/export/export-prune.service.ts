@@ -18,12 +18,28 @@ export class ExportPruneService {
   private readonly exportService: ExportService;
   private readonly unlinkFn: (filePath: string) => Promise<void>;
   private readonly getDiskUsageFn?: () => Promise<DiskUsageStatus>;
+  private timer: NodeJS.Timeout | null = null;
 
   constructor(opts: PruneServiceOptions = {}) {
     this.prisma = opts.prisma || defaultPrisma;
     this.exportService = opts.exportService || defaultExportService;
     this.unlinkFn = opts.unlinkFn || (async (p) => fs.unlink(p));
     this.getDiskUsageFn = opts.getDiskUsageFn;
+  }
+
+  /** Prunes expired exports now and then hourly. */
+  start(intervalMs = 60 * 60 * 1000): void {
+    if (this.timer) return;
+    const prune = () =>
+      this.pruneExpiredExports().catch((err) => console.warn('[ExportPrune] Prune failed:', (err as Error).message));
+    prune();
+    this.timer = setInterval(prune, intervalMs);
+    this.timer.unref();
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
   }
 
   /**

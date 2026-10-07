@@ -3,6 +3,7 @@ import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { createBackup, restoreBackup, RestoreMode } from './backup.service.js';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 import { backupScheduler } from './backup-scheduler.js';
+import { ADMIN_ONLY } from '../users/camera-scope.js';
 
 export const backupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   // Support binary body uploads for restore
@@ -21,6 +22,7 @@ export const backupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     '/backup',
     {
       preHandler: [authenticate, requireRole('ADMIN')],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (_request, reply) => {
       const archive = await createBackup(defaultPrisma);
@@ -40,7 +42,7 @@ export const backupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
    * GET /api/system/backups
    * Admin-only. Automatic daily backups kept on the appliance, newest first.
    */
-  app.get('/backups', { preHandler: [authenticate, requireRole('ADMIN')] }, async () => {
+  app.get('/backups', { preHandler: [authenticate, requireRole('ADMIN')], config: { cameraAccess: ADMIN_ONLY } }, async () => {
     const backups = await backupScheduler.list();
     return { backups, count: backups.length };
   });
@@ -51,7 +53,7 @@ export const backupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
    */
   app.get<{ Params: { name: string } }>(
     '/backups/:name',
-    { preHandler: [authenticate, requireRole('ADMIN')] },
+    { preHandler: [authenticate, requireRole('ADMIN')], config: { cameraAccess: ADMIN_ONLY } },
     async (request, reply) => {
       const archive = await backupScheduler.read(request.params.name);
       if (!archive) {
@@ -74,6 +76,7 @@ export const backupRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     '/restore',
     {
       preHandler: [authenticate, requireRole('ADMIN')],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       const mode = ((request.query as any)?.mode || 'skip-existing') as RestoreMode;

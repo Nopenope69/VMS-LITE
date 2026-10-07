@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MapPin, Plus, Trash2, X, Check, Pencil } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
 import { SiteSummary } from '../types/sites.js';
+import { apiFetch } from '../api/client.js';
 
 export interface SitesModalProps {
   isOpen: boolean;
@@ -35,7 +36,7 @@ export const SitesModal: React.FC<SitesModalProps> = ({ isOpen, sites, onClose, 
 
   const call = async (method: string, url: string, body?: unknown) => {
     setError(null);
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method,
       headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,

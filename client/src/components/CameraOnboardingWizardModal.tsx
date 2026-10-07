@@ -19,6 +19,7 @@ import {
   Camera,
 } from 'lucide-react';
 import { WhepHlsPlayer } from './WhepHlsPlayer.js';
+import { apiFetch } from '../api/client.js';
 
 export interface CameraOnboardingWizardModalProps {
   isOpen: boolean;
@@ -63,7 +64,7 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
 
   // Auth token from localStorage
   const getAuthToken = () =>
-    localStorage.getItem('vms_token') || localStorage.getItem('token') || '';
+    localStorage.getItem('vms_token') || '';
 
   // Step 1: Discovery / Manual state
   const [isManualEntry, setIsManualEntry] = useState<boolean>(false);
@@ -116,7 +117,7 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
     if (!pathName) return;
     try {
       const token = getAuthToken();
-      await fetch('/api/cameras/teardown-preview', {
+      await apiFetch('/api/cameras/teardown-preview', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,7 +174,7 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
     setScanError(null);
     try {
       const token = getAuthToken();
-      const res = await fetch('/api/cameras/discover', {
+      const res = await apiFetch('/api/cameras/discover', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -216,7 +217,7 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
     setAuthError(null);
     try {
       const token = getAuthToken();
-      const res = await fetch('/api/cameras/probe-auth', {
+      const res = await apiFetch('/api/cameras/probe-auth', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -264,7 +265,7 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
     setNetworkError(null);
     try {
       const token = getAuthToken();
-      const res = await fetch('/api/cameras/probe-network', {
+      const res = await apiFetch('/api/cameras/probe-network', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -300,7 +301,7 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
     setPreviewError(null);
     try {
       const token = getAuthToken();
-      const res = await fetch('/api/cameras/provision-preview', {
+      const res = await apiFetch('/api/cameras/provision-preview', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -336,7 +337,7 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
     setCommitError(null);
     try {
       const token = getAuthToken();
-      const res = await fetch('/api/cameras/commit', {
+      const res = await apiFetch('/api/cameras/commit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1073,7 +1074,7 @@ export const CameraOnboardingWizardModal: React.FC<CameraOnboardingWizardModalPr
                   style={{ width: '100%', padding: '10px 12px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#f8fafc', fontSize: '13px' }}
                 >
                   <option value="continuous_247">24/7 Continuous Recording (Packet-Preserving fMP4)</option>
-                  <option value="motion_buffer">Motion Ring Buffer (Pre/Post Event)</option>
+                  <option value="motion_buffer">Motion Buffer (Pre/Post Event)</option>
                   <option value="scheduled">Weekly Schedule Window</option>
                 </select>
               </div>

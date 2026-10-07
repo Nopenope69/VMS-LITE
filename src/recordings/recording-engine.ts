@@ -11,7 +11,6 @@ import {
   RecordingMode,
   RecordingQueryParams,
   ScheduleWindow,
-  SegmentCompleteWebhookPayload,
   StorageCleanupResult,
   StorageMetricsDto,
   TimelineQueryParams,
@@ -23,8 +22,8 @@ import {
   PrismaRecordingRepository,
 } from './repositories/recording.repository.js';
 import { StorageController } from './storage-controller.js';
-import { MotionRingBufferEngine } from './motion-ring-buffer.js';
-import { SegmentIndexer } from './segment-indexer.js';
+import { StorageInvariantsService } from './storage-invariants.service.js';
+import { MotionBufferStatus, SegmentIngest } from './segment-ingest.js';
 import { getRecordingsRoot } from './recordings-root.js';
 
 export interface RecordingEngineOptions {
@@ -47,6 +46,8 @@ export interface RecordingEngineOptions {
     blocks: number | bigint;
     bfree: number | bigint;
   }>;
+  /** Storage write probe (default: a real 64 KB write + fsync under the recordings root). */
+  canaryWriteFn?: (probePath: string) => Promise<{ latencyMs: number }>;
   fsStatFn?: (filePath: string) => Promise<{ size: number }>;
   fsUnlinkFn?: (filePath: string) => Promise<void>;
   playbackBaseUrl?: string;
@@ -58,8 +59,8 @@ export class RecordingEngine implements IRecordingEngine {
   private readonly catalog: RecordingCatalog;
   private readonly scheduler: RecordingSchedulerCollaborator;
   private readonly storageController: StorageController;
-  private readonly motionRingBuffer: MotionRingBufferEngine;
-  private readonly segmentIndexer: SegmentIndexer;
+  private readonly segmentIngest: SegmentIngest;
+  private readonly invariants: StorageInvariantsService;
   private readonly clock: IClock;
   private readonly playbackBaseUrl: string;
 
@@ -141,26 +142,32 @@ export class RecordingEngine implements IRecordingEngine {
       targetThresholdPercent: opts.targetThresholdPercent,
       batchSize: opts.batchSize,
       statfsFn: opts.statfsFn,
+      canaryWriteFn: opts.canaryWriteFn,
     });
 
-    this.segmentIndexer = new SegmentIndexer({
+    this.invariants = new StorageInvariantsService({
+      catalog: this.catalog,
+      repository,
+      eventBus,
+      recordingsDir: opts.recordingsDir,
+    });
+
+    this.segmentIngest = new SegmentIngest({
       repository,
       recordingsRoot: getRecordingsRoot(opts.recordingsDir),
-      ingest: (payload) => this.ingestSegment(payload),
-      now: () => this.clock.now().getTime(),
-    });
-    eventBus.subscribe('camera.deleted', (evt: any) => {
-      if (evt.cameraId) this.segmentIndexer.forgetCamera(evt.cameraId);
-    });
-
-    this.motionRingBuffer = new MotionRingBufferEngine({
-      catalog: this.catalog,
+      deleteSegment: (segment) =>
+        this.catalog.deleteSegmentInternal(segment.id, segment.filePath, Number(segment.sizeBytes || 0)),
       eventBus,
       clock: this.clock,
       preBufferSeconds: opts.preBufferSeconds,
       postBufferSeconds: opts.postBufferSeconds,
-      fsUnlinkFn: opts.fsUnlinkFn,
-      fsStatFn: opts.fsStatFn,
+    });
+    eventBus.subscribe('camera.deleted', (evt: any) => {
+      if (evt.cameraId) this.segmentIngest.forgetCamera(evt.cameraId);
+    });
+    // Receive time, not the camera's timestamp: camera clocks often drift (no NTP)
+    eventBus.subscribe('motion.detected', async (evt: any) => {
+      if (evt.cameraId) await this.segmentIngest.onMotion(evt.cameraId, this.clock.now());
     });
   }
 
@@ -168,32 +175,16 @@ export class RecordingEngine implements IRecordingEngine {
   // Public Seam Methods
   // ==========================================
 
-  async ingestSegment(payload: SegmentCompleteWebhookPayload): Promise<RecordingDto | null> {
-    const mediaMtxPath = payload.mediaMtxPath || (payload as any).path;
-    let camera = await this.repository.getCameraByMediaMtxPath(mediaMtxPath);
-    let isMotionOnly = false;
-
-    if (camera) {
-      try {
-        const schedule = await this.scheduler.getCameraSchedule(camera.id);
-        if (schedule.mode === 'MOTION_ONLY') {
-          isMotionOnly = true;
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    if (isMotionOnly && camera) {
-      const res = await this.motionRingBuffer.handleSegment(payload, camera.id);
-      return res.recording || null;
-    }
-
-    return this.catalog.ingestSegment(payload);
+  async getMotionBufferStatus(cameraId?: string): Promise<MotionBufferStatus> {
+    return this.segmentIngest.bufferStatus(cameraId);
   }
 
-  getMotionRingBuffer(): MotionRingBufferEngine {
-    return this.motionRingBuffer;
+  setMotionWindow(preBufferSeconds: number, postBufferSeconds: number): void {
+    this.segmentIngest.setMotionWindow(preBufferSeconds, postBufferSeconds);
+  }
+
+  getMotionWindow(): { preBufferSeconds: number; postBufferSeconds: number } {
+    return this.segmentIngest.getMotionWindow();
   }
 
   async queryRecordings(params: RecordingQueryParams = {}): Promise<RecordingDto[]> {
@@ -240,8 +231,13 @@ export class RecordingEngine implements IRecordingEngine {
     return this.storageController.purgeRetention(days);
   }
 
-  getStorageController(): StorageController {
-    return this.storageController;
+  /** Lifetime of CONTINUOUS footage (the operational "retention days" setting). */
+  setRetentionDays(days: number): void {
+    this.storageController.setRetentionDays(days);
+  }
+
+  setStorageThresholds(warningPercent: number, criticalPercent: number): void {
+    this.storageController.setThresholds(warningPercent, criticalPercent);
   }
 
   // ==========================================
@@ -261,6 +257,7 @@ export class RecordingEngine implements IRecordingEngine {
     // 1. Initial boot reconciliation (deterministic boot without waiting 60s)
     await this.tickSchedule();
     await this.tickStorage();
+    await this.auditAfterCrash();
 
     // 2. Launch periodic loops
     this.scheduleTimerId = this.clock.setInterval(async () => {
@@ -278,22 +275,36 @@ export class RecordingEngine implements IRecordingEngine {
   }
 
   /**
+   * Crash recovery at boot: finishes interrupted deletions and marks catalogued files
+   * that are gone as MISSING. Only on mounted, writable storage: a volume that is late
+   * to mount must not make every recording look missing.
+   */
+  private async auditAfterCrash(): Promise<void> {
+    try {
+      const { healthStatus } = await this.storageController.getStorageMetrics();
+      if (healthStatus === 'MOUNT_MISSING' || healthStatus === 'WRITE_FAILED') {
+        console.warn(`[RecordingEngine] Skipping boot invariants audit: storage is ${healthStatus}`);
+        return;
+      }
+      await this.invariants.auditAndReconcile();
+    } catch (err) {
+      console.warn(`[RecordingEngine] Boot invariants audit failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
    * Single-flight scan of the recordings volume for finished segments.
    */
   private async tickIndex(): Promise<void> {
     if (this.isIndexing) return;
     this.isIndexing = true;
     try {
-      await this.segmentIndexer.scanAll();
+      await this.segmentIngest.scan();
     } catch (err) {
       console.warn(`[RecordingEngine] Segment indexing failed: ${(err as Error).message}`);
     } finally {
       this.isIndexing = false;
     }
-  }
-
-  getSegmentIndexer(): SegmentIndexer {
-    return this.segmentIndexer;
   }
 
   /**

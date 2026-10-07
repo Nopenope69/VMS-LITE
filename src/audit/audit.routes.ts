@@ -3,6 +3,7 @@ import fsPromises from 'node:fs/promises';
 import path from 'node:path';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
+import { ADMIN_ONLY, CameraAccess } from '../users/camera-scope.js';
 import { auditService } from './audit.service.js';
 import { TokenBucketRateLimiter } from '../notifications/token-bucket-rate-limiter.js';
 
@@ -34,6 +35,12 @@ function parseImageBuffer(rawImage: unknown): Buffer | null {
   }
 }
 
+const SNAPSHOT_OWNER: CameraAccess = {
+  resource: async (request) =>
+    (await auditService.getSnapshotById((request.params as { id: string }).id))?.cameraId ?? null,
+  right: 'canViewLive',
+};
+
 export const auditRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
    * GET /api/audit/logs
@@ -43,6 +50,7 @@ export const auditRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     '/logs',
     {
       preHandler: [authenticate, requireRole('ADMIN')],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       try {
@@ -80,6 +88,7 @@ export const auditRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     {
       bodyLimit: 15 * 1024 * 1024, // 15MB limit to allow high-resolution JPEG captures
       preHandler: [authenticate],
+      config: { cameraAccess: { camera: 'body.cameraId', right: 'canViewLive' } },
     },
     async (request, reply) => {
       const user = request.user;
@@ -167,6 +176,7 @@ export const auditRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     '/snapshot/:id/download',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: SNAPSHOT_OWNER },
     },
     async (request, reply) => {
       const { id } = request.params;

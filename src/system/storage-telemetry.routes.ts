@@ -11,6 +11,7 @@ export const storageTelemetryRoutes: FastifyPluginAsync = async (app: FastifyIns
     '/drives',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { none: 'disk telemetry, no camera data' } },
     },
     async (_request, reply) => {
       try {
@@ -38,6 +39,7 @@ export const storageTelemetryRoutes: FastifyPluginAsync = async (app: FastifyIns
     '/removable',
     {
       preHandler: [authenticate],
+      config: { cameraAccess: { none: 'disk telemetry, no camera data' } },
     },
     async (_request, reply) => {
       try {

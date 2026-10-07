@@ -30,7 +30,7 @@ import {
   CameraOption,
   TimelineSpan,
 } from '../hooks/usePlaybackSession.js';
-import { useAuth, CameraPermissionDto } from '../context/AuthContext.js';
+import { useAuth } from '../context/AuthContext.js';
 import { ALL_SITES, matchesSiteFilter } from '../types/sites.js';
 import { orderLanesBySite } from '../utils/site-lanes.js';
 import { OperatorBanner } from '../components/OperatorBanner.js';
@@ -39,6 +39,7 @@ import {
   usePlaybackSync,
   calculatePlayerAlignment,
 } from '../context/PlaybackSyncContext.js';
+import { apiFetch } from '../api/client.js';
 
 export type { CameraOption };
 
@@ -155,7 +156,7 @@ const SynchronizedCameraTile: React.FC<SynchronizedCameraTileProps> = ({
         const headers: Record<string, string> = {};
         if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-        const res = await fetch(
+        const res = await apiFetch(
           `${apiBaseUrl}/api/playback/stream?cameraId=${encodeURIComponent(
             camera.id
           )}&startTime=${encodeURIComponent(isoTimestamp)}&duration=300`,
@@ -375,7 +376,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   sites = [],
   onNavigateLive,
 }) => {
-  const { token: authContextToken, user } = useAuth();
+  const { token: authContextToken, can } = useAuth();
   const effectiveToken = authToken || authContextToken || '';
 
   const {
@@ -424,11 +425,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
   const dayBeforeStr = getTodayString(new Date(Date.now() - 2 * 86400000));
 
   // Determine export permissions
-  const canExport =
-    user?.role === 'ADMIN' ||
-    (user?.role === 'OPERATOR' &&
-      user?.cameraPermissions?.find((p: CameraPermissionDto) => p.cameraId === primaryCameraId)
-        ?.canExportClips !== false);
+  const canExport = Boolean(primaryCameraId) && can(primaryCameraId, 'canExportClips');
 
   const selectedCameraIdsRef = useRef<string[]>(selectedCameraIds);
   selectedCameraIdsRef.current = selectedCameraIds;
@@ -441,9 +438,9 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
         const headers: Record<string, string> = {};
         if (effectiveToken) headers['Authorization'] = `Bearer ${effectiveToken}`;
 
-        let res = await fetch(`${apiBaseUrl}/api/cameras`, { headers });
+        let res = await apiFetch(`${apiBaseUrl}/api/cameras`, { headers });
         if (!res.ok) {
-          res = await fetch(`${apiBaseUrl}/api/streaming/config`, { headers });
+          res = await apiFetch(`${apiBaseUrl}/api/streaming/config`, { headers });
         }
         if (!res.ok) {
           throw new Error(`Failed to load camera list: HTTP ${res.status}`);
@@ -505,7 +502,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
     try {
       const timelinePromises = selectedCameraIds.map(async (camId) => {
         try {
-          const res = await fetch(
+          const res = await apiFetch(
             `${apiBaseUrl}/api/playback/timeline?cameraId=${encodeURIComponent(
               camId
             )}&date=${encodeURIComponent(selectedDate)}`,
@@ -531,7 +528,7 @@ const PlaybackPageContent: React.FC<PlaybackPageProps> = ({
 
       const bookmarkPromises = selectedCameraIds.map(async (camId) => {
         try {
-          const res = await fetch(
+          const res = await apiFetch(
             `${apiBaseUrl}/api/cameras/${encodeURIComponent(
               camId
             )}/bookmarks?from=${encodeURIComponent(dayStart)}&to=${encodeURIComponent(dayEnd)}`,

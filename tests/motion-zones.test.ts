@@ -8,7 +8,7 @@ import { onvifEventListenerService } from '../src/events/onvif-events.service.js
 import { eventBus } from '../src/events/event-bus.js';
 import { CoreEventType } from '../src/events/event.types.js';
 import { Point, MotionZoneDto } from '../src/zones/zone.types.js';
-import { signAs } from './helpers/auth.js';
+import { grantCamera, signAs } from './helpers/auth.js';
 
 describe('Motion Zones & Spatial Exclusion Masking (Phase 11 - EXT-02)', () => {
   let app: FastifyInstance;
@@ -33,6 +33,7 @@ describe('Motion Zones & Spatial Exclusion Masking (Phase 11 - EXT-02)', () => {
       username: 'operator',
       role: Role.OPERATOR,
     });
+    await grantCamera('op-uuid', testCameraId, { canViewLive: true });
 
     viewerToken = await signAs(app, {
       id: 'viewer-uuid',

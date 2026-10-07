@@ -18,6 +18,7 @@ import { CameraRecord } from '../App.js';
 import { CameraHealthTelemetry } from '../hooks/useCameraHealth.js';
 import { formatBandwidth, LINK_USAGE_STYLE, linkUsageLevel, SiteSummary } from '../types/sites.js';
 import { codecLabel, codecNotes } from '../utils/codec.js';
+import { apiFetch } from '../api/client.js';
 
 export interface HealthViewProps {
   cameras: CameraRecord[];
@@ -63,8 +64,8 @@ export const HealthView: React.FC<HealthViewProps> = ({
     let isMounted = true;
     const fetchSysData = async () => {
       try {
-        const token = localStorage.getItem('vms_token') || localStorage.getItem('token');
-        const res = await fetch('/api/system/dashboard', {
+        const token = localStorage.getItem('vms_token');
+        const res = await apiFetch('/api/system/dashboard', {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (res.ok && isMounted) {

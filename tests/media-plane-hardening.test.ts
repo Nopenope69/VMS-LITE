@@ -1,13 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { FastifyInstance } from 'fastify';
+import { describe, it, expect } from 'vitest';
 import { MediaMtxClient, MediaMtxUnavailableError } from '../src/mediamtx/mediamtx.client.js';
 import { RecordingEngine } from '../src/recordings/recording-engine.js';
 import { InMemoryRecordingRepository } from '../src/recordings/repositories/recording.repository.js';
 import { RecordingCatalog } from '../src/recordings/recording-catalog.js';
 import { StorageController } from '../src/recordings/storage-controller.js';
+import { RetentionPolicy } from '../src/recordings/retention-policy.js';
 import { EventBus } from '../src/events/event-bus.js';
 import { TestClock } from '../src/recordings/clock.js';
-import { createServer } from '../src/server.js';
 
 function makeEngine(repository: InMemoryRecordingRepository, mediaMtx: MediaMtxClient) {
   return new RecordingEngine({
@@ -59,7 +58,7 @@ describe('Scheduler reconciles MediaMTX with the database', () => {
     expect(await mediaMtx.getPath('gate_abc')).not.toBeNull();
   });
 
-  it('applies MANUAL_OFF and keeps recording on for MOTION_ONLY (ring buffer needs segments)', async () => {
+  it('applies MANUAL_OFF and keeps recording on for MOTION_ONLY (the Motion Buffer needs segments)', async () => {
     const repository = new InMemoryRecordingRepository();
     repository.registerCamera({ id: 'cam-2', name: 'Dock', mediaMtxPath: 'dock_1', rtspUrl: 'rtsp://10.0.0.6/main' });
     const mediaMtx = new MediaMtxClient({ mockMode: true });
@@ -134,14 +133,23 @@ describe('Storage FIFO rollover', () => {
       catalog,
       eventBus: new EventBus(),
       recordingsDir: '/var/recordings',
+      canaryWriteFn: async () => ({ latencyMs: 1 }),
       batchSize: 50,
       // Each deletion frees 1% of the disk
       statfsFn: async () => {
         usedPercent = 95 - deleted.length;
         return { bsize: 1, blocks: 100, bfree: 100 - usedPercent };
       },
-      // The oldest 60 segments are evidence
-      isBookmarkedFn: async (seg) => Number(seg.fileName.split('.')[0]) < 60,
+      // The oldest 60 segments are evidence: one bookmark in the middle of each
+      retention: new RetentionPolicy({
+        repository,
+        bookmarkWindowSeconds: 0,
+        holds: {
+          bookmarks: async () =>
+            Array.from({ length: 60 }, (_, i) => ({ cameraId: 'cam-4', timestamp: new Date(Date.UTC(2026, 0, 1, 0, i, 30)) })),
+          activeExports: async () => [],
+        },
+      }),
     });
 
     const result = await controller.checkStorage();
@@ -149,50 +157,5 @@ describe('Storage FIFO rollover', () => {
     expect(result.deletedSegmentsCount).toBeGreaterThan(0);
     expect(deleted.every((p) => Number(p.split('/').pop()!.slice(0, 3)) >= 60)).toBe(true);
     expect(result.usedPercentAfter).toBeLessThanOrEqual(80);
-  });
-});
-
-describe('Segment hook endpoint', () => {
-  let app: FastifyInstance;
-  const previousToken = process.env.MEDIAMTX_HOOK_TOKEN;
-
-  beforeAll(async () => {
-    app = await createServer({ logger: false });
-    await app.ready();
-  });
-
-  afterEach(() => {
-    if (previousToken === undefined) delete process.env.MEDIAMTX_HOOK_TOKEN;
-    else process.env.MEDIAMTX_HOOK_TOKEN = previousToken;
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
-  it('ignores segments for paths that belong to no camera', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/recordings/segments/complete',
-      payload: { path: 'preview_deadbeef', segmentPath: '/var/recordings/preview_deadbeef/x.mp4', duration: 60 },
-    });
-    expect(res.statusCode).toBe(202);
-    expect(res.json().ignored).toBe(true);
-  });
-
-  it('requires the shared hook token when one is configured', async () => {
-    process.env.MEDIAMTX_HOOK_TOKEN = 'a-very-secret-hook-token';
-    const payload = { path: 'whatever', segmentPath: '/var/recordings/whatever/x.mp4', duration: 60 };
-
-    const denied = await app.inject({ method: 'POST', url: '/api/recordings/segments/complete', payload });
-    expect(denied.statusCode).toBe(401);
-
-    const allowed = await app.inject({
-      method: 'POST',
-      url: '/api/recordings/segments/complete',
-      headers: { 'x-vms-hook-token': 'a-very-secret-hook-token' },
-      payload,
-    });
-    expect(allowed.statusCode).toBe(202);
   });
 });

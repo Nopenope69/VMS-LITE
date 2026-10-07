@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { authenticate, requireCameraPermission } from '../users/rbac.guard.js';
-import { recordingEngine } from '../recordings/recording-engine.js';
+import { authenticate } from '../users/rbac.guard.js';
+import { recordingEngine as defaultRecordingEngine, RecordingEngine } from '../recordings/recording-engine.js';
 import { TimelineQuerySchema } from './playback.types.js';
 
 const StreamQuerySchema = z.object({
@@ -10,7 +10,8 @@ const StreamQuerySchema = z.object({
   duration: z.coerce.number().positive().max(3600).default(300),
 });
 
-export const playbackRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
+export const playbackRoutes: FastifyPluginAsync<{ recordingEngine?: RecordingEngine }> = async (app: FastifyInstance, opts) => {
+  const recordingEngine = opts.recordingEngine ?? defaultRecordingEngine;
   /**
    * GET /api/playback/timeline
    * Returns recorded video intervals for a camera within a 24-hour window (PLAY-01).
@@ -18,7 +19,8 @@ export const playbackRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
   app.get(
     '/timeline',
     {
-      preHandler: [authenticate, requireCameraPermission('canViewPlayback')],
+      preHandler: [authenticate],
+      config: { cameraAccess: { camera: 'query.cameraId', right: 'canViewPlayback' } },
     },
     async (request, reply) => {
       try {
@@ -51,7 +53,8 @@ export const playbackRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
   app.get(
     '/stream',
     {
-      preHandler: [authenticate, requireCameraPermission('canViewPlayback')],
+      preHandler: [authenticate],
+      config: { cameraAccess: { camera: 'query.cameraId', right: 'canViewPlayback' } },
     },
     async (request, reply) => {
       try {

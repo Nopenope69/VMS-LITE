@@ -61,45 +61,34 @@
 
 | State | Invariants | Transition Trigger |
 | :--- | :--- | :--- |
-| **`DISCOVERED`** | File exists on filesystem; path is within `RECORDINGS_ROOT`. DB row may not exist yet. | Detected via MediaMTX `runOnRecordSegmentComplete` webhook OR periodic [`SegmentIndexer`](../src/recordings/segment-indexer.ts) scan. |
+| **`DISCOVERED`** | File exists on filesystem; path is within `RECORDINGS_ROOT`. DB row may not exist yet. | Detected by the periodic [`SegmentIngest`](../src/recordings/segment-ingest.ts) scan. |
 | **`VALIDATING`** | In-flight check: Container header parseable (`ftyp`/`moov`), `sizeBytes >= 1024`, `duration > 0`, start/end timestamps match filename and clock sanity, file mtime has exceeded quiet period (file is no longer changing). | Discovered file picked up by `SegmentValidator`. |
 | **`AVAILABLE`** | Validated, committed to PostgreSQL `recordings` table. Servable via `/api/media/playback/get`. Emits immutable `recording.segment_created` platform event. | Validation succeeds. |
-| **`QUARANTINED`** | Segment failed container parsing, 0-byte size, or truncated beyond recovery. Logged and excluded from catalog. | Validation fails after retry. |
+| **`BUFFERED`** | Valid segment of a `MOTION_ONLY` camera with no motion event near it yet. Not servable; becomes `AVAILABLE` when motion arrives, or is deleted once no late motion can keep it. | Segment Ingest, Motion Buffer. |
+| **`QUARANTINED`** | Segment failed container parsing, 0-byte size, or truncated beyond recovery. Catalogued but never served, so FIFO rollover can reclaim it. | Validation fails. |
 | **`EXPIRED`** | Segment age exceeds its effective `retentionTier` (Continuous: 7d, Event: 15d, Incident: 60d) AND `isProtected === false`. | Retention scheduler sweep. |
 | **`DELETED`** | File unlinked from storage (`fs.unlink`), record removed from catalog or marked deleted. | Storage FIFO rollover or retention purge. |
 
 ---
 
-## 3. Dual-Path Reconciliation Architecture
+## 3. Segment Ingest
 
-Capture reliability requires both low event latency and crash-proof consistency:
+MediaMTX writes segments to the shared volume; it has no completion hook in this deployment (the official image has no shell or HTTP client). [`SegmentIngest`](../src/recordings/segment-ingest.ts) is therefore the single path into the catalog:
 
 ```
-  MediaMTX Process
-         │
-         ├─── (Fast Path: ~50ms latency)
-         │    POST /api/recordings/segments/complete
-         │    └─► Fast-path Ingestion Queue ──┐
-         │                                    │
-         └─── (Zero-transcode writes to disk) │
-              /recordings/{path}/{file}.mp4   │
-                     │                        ▼
-                     │              SegmentValidator.validate()
-                     │                        │
-  Appliance Reboot   │                        ▼
-  or Crash Recovery  │              RecordingCatalog.commit()
-                     │                        │
-  SegmentIndexer ────┘                        ▼
-  (Reconciliation Path: every 30s)    recording.segment_created
-  - Watermark sweep                   (Immutable Platform Event)
-  - Detects uncatalogued files                │
-  - Cleans orphaned DB rows                   ▼
-                                      Downstream Consumers
-                                 (Timeline, Audit, Incident, AI)
+  MediaMTX (zero-transcode fMP4) ──► /recordings/{path}/{file}.mp4
+                                              │
+                    SegmentIngest.scan() every 10 s, from the newest catalog row
+                                              │
+                                   SegmentValidator.validate()
+                                              │
+             ┌────────────────────────┬───────┴──────────────────┐
+         AVAILABLE                BUFFERED                  QUARANTINED
+  recording.segment_created   (MOTION_ONLY, no motion   (never served; FIFO
+                               nearby yet)               rollover reclaims it)
 ```
 
-1. **Fast Path**: MediaMTX executes HTTP webhook upon finishing an fMP4 segment. Ingestion happens within milliseconds, making video immediately scrubbable on the live timeline.
-2. **Reconciliation Path**: Every 30 seconds, [`SegmentIndexer`](../src/recordings/segment-indexer.ts) scans directory trees per camera starting from the recorded watermark (`latestStartTime`). If Node crashed or restarted while MediaMTX kept recording, missed segments are seamlessly discovered, validated, and catalogued.
+Every finished file gets exactly one row, so a crash or restart never leaves uncatalogued video and the newest row is a safe resume point. Segments still being written (no newer sibling, last write within 15 s) are left for the next scan.
 
 ---
 
@@ -301,6 +290,10 @@ model IncidentEvent {
 
 ## 6. Versioned Platform Event Schemas (Zod Contracts)
 
+> Status (2026-10-07): this design section was not implemented as written. The
+> `SegmentCreatedEventV1` schema and `RtspCameraAdapter` were removed as unused; see
+> ARCHITECTURE.md for what runs.
+
 ### A. Immutable `SegmentCreatedEventV1`
 This is a general-purpose platform contract declaring that **a valid media segment exists**. It contains no AI-mandating directives.
 
@@ -475,7 +468,7 @@ export interface ICameraPtzController {
   1. Add `SegmentStatus`, `RetentionTier`, and `StreamRole` to Prisma schema + migration.
   2. Implement `SegmentValidator` (container parsing, duration validation, quiet period; strictly no `fsync`).
   3. Upgrade `RecordingCatalog.ingestSegment()` to validate segments and emit updated `SegmentCreatedEventV1`.
-  4. Strengthen [`SegmentIndexer`](../src/recordings/segment-indexer.ts) dual-path reconciliation (fast webhook + periodic watermark scan).
+  4. Strengthen periodic watermark scan reconciliation (now [`SegmentIngest`](../src/recordings/segment-ingest.ts)).
 
 ### Phase 2 — Storage Reliability
 - **Goal**: Resilience against physical disk failure, I/O stalls, and evidence overflow.
@@ -536,7 +529,7 @@ To minimize disk seek contention and avoid periodic concurrent I/O bursts across
 | **disk becomes read-only** | Invariant 7 | Write canary detects `EROFS`; status set to `WRITE_FAILED`; deletions halted. |
 | **disk disappears / unmounted** | Invariant 7 | Status set to `MOUNT_MISSING`; deletions halted; catalog preserved. |
 | **database restored without recordings** | Invariant 2 | Invariant auditor detects missing media; marks records `MISSING`. |
-| **recordings restored without database** | Invariant 6 | `SegmentIndexer.scanAll()` sweeps disk and reconstructs complete catalog. |
+| **recordings restored without database** | Invariant 6 | `SegmentIngest.scan()` sweeps disk and reconstructs complete catalog. |
 | **duplicate segment notification** | Invariant 1 | Ingestion is idempotent; single catalog row preserved. |
-| **segment notification missed** | Invariant 6 | Periodic indexer sweep discovers segment and catalogs it. |
+| **segments written while the app was down** | Invariant 6 | The next Segment Ingest scan catalogues them. |
 

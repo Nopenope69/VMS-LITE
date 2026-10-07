@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { apiFetch } from '../api/client.js';
 
 export interface TimelineSpan {
   startTime: string;
@@ -97,10 +98,10 @@ export function usePlaybackSession(options: UsePlaybackSessionOptions = {}): Pla
   // Fetch camera list on mount
   const fetchCameras = useCallback(async () => {
     try {
-      let res = await fetch(`${apiBaseUrl}/api/cameras`, { headers: authHeaders });
+      let res = await apiFetch(`${apiBaseUrl}/api/cameras`, { headers: authHeaders });
       if (!res.ok) {
         // Fallback to streaming config if /api/cameras is not directly available
-        res = await fetch(`${apiBaseUrl}/api/streaming/config`, { headers: authHeaders });
+        res = await apiFetch(`${apiBaseUrl}/api/streaming/config`, { headers: authHeaders });
       }
       if (!res.ok) {
         throw new Error(`Failed to load camera list: HTTP ${res.status}`);
@@ -135,7 +136,7 @@ export function usePlaybackSession(options: UsePlaybackSessionOptions = {}): Pla
         selectedCameraId
       )}&date=${encodeURIComponent(selectedDate)}`;
 
-      const res = await fetch(url, { headers: authHeaders });
+      const res = await apiFetch(url, { headers: authHeaders });
       if (!res.ok) {
         throw new Error(`Failed to fetch timeline: HTTP ${res.status}`);
       }
@@ -176,7 +177,7 @@ export function usePlaybackSession(options: UsePlaybackSessionOptions = {}): Pla
 
       try {
         const isoTimestamp = seekDate.toISOString();
-        const res = await fetch(
+        const res = await apiFetch(
           `${apiBaseUrl}/api/playback/stream?cameraId=${encodeURIComponent(
             selectedCameraId
           )}&startTime=${encodeURIComponent(isoTimestamp)}&duration=${chunkDurationSeconds}`,

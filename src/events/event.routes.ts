@@ -1,9 +1,9 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { Role } from '@prisma/client';
 import { eventBus } from './event-bus.js';
-import { EmitEventInput, EventQueryFilter } from './event.types.js';
+import { EmitEventInput, EventQueryFilter, isEventType } from './event.types.js';
 import { authenticate, requireRole } from '../users/rbac.guard.js';
-import { getVisibleCameraIds } from '../users/camera-access.js';
+import { ADMIN_ONLY, cameraScopeOf } from '../users/camera-scope.js';
 import { parseSiteFilter } from '../cameras/camera.routes.js';
 import { cameraService } from '../cameras/camera.service.js';
 
@@ -18,7 +18,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
       limit?: string;
       offset?: string;
     };
-  }>('/events', { preHandler: [authenticate] }, async (request) => {
+  }>('/events', { preHandler: [authenticate], config: { cameraAccess: { list: 'view' } } }, async (request) => {
     const limit = parseInt(request.query.limit ?? '', 10);
     const offset = parseInt(request.query.offset ?? '', 10);
     const filter: EventQueryFilter = {
@@ -30,7 +30,8 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
     };
 
     // Operators only see events of cameras they are granted
-    let allowed = await getVisibleCameraIds(request.user);
+    const scope = await cameraScopeOf(request);
+    let allowed = scope.cameraIds('view');
 
     // ?siteId= restricts to that site's cameras (system events have no camera or site)
     const siteFilter = parseSiteFilter(request.query.siteId);
@@ -52,7 +53,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
           ...new Set(cameras.filter((c) => visible.has(c.id) && c.siteId).map((c) => c.siteId as string)),
         ];
         // A selected site with no visible cameras yet still shows its own link events to unrestricted users
-        if (siteFilter.siteId && request.user.role !== 'OPERATOR' && !filter.siteIds.includes(siteFilter.siteId)) {
+        if (siteFilter.siteId && scope.cameraIds('view') === null && !filter.siteIds.includes(siteFilter.siteId)) {
           filter.siteIds.push(siteFilter.siteId);
         }
       }
@@ -68,7 +69,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
   // POST /api/events/emit (Admin or system internal)
   fastify.post<{
     Body: EmitEventInput;
-  }>('/events/emit', { preHandler: [requireRole([Role.ADMIN])] }, async (request, reply) => {
+  }>('/events/emit', { preHandler: [requireRole([Role.ADMIN])], config: { cameraAccess: ADMIN_ONLY } }, async (request, reply) => {
     const { type, source, severity, metadata, cameraId, timestamp } = request.body || {};
 
     if (!type || !source) {
@@ -76,6 +77,9 @@ export const eventRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) 
         error: 'Bad Request',
         message: 'Event type and source are required',
       });
+    }
+    if (!isEventType(type)) {
+      return reply.status(400).send({ error: 'Bad Request', message: `Unknown event type '${type}'` });
     }
 
     const event = await eventBus.emitEvent({

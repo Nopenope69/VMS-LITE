@@ -369,10 +369,33 @@ describe('WhatsApp Alerts & Outbound Webhooks (Phase 12 - Plan 02 - EXT-07, EXT-
       expect(enqueuedEvents).toContain('motion.detected');
 
       // Internal event: user.password_changed -> must NEVER be forwarded
-      await mockBus.emitEvent({ type: 'user.password_changed', source: 'auth' });
+      // Not an EventType: simulates an internal event reaching the bus
+      await mockBus.emitEvent({ type: 'user.password_changed' as any, source: 'auth' });
       await new Promise((r) => setTimeout(r, 25));
       expect(enqueuedEvents).not.toContain('user.password_changed');
 
+      service.stop();
+    });
+
+    it('applies the Alert Policy: camera alerts covered by a site outage are not forwarded', async () => {
+      const service = new WebhookDispatcherService({ allowPrivateIpsForTesting: true });
+      const mockBus = new EventBus();
+      (service as any).eventBus = mockBus;
+      await service.createEndpoint({ name: 'Outage Sub', url: 'http://127.0.0.1:8080/hooks', events: ['*'] });
+      await service.start();
+
+      const enqueued: string[] = [];
+      vi.spyOn(service, 'enqueueEvent').mockImplementation((_ep, ev) => {
+        enqueued.push(`${ev.type}${ev.metadata?.siteOutage ? ':covered' : ''}`);
+      });
+
+      await mockBus.emitEvent({ type: 'camera.offline', source: 'test', cameraId: 'c1', metadata: { siteOutage: 's1' } });
+      await mockBus.emitEvent({ type: 'site.offline', source: 'test', siteId: 's1', metadata: { siteName: 'North' } });
+      await mockBus.emitEvent({ type: 'camera.offline', source: 'test', cameraId: 'c2', metadata: {} });
+      await new Promise((r) => setTimeout(r, 25));
+
+      // Other tests' endpoints may also receive these; what matters is what is forwarded
+      expect([...new Set(enqueued)]).toEqual(['site.offline', 'camera.offline']);
       service.stop();
     });
   });

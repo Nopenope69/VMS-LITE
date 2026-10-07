@@ -263,55 +263,5 @@ describe('Operational Settings & Core Health Licensing Realignment (Phase 16 - M
       expect(body.quotaCleanup).toHaveProperty('triggered');
       expect(body.metricsAfter).toHaveProperty('usedPercent');
     });
-
-    it('StorageController protects bookmarked segments from deletion during retention purge', async () => {
-      const storageController = recordingEngine.getStorageController();
-
-      // Create a test segment
-      const bookmarkedSegment = {
-        id: 'seg-bookmarked-01',
-        cameraId: 'cam-test',
-        filePath: '/var/recordings/cam-test/seg1.mp4',
-        startTime: new Date(Date.now() - 40 * 86400000).toISOString(), // 40 days old (exceeds 15d retention)
-        endTime: new Date(Date.now() - 40 * 86400000 + 60000).toISOString(),
-        sizeBytes: 1048576,
-      };
-
-      const regularSegment = {
-        id: 'seg-regular-02',
-        cameraId: 'cam-test',
-        filePath: '/var/recordings/cam-test/seg2.mp4',
-        startTime: new Date(Date.now() - 40 * 86400000).toISOString(), // 40 days old
-        endTime: new Date(Date.now() - 40 * 86400000 + 60000).toISOString(),
-        sizeBytes: 1048576,
-      };
-
-      // Mock catalog oldest recordings
-      const catalog = (storageController as any).catalog;
-      vi.spyOn(catalog, 'getOldestRecordings')
-        .mockResolvedValueOnce([bookmarkedSegment, regularSegment])
-        .mockResolvedValue([]);
-      const deleteSpy = vi.spyOn(catalog, 'deleteSegmentInternal').mockResolvedValue({
-        success: true,
-        recordingId: 'test',
-        freedBytes: 1048576,
-      });
-
-      // Mock bookmark checker so seg-bookmarked-01 returns true
-      storageController.setBookmarkChecker(async (seg) => {
-        return seg.id === 'seg-bookmarked-01';
-      });
-
-      const result = await storageController.purgeRetention(15);
-
-      // regularSegment was deleted, bookmarkedSegment was spared!
-      expect(deleteSpy).toHaveBeenCalledTimes(1);
-      expect(deleteSpy).toHaveBeenCalledWith(
-        'seg-regular-02',
-        regularSegment.filePath,
-        regularSegment.sizeBytes
-      );
-      expect(result.deletedSegmentsCount).toBe(1);
-    });
   });
 });

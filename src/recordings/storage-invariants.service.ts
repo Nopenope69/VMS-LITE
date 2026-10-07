@@ -5,6 +5,7 @@ import { IRecordingRepository } from './repositories/recording.repository.js';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
 import { diagnosticsLogger } from '../diagnostics/diagnostics-logger.js';
 import { RecordingDto } from './recording.types.js';
+import { getRecordingsRoot } from './recordings-root.js';
 
 export interface InvariantViolation {
   invariant: number;
@@ -62,7 +63,7 @@ export class StorageInvariantsService {
     this.catalog = opts.catalog;
     this.repository = opts.repository;
     this.eventBus = opts.eventBus || defaultEventBus;
-    this.recordingsDir = path.resolve(opts.recordingsDir || process.env.RECORDINGS_PATH || '/var/recordings');
+    this.recordingsDir = getRecordingsRoot(opts.recordingsDir);
     this.fsAccess = opts.fsAccessFn || ((p) => fs.access(p));
     this.fsReaddir = opts.fsReaddirFn || ((p) => fs.readdir(p));
   }

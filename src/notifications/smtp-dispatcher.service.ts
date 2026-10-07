@@ -11,7 +11,7 @@ import path from 'node:path';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
 import { TokenBucketRateLimiter, tokenBucketRateLimiter as defaultLimiter } from './token-bucket-rate-limiter.js';
 import { ISmtpTransport, MockSmtpTransport, NodeSocketSmtpClient, SmtpSendResult } from './smtp-client.js';
-import { SITE_ALERT_EVENTS, channelWantsEvent, isCoveredBySiteAlert, siteAlertDetails } from './site-alerts.js';
+import { ALERT_EVENTS, alertFor, channelWantsEvent, cooldownKey, publicBaseUrl, siteAlertDetails } from './alert-policy.js';
 import { formatLocalTimestamp } from '../system/time-format.js';
 
 function escapeHtml(value: unknown): string {
@@ -189,7 +189,7 @@ export class SmtpDispatcherService {
     metadata?: any
   ): { subject: string; html: string } {
     const localTime = this.formatLocalTimestamp(new Date(timestampIso));
-    const baseUrl = (process.env.PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
+    const baseUrl = publicBaseUrl();
     const isSiteEvent = eventType.startsWith('site.');
     const actionUrl = isSiteEvent
       ? `${baseUrl}/`
@@ -350,9 +350,7 @@ export class SmtpDispatcherService {
   async start(): Promise<void> {
     if (this.unsubscribeEventBus) return;
 
-    const watchedEvents = ['motion.detected', 'camera.offline', 'storage.warning', 'camera.degraded', ...SITE_ALERT_EVENTS];
-
-    const unsubscribers = watchedEvents.map((eventType) =>
+    const unsubscribers = ALERT_EVENTS.map((eventType) =>
       this.eventBus.subscribe(eventType, async (event) => {
         try {
           await this.handleEvent(event);
@@ -379,31 +377,22 @@ export class SmtpDispatcherService {
       return;
     }
 
-    if (!channelWantsEvent(this.config.events, event.type) || isCoveredBySiteAlert(event)) {
+    const alert = alertFor(event);
+    if (!alert || !channelWantsEvent(this.config.events, alert.type)) {
       return;
     }
 
-    const isSiteEvent = Boolean(event.siteId) && event.type.startsWith('site.');
-    const cameraId = event.cameraId || 'system';
-    const rateLimitKey = isSiteEvent ? `smtp:site:${event.siteId}:${event.type}` : `smtp:${cameraId}:${event.type}`;
-
-    const rateResult = this.rateLimiter.tryAcquire(rateLimitKey, this.config.cooldownSeconds);
+    const rateResult = this.rateLimiter.tryAcquire(cooldownKey('smtp', alert), this.config.cooldownSeconds);
     if (!rateResult.allowed) {
       return;
     }
 
-    const cameraName = isSiteEvent
-      ? siteAlertDetails(event).siteName
-      : event.metadata?.cameraName || (event.metadata as any)?.name || `Camera ${cameraId.slice(0, 8)}`;
-
-    const timestampIso = event.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString();
-
     const { subject, html } = this.generateHtmlAlert(
-      event.type,
-      cameraName,
-      cameraId,
-      timestampIso,
-      event.metadata
+      alert.type,
+      alert.subjectName,
+      alert.cameraId || 'system',
+      alert.at.toISOString(),
+      alert.metadata
     );
 
     const transport = this.getTransport();

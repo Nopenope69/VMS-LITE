@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { StorageController } from '../src/recordings/storage-controller.js';
+import { RetentionPolicy } from '../src/recordings/retention-policy.js';
 import { RecordingCatalog } from '../src/recordings/recording-catalog.js';
 import { InMemoryRecordingRepository } from '../src/recordings/repositories/recording.repository.js';
 import { EventBus } from '../src/events/event-bus.js';
@@ -53,6 +54,17 @@ describe('Phase 2: Storage Reliability (Health State Machine & Tiered Retention)
   });
 
   describe('Storage Health State Machine & Active Canary', () => {
+    it('real canary fails when the recordings root is not writable, even outside test mode', async () => {
+      const previous = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const unwritable = new StorageController({ catalog, eventBus, recordingsDir: '/tmp/vms_test_missing_root/x' });
+        expect((await unwritable.runWriteCanary()).success).toBe(false);
+      } finally {
+        process.env.NODE_ENV = previous;
+      }
+    });
+
     it('evaluates HEALTHY when disk usage is low and canary latency is normal', async () => {
       const metrics = await storageController.getStorageMetrics();
       expect(metrics.healthStatus).toBe('HEALTHY');
@@ -194,6 +206,9 @@ describe('Phase 2: Storage Reliability (Health State Machine & Tiered Retention)
         overflowEvent = evt;
       });
 
+      // 30 GB protected out of 100 GB => 30%
+      const protectedPolicy = new RetentionPolicy({ repository });
+      vi.spyOn(protectedPolicy, 'protectedBytes').mockResolvedValue(30_000_000_000);
       const pressureController = new StorageController({
         catalog,
         eventBus,
@@ -201,8 +216,7 @@ describe('Phase 2: Storage Reliability (Health State Machine & Tiered Retention)
         maxProtectedThresholdPercent: 25,
         statfsFn: async () => ({ bsize, blocks: simulatedBlocks, bfree: simulatedBfree }),
         canaryWriteFn: async () => ({ latencyMs: 20 }),
-        // 30 GB protected out of 100 GB => 30%
-        getProtectedBytesFn: async () => 30_000_000_000,
+        retention: protectedPolicy,
       });
 
       const metrics = await pressureController.getStorageMetrics();

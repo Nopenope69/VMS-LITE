@@ -8,9 +8,10 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
 ## Architecture (see ARCHITECTURE.md for detail)
 
 - **Control plane**: Node 22, TypeScript, Fastify 5 (`src/`), Prisma 5 + PostgreSQL 16.
-  Migrations in `prisma/migrations` (0001 to 0011); `npx prisma migrate dev --name x`.
+  Migrations in `prisma/migrations` (0001 to 0012); `npx prisma migrate dev --name x`.
 - **Media plane**: MediaMTX 1.11 (`mediamtx.yml`), localhost-only. The app reconciles
-  MediaMTX paths from the DB every 30 s. Browsers never talk to MediaMTX directly:
+  MediaMTX paths from the DB every 30 s and sweeps orphaned ones; path naming,
+  desired state and proxy URLs live only in `src/mediamtx/camera-media-paths.ts`. Browsers never talk to MediaMTX directly:
   WHEP, HLS and fMP4 playback go through `/api/media` (JWT or HttpOnly `vms_media` cookie).
 - **Client**: React 19 + Vite 7 + Tailwind 3 (`client/`), built into `client/dist`
   and served by the app.
@@ -21,46 +22,50 @@ India (Hikvision / Dahua / CP Plus cameras; default timezone Asia/Kolkata).
 ## Key behaviours worth knowing
 
 - Sites: `Site` table, `camera.siteId`, site filter everywhere, per-site health.
-  Operators get camera grants and/or site grants (`src/users/camera-access.ts`).
+  Operators get camera grants and/or site grants. `src/users/camera-scope.ts` is the one
+  place that decides who may do what on which camera; every route under `/api/cameras`,
+  `/recordings`, `/playback`, `/streaming`, `/media`, `/audit`, `/sites`, `/events` and
+  `/system`
+  must declare `config.cameraAccess` or the server refuses to start. `/api/auth/me`
+  reports effective per-camera rights for every role; the client uses `can()` only.
+  Browser API calls go through `apiFetch()` (`client/src/api/client.ts`): token and
+  401 handling in one place.
 - Site link outage: all cameras of a site (2 or more) unreachable gives one
   `site.offline` alert; covered camera alerts are tagged `metadata.siteOutage` and
-  skipped by email/WhatsApp (`src/health/site-outage.ts`). Events have a `site_id`.
+  skipped by email, WhatsApp and webhooks alike (`src/health/site-outage.ts`). Whether an
+  event alerts, its cooldown key and its link are decided only in
+  `src/notifications/alert-policy.ts`; channels just format and deliver. Deleting a
+  camera emits `camera.deleted` only. Events have a `site_id`.
 - Health telemetry carries `videoCodec`, `hasSubStream`, `subVideoCodec`,
   `subBitrateKbps`. H.265 warnings come from `client/src/utils/codec.ts`. Sites have
   `uplinkMbps`; summaries report `bandwidthKbps` and `linkUsage`.
 - Grids play the sub-stream; single view and recorded playback use the main stream.
-- Storage abstraction & tiering (`src/storage/`): `IStorageProvider`, `LocalStorageProvider`
-  (enforcing root path containment), and `TieredStorageManager` for asynchronous
-  offloading of mission-critical footage (bookmarks, motion alerts) to secondary object
-  storage or NAS. Video segments are addressed via canonical `recording.id` and opaque
-  artifact keys (`provider` + `key`), demoting physical file paths to internal details.
-- Versioned segment event contract (`src/events/segment-created-event.schema.ts`):
-  `SegmentCreatedEventV1` captures capture mode (`CONTINUOUS` vs `MOTION_ONLY`), motion
-  `incidentId`, and generic `analysisHints` (`priority`, `preferredStream`). Emitted
-  by `RecordingCatalog` carrying `siteId` and canonical storage URI.
-- Durable processing jobs (`src/jobs/processing-job.queue.ts`): PostgreSQL-backed
-  `ProcessingJob` queue with `UNIQUE(recordingId, jobType)`, priority claiming, and
-  exponential backoff retry. Survives appliance power cuts and restarts without Redis or
-  Kafka dependencies.
-- Spatio-temporal detection store (`src/ai/detection.repository.ts`): Dedicated `Detection`
-  table with composite indexes on `(cameraId, label, timestamp)` and `(siteId, label, timestamp)`
-  for sub-second timeline smart queries ("find person at Gate 1 between 10-11 PM").
-- AI worker harness (`src/ai/ai-pipeline-coordinator.ts`): `AiPipelineCoordinator`
-  orchestrates durable jobs and async inference (`IAiWorker`) with strict error isolation,
-  guaranteeing that worker exceptions, timeouts, or NPU OOMs never disrupt media capture.
-- Recording lifecycle (`src/recordings/`): `segment-validator.ts` checks MP4 box atoms
-  without fsync; the indexer self-heals via a dual path. Storage health state machine,
-  write-canary probe, multi-tier retention and a 25% protected-storage safeguard live
-  in `storage-controller.ts`.
+- **Built but not wired into production yet** (no production caller; each waits for a
+  real adapter, worker or UI before it is connected): storage tiering (`src/storage/`,
+  `IStorageProvider`, `TieredStorageManager`; segments use the local filesystem
+  directly), the AI pipeline (`src/ai/ai-pipeline-coordinator.ts`, `IAiWorker`, no
+  worker exists), the durable job queue (`src/jobs/processing-job.queue.ts`), the
+  detection store (`src/ai/detection.repository.ts`) and incident correlation
+  (`src/incidents/`, no routes). Don't describe these as running features.
+- `recording.segment_created` is emitted by Segment Ingest with the metadata in
+  `segment-ingest.ts` (`emitSegmentCreated`); that is the contract.
+- Recording lifecycle (`src/recordings/`): `segment-ingest.ts` is the only way into the
+  catalog (scan of the recordings volume; every file gets one row: AVAILABLE, BUFFERED for
+  MOTION_ONLY cameras, or QUARANTINED); `segment-validator.ts` checks MP4 box atoms
+  without fsync. `retention-policy.ts` alone decides what may be deleted (tier
+  lifetimes CONTINUOUS <= EVENT <= INCIDENT; holds: legal hold, bookmark +/- 2 min,
+  running exports). `storage-controller.ts` keeps disk health, the write canary and
+  FIFO rollover (quarantined first); protected footage over 25% alerts once, never
+  auto-deletes.
 - Storage invariants (`storage-invariants.service.ts`): one catalog row per AVAILABLE
   recording, one object per cataloged segment (missing files become MISSING), no
   uncatalogued video after a crash, protected evidence is never retained-out, and
-  storage failure halts deletions. Deletion is two-phase: AVAILABLE -> DELETE_PENDING
+  storage failure halts deletions. The audit runs once at engine start, only on mounted,
+  writable storage; expired exports are pruned hourly. Deletion is two-phase: AVAILABLE -> DELETE_PENDING
   -> [unlink] -> DELETED or GARBAGE. `diagnostics-logger.ts` warns on slow I/O.
-- Camera abstraction (`src/cameras/camera-provider.interface.ts`, `rtsp.adapter.ts`):
-  discrete capability interfaces, primary/sub stream roles.
-- Incidents (`src/incidents/incident-correlation.service.ts`): multi-sensor event
-  correlation and evidence protection.
+- Camera abstraction (`src/cameras/camera-provider.interface.ts`): ONVIF is the one
+  provider; reachability checks use `src/cameras/tcp-probe.ts`. Health status rules are
+  the pure `src/health/camera-status.ts`.
 - Optional processing boundary: with AI disabled the core runs with zero processing
   overhead; worker failures stay isolated. Full spec: `docs/VMS_LITE_ARCHITECTURE_SPEC.md`.
 - Times in alerts and reports use the appliance timezone (`src/system/time-format.ts`);
@@ -92,7 +97,7 @@ Conventions: tests live in `tests/` (`signAs()` in `tests/helpers/auth.ts` creat
 real users; `extendedLicense()` in `tests/helpers/license.ts` for 32-camera tests).
 Match the surrounding code's comment density; no model identifiers in commits.
 
-## Status (2026-10-06)
+## Status (2026-10-07)
 
 Merged into `main`:
 - PRs #1-#5 (Multi-site, site outage detection, site permissions, Fastify 5, HTTPS,
@@ -114,11 +119,23 @@ Merged into `main`:
   Migration `0011_storage_invariants_and_garbage_state`.
 - Last full-suite result recorded (at `ef37621`): 75 test files, 531/531 green. Not
   re-run since the three commits above; re-run `npm test` and `npm run typecheck`.
+- PR #8 (https://github.com/Nopenope69/VMS-LITE/pull/8), branch
+  `claude/great-hawking-vequql` (2026-10-07, open, not merged): architecture review
+  follow-up. Segment Ingest + Motion Buffer fixes (migration 0012), Camera Scope (13
+  operator access gaps + /api/system dashboard), Retention Policy, Camera Media Paths
+  (orphan sweep), Alert Policy, injectable engine, camera status state machine, boot
+  invariants audit, typed event names, client apiFetch. 87 files / 600 tests green,
+  typecheck clean; CI (unit + browser e2e) green on `8624b10`. Tests stub the storage
+  write probe (`canaryWriteFn`) on fake roots; `tests/setup.ts` sets a temp `RECORDINGS_PATH`.
 - Branches: `origin/vms-lite` holds an unrelated-history simulator prototype (with a
   committed `.agent/` GSD directory); four `feature-*` branches have no commits beyond `main`.
 
 ## Next steps
 
+0. PR #8: CI green; waiting on review and merge.
+   On deploy, `prisma migrate deploy` applies `0012_buffered_segments`. In the pilot,
+   check that MOTION_ONLY cameras keep footage around motion (BUFFERED rows promoted,
+   expired ones deleted) and that the boot invariants audit logs a clean run.
 1. Owner's hardware pilot: real cameras, real VPN to a branch, a week of recording,
    `deploy/install.sh` with HTTPS, then try `deploy/update.sh`.
 2. Owner generates the license key pair; embed the public key in `vendor-key.ts`.

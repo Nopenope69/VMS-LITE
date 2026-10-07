@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { authenticate } from '../users/rbac.guard.js';
+import { authenticate, requireRole } from '../users/rbac.guard.js';
 import { handoffService } from './handoff.service.js';
+import { ADMIN_ONLY } from '../users/camera-scope.js';
 
 export const handoffRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
@@ -10,7 +11,9 @@ export const handoffRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
   app.get(
     '/handoff-report',
     {
-      preHandler: [authenticate],
+      // Lists every camera: an installer (admin) document
+      preHandler: [authenticate, requireRole('ADMIN')],
+      config: { cameraAccess: ADMIN_ONLY },
     },
     async (request, reply) => {
       try {

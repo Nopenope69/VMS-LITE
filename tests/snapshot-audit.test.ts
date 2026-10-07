@@ -4,7 +4,7 @@ import { createServer } from '../src/server.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { signAs } from './helpers/auth.js';
+import { grantCamera, signAs } from './helpers/auth.js';
 
 describe('Server-Authoritative Snapshot Audit Pipeline (BSA-Aware)', () => {
   let app: FastifyInstance;
@@ -16,6 +16,9 @@ describe('Server-Authoritative Snapshot Audit Pipeline (BSA-Aware)', () => {
     app = await createServer({ logger: false });
     await app.ready();
     operatorToken = await signAs(app, { id: 'usr-op-1', username: 'operator1', role: 'OPERATOR' });
+    for (const cameraId of ['cam-01', 'cam-02', 'cam-rate-limit', 'cam-download-test', 'cam-deleted-file-test', 'cam-db-audit', 'cam-fail-loud', 'cam-fail-loud-api']) {
+      await grantCamera('usr-op-1', cameraId, { canViewLive: true });
+    }
   });
 
   afterAll(async () => {

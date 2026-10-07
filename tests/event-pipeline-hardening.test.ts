@@ -33,19 +33,19 @@ describe('EventBus hardening', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const delivered: string[] = [];
 
-    bus.subscribe('x.test', () => {
+    bus.subscribe('storage.drive_degraded', () => {
       throw new Error('sync boom');
     });
-    bus.subscribe('x.test', async () => {
+    bus.subscribe('storage.drive_degraded', async () => {
       throw new Error('async boom');
     });
-    bus.subscribe('x.test', (e) => {
+    bus.subscribe('storage.drive_degraded', (e) => {
       delivered.push(e.type);
     });
 
-    await expect(bus.emitEvent({ type: 'x.test', source: 'test' })).resolves.toBeDefined();
+    await expect(bus.emitEvent({ type: 'storage.drive_degraded', source: 'test' })).resolves.toBeDefined();
     await new Promise((r) => setImmediate(r));
-    expect(delivered).toEqual(['x.test']);
+    expect(delivered).toEqual(['storage.drive_degraded']);
     expect(errorSpy).toHaveBeenCalledTimes(2);
     errorSpy.mockRestore();
   });

@@ -1,5 +1,6 @@
+import { probeTcp } from './tcp-probe.js';
+import { CameraMediaPaths, subPathName } from '../mediamtx/camera-media-paths.js';
 import crypto from 'node:crypto';
-import net from 'node:net';
 import { PrismaClient } from '@prisma/client';
 import { prisma as defaultPrisma } from '../db/prisma.js';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
@@ -20,7 +21,6 @@ import {
   UpdateCameraInput,
 } from './camera.types.js';
 
-const PREVIEW_TTL_MS = 10 * 60 * 1000;
 
 export class LicenseLimitExceededError extends Error {
   public readonly code = 'LICENSE_LIMIT_EXCEEDED';
@@ -43,6 +43,7 @@ export interface CameraServiceDependencies {
 export class CameraService {
   private readonly provider: ICameraProvider;
   private readonly mediaMtx: MediaMtxClient;
+  private readonly mediaPaths: CameraMediaPaths;
   private readonly eventBus: EventBus;
   private readonly prisma: PrismaClient;
 
@@ -64,6 +65,7 @@ export class CameraService {
       this.eventBus = deps.eventBus || defaultEventBus;
       this.prisma = deps.prisma || defaultPrisma;
     }
+    this.mediaPaths = new CameraMediaPaths(this.mediaMtx);
   }
 
   /**
@@ -74,38 +76,7 @@ export class CameraService {
     port = 554,
     timeoutMs = 2500
   ): Promise<{ reachable: boolean; latencyMs: number | null; error?: string }> {
-    return new Promise((resolve) => {
-      const start = Date.now();
-      const socket = net.createConnection({ host: ip, port });
-      let resolved = false;
-
-      const timer = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          socket.destroy();
-          resolve({ reachable: false, latencyMs: null, error: `Connection timed out after ${timeoutMs}ms` });
-        }
-      }, timeoutMs);
-
-      socket.on('connect', () => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timer);
-          const latencyMs = Date.now() - start;
-          socket.destroy();
-          resolve({ reachable: true, latencyMs });
-        }
-      });
-
-      socket.on('error', (err) => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timer);
-          socket.destroy();
-          resolve({ reachable: false, latencyMs: null, error: err.message });
-        }
-      });
-    });
+    return probeTcp(ip, port, timeoutMs);
   }
 
   /**
@@ -155,30 +126,18 @@ export class CameraService {
     whepUrl: string;
     warning?: string;
   }> {
-    const randomSuffix = crypto.randomBytes(4).toString('hex');
-    const pathName = `${pathPrefix}_${randomSuffix}`;
-
-    await this.mediaMtx.addPath(pathName, rtspUrl, { record: false });
-
-    // Previews are transient: remove automatically if the wizard is abandoned
-    const expiry = setTimeout(() => {
-      this.teardownPreviewPath(pathName).catch(() => {});
-    }, PREVIEW_TTL_MS);
-    expiry.unref?.();
+    const { pathName, whepUrl } = await this.mediaPaths.openPreview(rtspUrl);
 
     // Poll MediaMTX for up to 5 seconds to verify stream readiness
     let ready = false;
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
-      const state = await this.mediaMtx.getPath(pathName).catch(() => null);
-      if (state && state.ready) {
+      if (await this.mediaPaths.isReady(pathName)) {
         ready = true;
         break;
       }
       await new Promise((r) => setTimeout(r, 400));
     }
-
-    const whepUrl = `/api/media/whep/${pathName}/whep`;
 
     return {
       pathName,
@@ -194,8 +153,7 @@ export class CameraService {
    * Cleans up a temporary preview path from MediaMTX.
    */
   async teardownPreviewPath(pathName: string): Promise<void> {
-    if (!pathName || !pathName.startsWith('preview_')) return;
-    await this.mediaMtx.removePath(pathName).catch(() => {});
+    await this.mediaPaths.closePreview(pathName);
   }
 
   /**
@@ -269,30 +227,14 @@ export class CameraService {
     serialNumber?: string | null;
   }): Promise<CameraResponseDto> {
     const mediaMtxPath = this.generatePathName(data.name);
-    const subMediaMtxPath = data.subStreamUrl ? `${mediaMtxPath}_sub` : null;
+    const subMediaMtxPath = data.subStreamUrl ? subPathName(mediaMtxPath) : null;
+    const paths = { mediaMtxPath, rtspUrl: data.rtspUrl, subMediaMtxPath, subStreamUrl: data.subStreamUrl };
+
+    // New cameras start in CONTINUOUS mode; the scheduler owns the record flag afterwards
+    await this.mediaPaths.provision(paths, true);
 
     let record: any;
     try {
-      const mainOk = await this.mediaMtx.setPath(mediaMtxPath, {
-        source: data.rtspUrl,
-        sourceOnDemand: false,
-        record: true, // New cameras start in CONTINUOUS mode; the scheduler owns this flag afterwards
-      });
-      if (!mainOk) {
-        throw new Error(`Failed to configure main stream path in media plane: ${mediaMtxPath}`);
-      }
-
-      if (data.subStreamUrl && subMediaMtxPath) {
-        const subOk = await this.mediaMtx.setPath(subMediaMtxPath, {
-          source: data.subStreamUrl,
-          sourceOnDemand: true,
-          record: false,
-        });
-        if (!subOk) {
-          throw new Error(`Failed to configure sub-stream path in media plane: ${subMediaMtxPath}`);
-        }
-      }
-
       record = await this.prisma.camera.create({
         data: {
           ...data,
@@ -305,10 +247,7 @@ export class CameraService {
         },
       });
     } catch (err) {
-      if (subMediaMtxPath) {
-        await this.mediaMtx.removePath(subMediaMtxPath).catch(() => {});
-      }
-      await this.mediaMtx.removePath(mediaMtxPath).catch(() => {});
+      await this.mediaPaths.remove(paths);
       throw err;
     }
 
@@ -457,25 +396,10 @@ export class CameraService {
     await this.prisma.camera.delete({ where: { id } });
 
     // Teardown MediaMTX stream paths (the DB row is gone, so a failure here only leaves
-    // an orphaned path that a MediaMTX restart clears; don't fail the request for it)
-    await this.mediaMtx.removePath(existingCamera.mediaMtxPath).catch((err: Error) => {
-      console.warn(`[CameraService] Failed to remove media path ${existingCamera.mediaMtxPath}: ${err.message}`);
-    });
-    if (existingCamera.subMediaMtxPath) {
-      await this.mediaMtx.removePath(existingCamera.subMediaMtxPath).catch(() => {});
-    }
+    // an orphaned path that the scheduler's orphan sweep removes)
+    await this.mediaPaths.remove(existingCamera);
 
-    // Emit lifecycle event
-    await this.eventBus.emitEvent({
-      type: 'camera.offline',
-      source: 'camera.service',
-      cameraId: id,
-      metadata: {
-        name: existingCamera.name,
-        mediaMtxPath: existingCamera.mediaMtxPath,
-      },
-    });
-
+    // Deletion is not an outage: listeners stop watching the camera on camera.deleted
     await this.eventBus.emitEvent({
       type: 'camera.deleted',
       source: 'camera.service',

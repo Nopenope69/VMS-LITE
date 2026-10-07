@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { apiFetch } from '../api/client.js';
 
 export type CameraHealthStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN';
 
@@ -63,7 +64,7 @@ export function useCameraHealth(options: UseCameraHealthOptions = {}): UseCamera
 
   const fetchHealth = useCallback(async () => {
     try {
-      const token = localStorage.getItem('vms_token') || localStorage.getItem('token');
+      const token = localStorage.getItem('vms_token');
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
@@ -71,7 +72,7 @@ export function useCameraHealth(options: UseCameraHealthOptions = {}): UseCamera
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const res = await fetch('/api/cameras/health', {
+      const res = await apiFetch('/api/cameras/health', {
         method: 'GET',
         headers,
       });

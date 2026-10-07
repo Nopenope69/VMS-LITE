@@ -16,7 +16,8 @@
  * Incident history is durably recorded via EventBus events in PostgreSQL.
  */
 
-import net from 'node:net';
+import { probeTcp, TcpProbe } from '../cameras/tcp-probe.js';
+import { INITIAL_STATUS, nextCameraStatus } from './camera-status.js';
 import { CameraService, cameraService as defaultCameraService } from '../cameras/camera.service.js';
 import { MediaMtxClient, mediaMtxClient as defaultMediaMtx } from '../mediamtx/mediamtx.client.js';
 import { EventBus, eventBus as defaultEventBus } from '../events/event-bus.js';
@@ -37,6 +38,10 @@ export interface CameraHealthDependencies {
   eventBus?: EventBus;
   /** Site id -> name, for site alerts */
   resolveSiteNames?: (siteIds: string[]) => Promise<Map<string, string>>;
+  /** Network reachability check (default: TCP handshake) */
+  probe?: TcpProbe;
+  /** Current time in ms (default: Date.now) */
+  now?: () => number;
 }
 
 async function defaultResolveSiteNames(siteIds: string[]): Promise<Map<string, string>> {
@@ -131,6 +136,8 @@ export class CameraHealthService {
   private readonly cameraService: CameraService;
   private readonly mediaMtxClient: IMediaMtxRuntimeAdapter;
   private readonly eventBus: EventBus;
+  private readonly probe: TcpProbe;
+  private readonly now: () => number;
 
   public readonly MAX_CONCURRENT_CAMERA_CHECKS = 5;
 
@@ -151,66 +158,29 @@ export class CameraHealthService {
     this.mediaMtxClient = deps.mediaMtxClient || defaultMediaMtx;
     this.eventBus = deps.eventBus || defaultEventBus;
     this.resolveSiteNames = deps.resolveSiteNames || defaultResolveSiteNames;
+    this.probe = deps.probe || probeTcp;
+    this.now = deps.now || (() => Date.now());
   }
 
-  /**
-   * Pings camera TCP port (default RTSP 554 or HTTP 80).
-   * Strict connection timeout with guaranteed socket.destroy() on all completion/error paths.
-   */
+  /** Pings a camera's TCP port (default RTSP 554). */
   async pingTcp(
     host: string,
     port = 554,
     timeoutMs = 2500
   ): Promise<{ reachable: boolean; latencyMs: number | null; error?: string }> {
-    return new Promise((resolve) => {
-      const startTime = Date.now();
-      const socket = new net.Socket();
-      let settled = false;
-
-      const cleanup = (reachable: boolean, error?: string) => {
-        if (settled) return;
-        settled = true;
-        socket.removeAllListeners();
-        socket.destroy();
-        const latency = reachable ? Math.max(1, Date.now() - startTime) : null;
-        resolve({ reachable, latencyMs: latency, error });
-      };
-
-      socket.setTimeout(timeoutMs);
-
-      socket.once('connect', () => {
-        cleanup(true);
-      });
-
-      socket.once('timeout', () => {
-        cleanup(false, `TCP connection timed out after ${timeoutMs}ms`);
-      });
-
-      socket.once('error', (err) => {
-        cleanup(false, err.message);
-      });
-
-      try {
-        socket.connect(port, host);
-      } catch (err: any) {
-        cleanup(false, err.message);
-      }
-    });
+    return this.probe(host, port, timeoutMs);
   }
 
   /**
    * Evaluates camera health across dual planes (TCP + MediaMTX) and updates state machine.
    */
   async checkCamera(camera: HealthCheckCamera): Promise<CameraHealthTelemetry> {
-    const now = Date.now();
+    const now = this.now();
     let state = this.cameraStates.get(camera.id);
 
     if (!state) {
       state = {
-        status: 'UNKNOWN',
-        consecutiveFailures: 0,
-        unhealthySince: null,
-        offlineSince: null,
+        ...INITIAL_STATUS,
         lastChecked: null,
         latencyMs: null,
         bitrateKbps: null,
@@ -225,7 +195,6 @@ export class CameraHealthService {
     }
 
     // 1. Network Plane: TCP Socket Ping
-    let tcpReachable = false;
     let latencyMs: number | null = null;
     let tcpError: string | undefined;
     let networkCheck: NetworkCheckResult = 'NOT_APPLICABLE';
@@ -233,14 +202,12 @@ export class CameraHealthService {
     const target = networkTarget(camera);
     if (target) {
       const pingResult = await this.pingTcp(target.host, target.port);
-      tcpReachable = pingResult.reachable;
       latencyMs = pingResult.latencyMs;
       tcpError = pingResult.error;
       networkCheck = pingResult.reachable ? 'PASSED' : 'FAILED';
     } else {
       // If no IP configured (e.g. simulated camera, cloud stream, or external path),
       // mark networkCheck as NOT_APPLICABLE and do NOT manufacture a synthetic latency value.
-      tcpReachable = true;
       latencyMs = null;
       networkCheck = 'NOT_APPLICABLE';
     }
@@ -281,109 +248,23 @@ export class CameraHealthService {
       state.subBitrateKbps = null;
     }
 
-    // 3. Bitrate Math & Warm-up
-    let computedBitrate: number | null = null;
+    // 3. Bitrate (null on the first sample or a counter reset: warm-up, never degraded)
+    const computedBitrate = bitrateKbps(bytesReceived, now, { bytes: state.lastBytes, at: state.lastTimestamp });
+    state.lastBytes = bytesReceived;
+    state.lastTimestamp = now;
 
-    if (state.lastBytes === undefined || state.lastTimestamp === undefined) {
-      // First poll cycle: Warm-up baseline
-      state.lastBytes = bytesReceived;
-      state.lastTimestamp = now;
-      computedBitrate = null; // No bitrate on sample 1; do NOT falsely trigger DEGRADED
-    } else {
-      const deltaBytes = bytesReceived - state.lastBytes;
-      const deltaTimeSec = Math.max(0.001, (now - state.lastTimestamp) / 1000);
-
-      if (bytesReceived < state.lastBytes) {
-        // Counter reset (MediaMTX restart or stream re-publish)
-        state.lastBytes = bytesReceived;
-        state.lastTimestamp = now;
-        computedBitrate = null;
-      } else {
-        computedBitrate = Math.round((deltaBytes * 8) / (1000 * deltaTimeSec));
-        state.lastBytes = bytesReceived;
-        state.lastTimestamp = now;
-      }
-    }
-
-    // 4. Sample Evaluation
-    // Fully healthy criteria: TCP reachable < 500ms (or NOT_APPLICABLE), stream ready, and bitrate > 50kbps (or warm-up sample)
-    const isTcpHealthy = networkCheck === 'NOT_APPLICABLE'
-      ? true
-      : (tcpReachable && latencyMs !== null && latencyMs < 500);
-    const isBitrateHealthy = computedBitrate === null || computedBitrate > 50;
-    const isSampleFullyHealthy = isTcpHealthy && streamReady && isBitrateHealthy;
-
-    // Degraded sample criteria: TCP reachable/applicable, but high latency, stream not ready, or low bitrate
-    const isSampleDegraded = tcpReachable && (!isTcpHealthy || !streamReady || (computedBitrate !== null && computedBitrate <= 50));
-
-    // Offline sample criteria: TCP unreachable (when applicable)
-    const isSampleOffline = !tcpReachable && networkCheck !== 'NOT_APPLICABLE';
-
-    let reason: string | undefined;
-    if (!tcpReachable && networkCheck !== 'NOT_APPLICABLE') {
-      reason = tcpError || 'TCP handshake connection failed';
-    } else if (latencyMs !== null && latencyMs >= 500) {
-      reason = `High network latency (${latencyMs}ms >= 500ms)`;
-    } else if (!streamReady) {
-      reason = 'MediaMTX stream path not ready / no video packet feed';
-    } else if (computedBitrate !== null && computedBitrate <= 50) {
-      reason = `Low stream bitrate (${computedBitrate} kbps <= 50 kbps)`;
-    }
-
-    // 5. Deterministic State Machine with Anti-Flapping Hysteresis & 30s Downtime Rule
+    // 4. Status state machine (pure; see camera-status.ts)
     const previousStatus = state.status;
-    let nextStatus = previousStatus;
-    let outageDurationMs: number | null = null;
+    const next = nextCameraStatus(
+      state,
+      { networkCheck, latencyMs, networkError: tcpError, streamReady, bitrateKbps: computedBitrate },
+      now
+    );
+    Object.assign(state, next.memory);
+    const nextStatus = state.status;
+    const reason = next.reason;
+    const outageDurationMs = next.outageDurationMs;
 
-    if (isSampleFullyHealthy) {
-      // 1 healthy sample recovers immediately to ONLINE
-      if (state.unhealthySince !== null) {
-        outageDurationMs = now - state.unhealthySince;
-      }
-      state.consecutiveFailures = 0;
-      state.unhealthySince = null;
-      state.offlineSince = null;
-      nextStatus = 'ONLINE';
-      reason = undefined;
-    } else {
-      // Unhealthy sample: increment failure count & timestamp
-      state.consecutiveFailures += 1;
-      if (state.unhealthySince === null) {
-        state.unhealthySince = now;
-      }
-
-      if (isSampleOffline) {
-        if (state.offlineSince === null) {
-          state.offlineSince = now;
-        }
-        const offlineDowntimeMs = now - state.offlineSince;
-
-        // Continuous disconnection >= 30s AND at least 2 consecutive failure samples (anti-flap)
-        if (offlineDowntimeMs >= 30_000 && state.consecutiveFailures >= 2) {
-          nextStatus = 'OFFLINE';
-        } else if (state.consecutiveFailures >= 2) {
-          // While awaiting the 30s continuous downtime threshold, mark DEGRADED to indicate failure
-          nextStatus = 'DEGRADED';
-        } else {
-          // Candidate state (sample 1): wait for hysteresis
-          nextStatus = previousStatus;
-        }
-      } else {
-        // TCP is reachable; clear offline disconnection timer
-        state.offlineSince = null;
-
-        if (isSampleDegraded) {
-          if (state.consecutiveFailures >= 2) {
-            nextStatus = 'DEGRADED';
-          } else {
-            // Candidate state: retain previous status
-            nextStatus = previousStatus;
-          }
-        }
-      }
-    }
-
-    state.status = nextStatus;
     state.latencyMs = latencyMs;
     state.bitrateKbps = computedBitrate;
     state.bytesReceived = bytesReceived;
@@ -726,14 +607,18 @@ export class CameraHealthService {
   /**
    * Returns summary response for all cached camera health records.
    */
-  getAllTelemetry(): CameraHealthSummaryResponse {
+  /** Health of every camera, or only those `include` accepts (a user's Camera Scope). */
+  getAllTelemetry(include: (cameraId: string) => boolean = () => true): CameraHealthSummaryResponse {
     let onlineCount = 0;
     let degradedCount = 0;
     let offlineCount = 0;
     let unknownCount = 0;
     const cameras: Record<string, CameraHealthTelemetry> = {};
 
+    let totalCameras = 0;
     for (const [id, state] of this.cameraStates.entries()) {
+      if (!include(id)) continue;
+      totalCameras++;
       if (state.status === 'ONLINE') onlineCount++;
       else if (state.status === 'DEGRADED') degradedCount++;
       else if (state.status === 'OFFLINE') offlineCount++;
@@ -743,7 +628,7 @@ export class CameraHealthService {
     }
 
     return {
-      totalCameras: this.cameraStates.size,
+      totalCameras,
       onlineCount,
       degradedCount,
       offlineCount,

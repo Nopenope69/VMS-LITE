@@ -18,7 +18,46 @@ export const CoreEventType = {
   SITE_ONLINE: 'site.online',
 } as const;
 
-export type CoreEventTypeString = (typeof CoreEventType)[keyof typeof CoreEventType] | string;
+/**
+ * Every event type the system emits. The bus only accepts these, so a misspelt type
+ * fails typecheck instead of silently reaching no subscriber.
+ */
+export const EVENT_TYPES = [
+  'camera.added',
+  'camera.online',
+  'camera.degraded',
+  'camera.offline',
+  'camera.deleted',
+  'camera.tamper',
+  'motion.detected',
+  'site.offline',
+  'site.online',
+  'recording.started',
+  'recording.stopped',
+  'recording.segment_created',
+  'storage.warning',
+  'storage.critical',
+  'storage.full',
+  'storage.rollover',
+  'storage.health_changed',
+  'storage.exhaustion_risk',
+  'storage.protected_overflow',
+  'storage.protected_recovered',
+  'storage.invariants_audited',
+  'storage.drive_degraded',
+  'incident.created',
+  'incident.updated',
+  'ai.detections_processed',
+] as const;
+
+export type EventType = (typeof EVENT_TYPES)[number];
+
+export function isEventType(value: unknown): value is EventType {
+  return typeof value === 'string' && (EVENT_TYPES as readonly string[]).includes(value);
+}
+
+/** @deprecated use EventType */
+export type CoreEventTypeString = EventType;
 
 export interface EventRecord<T = Record<string, unknown>> {
   id: string;
@@ -26,7 +65,7 @@ export interface EventRecord<T = Record<string, unknown>> {
   /** Set on site-level events (site.offline / site.online) */
   siteId?: string | null;
   timestamp: Date;
-  type: string;
+  type: EventType;
   source: string;
   severity: EventSeverity;
   metadata: T;

@@ -36,8 +36,8 @@ export class WebSocketFeedService {
   private maxBufferSize: number;
 
   private accessResolver: CameraAccessResolver = async (user) => {
-    const { getVisibleCameraIds } = await import('../users/camera-access.js');
-    return getVisibleCameraIds(user);
+    const { CameraScope } = await import('../users/camera-scope.js');
+    return (await CameraScope.forUser(user)).cameraIds('view');
   };
 
   constructor(
