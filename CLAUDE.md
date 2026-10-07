@@ -97,7 +97,7 @@ Conventions: tests live in `tests/` (`signAs()` in `tests/helpers/auth.ts` creat
 real users; `extendedLicense()` in `tests/helpers/license.ts` for 32-camera tests).
 Match the surrounding code's comment density; no model identifiers in commits.
 
-## Status (2026-10-06)
+## Status (2026-10-07)
 
 Merged into `main`:
 - PRs #1-#5 (Multi-site, site outage detection, site permissions, Fastify 5, HTTPS,
@@ -119,7 +119,8 @@ Merged into `main`:
   Migration `0011_storage_invariants_and_garbage_state`.
 - Last full-suite result recorded (at `ef37621`): 75 test files, 531/531 green. Not
   re-run since the three commits above; re-run `npm test` and `npm run typecheck`.
-- Branch `claude/great-hawking-vequql` (2026-10-07, not merged): architecture review
+- PR #8 (https://github.com/Nopenope69/VMS-LITE/pull/8), branch
+  `claude/great-hawking-vequql` (2026-10-07, open, not merged): architecture review
   follow-up. Segment Ingest + Motion Buffer fixes (migration 0012), Camera Scope (13
   operator access gaps + /api/system dashboard), Retention Policy, Camera Media Paths
   (orphan sweep), Alert Policy, injectable engine, camera status state machine, boot
@@ -130,6 +131,10 @@ Merged into `main`:
 
 ## Next steps
 
+0. PR #8: wait for CI (incl. "Browser end-to-end", not run locally), review, merge.
+   On deploy, `prisma migrate deploy` applies `0012_buffered_segments`. In the pilot,
+   check that MOTION_ONLY cameras keep footage around motion (BUFFERED rows promoted,
+   expired ones deleted) and that the boot invariants audit logs a clean run.
 1. Owner's hardware pilot: real cameras, real VPN to a branch, a week of recording,
    `deploy/install.sh` with HTTPS, then try `deploy/update.sh`.
 2. Owner generates the license key pair; embed the public key in `vendor-key.ts`.
