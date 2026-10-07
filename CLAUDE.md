@@ -125,13 +125,14 @@ Merged into `main`:
   operator access gaps + /api/system dashboard), Retention Policy, Camera Media Paths
   (orphan sweep), Alert Policy, injectable engine, camera status state machine, boot
   invariants audit, typed event names, client apiFetch. 87 files / 600 tests green,
-  typecheck clean. Browser e2e not run on it yet.
+  typecheck clean; CI (unit + browser e2e) green on `8624b10`. Tests stub the storage
+  write probe (`canaryWriteFn`) on fake roots; `tests/setup.ts` sets a temp `RECORDINGS_PATH`.
 - Branches: `origin/vms-lite` holds an unrelated-history simulator prototype (with a
   committed `.agent/` GSD directory); four `feature-*` branches have no commits beyond `main`.
 
 ## Next steps
 
-0. PR #8: wait for CI (incl. "Browser end-to-end", not run locally), review, merge.
+0. PR #8: CI green; waiting on review and merge.
    On deploy, `prisma migrate deploy` applies `0012_buffered_segments`. In the pilot,
    check that MOTION_ONLY cameras keep footage around motion (BUFFERED rows promoted,
    expired ones deleted) and that the boot invariants audit logs a clean run.
