@@ -119,6 +119,12 @@ Merged into `main`:
   Migration `0011_storage_invariants_and_garbage_state`.
 - Last full-suite result recorded (at `ef37621`): 75 test files, 531/531 green. Not
   re-run since the three commits above; re-run `npm test` and `npm run typecheck`.
+- Branch `claude/great-hawking-vequql` (2026-10-07, not merged): architecture review
+  follow-up. Segment Ingest + Motion Buffer fixes (migration 0012), Camera Scope (13
+  operator access gaps + /api/system dashboard), Retention Policy, Camera Media Paths
+  (orphan sweep), Alert Policy, injectable engine, camera status state machine, boot
+  invariants audit, typed event names, client apiFetch. 87 files / 600 tests green,
+  typecheck clean. Browser e2e not run on it yet.
 - Branches: `origin/vms-lite` holds an unrelated-history simulator prototype (with a
   committed `.agent/` GSD directory); four `feature-*` branches have no commits beyond `main`.
 
