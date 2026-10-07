@@ -155,7 +155,7 @@ export class PrismaRecordingRepository implements IRecordingRepository {
   }
 
   async queryRecordings(params: RecordingQueryParams): Promise<RecordingDto[]> {
-    const where: any = {};
+    const where: any = { status: 'AVAILABLE' };
     if (params.cameraId) {
       where.cameraId = params.cameraId;
     }
@@ -461,7 +461,7 @@ export class InMemoryRecordingRepository implements IRecordingRepository {
   }
 
   async queryRecordings(params: RecordingQueryParams): Promise<RecordingDto[]> {
-    let list = Array.from(this.recordings.values());
+    let list = Array.from(this.recordings.values()).filter((r) => (r.status || 'AVAILABLE') === 'AVAILABLE');
 
     if (params.cameraId) {
       list = list.filter((r) => r.cameraId === params.cameraId);

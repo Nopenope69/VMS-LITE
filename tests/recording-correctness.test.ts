@@ -138,9 +138,12 @@ describe('Phase 1: Recording Correctness (Segment Lifecycle & Dual-Path Reconcil
       },
     });
 
-    // Scan should index the valid file and advance watermark past the corrupt one without throwing
+    // The corrupt file is catalogued as QUARANTINED (reclaimable), the valid one as AVAILABLE
     const count = await indexer.scanCamera('cam-gate', 'gate_primary');
-    expect(count).toBe(1);
+    expect(count).toBe(2);
+    expect((await repository.findRecordingsByStatus('QUARANTINED')).map((r) => r.fileName)).toEqual([
+      '2026-10-06_14-01-00.mp4',
+    ]);
 
     const recordings = await repository.queryRecordings({ cameraId: 'cam-gate' });
     expect(recordings.length).toBe(1);

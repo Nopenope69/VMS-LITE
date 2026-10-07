@@ -137,14 +137,6 @@ export class StorageController {
       }
     }
 
-    if (process.env.NODE_ENV === 'test' || (globalThis as any).prismaGlobal) {
-      try {
-        await fs.access(this.recordingsRoot, fs.constants.W_OK);
-      } catch {
-        return { success: true, latencyMs: 10 };
-      }
-    }
-
     const probeName = `.probe_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.tmp`;
     const probePath = path.join(this.recordingsRoot, probeName);
     const probeData = Buffer.alloc(64 * 1024, 0xaa);

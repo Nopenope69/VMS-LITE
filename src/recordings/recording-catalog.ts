@@ -122,6 +122,44 @@ export class RecordingCatalog {
   }
 
   /**
+   * Catalogues a segment that failed validation as QUARANTINED: hidden from playback,
+   * but tracked so FIFO rollover can reclaim its disk space.
+   */
+  private async quarantineSegment(
+    payload: SegmentCompleteWebhookPayload,
+    cameraId: string,
+    mediaMtxPath: string,
+    fileName: string,
+    validation: { reason: string; error?: string }
+  ): Promise<RecordingDto> {
+    const duration = payload.duration > 0 ? payload.duration : 0;
+    const { startTime, endTime } = this.parseSegmentStartTime(payload.segmentPath, duration, payload.startTime);
+    let sizeBytes = payload.size ?? 0;
+    try {
+      sizeBytes = (await this.fsStatFn(payload.segmentPath)).size;
+    } catch {
+      // Keep the reported size
+    }
+    console.warn(`[RecordingCatalog] Segment quarantined for camera ${cameraId}: ${validation.reason} ${validation.error || ''}`);
+    return this.repository.createRecording({
+      cameraId,
+      mediaMtxPath,
+      filePath: payload.segmentPath,
+      fileName,
+      startTime,
+      endTime,
+      duration,
+      sizeBytes,
+      format: 'fmp4',
+      status: 'QUARANTINED',
+      retentionTier: 'CONTINUOUS',
+      isProtected: false,
+      errorReason: `${validation.reason}${validation.error ? `: ${validation.error}` : ''}`,
+      validatedAt: new Date(),
+    });
+  }
+
+  /**
    * Catalogs a completed video segment notification from MediaMTX.
    */
   async ingestSegment(payload: SegmentCompleteWebhookPayload): Promise<RecordingDto> {
@@ -160,7 +198,7 @@ export class RecordingCatalog {
     const fileName = path.basename(payload.segmentPath);
 
     const isSubStream = Boolean(camera && (camera as any).subMediaMtxPath === mediaMtxPath);
-    const isTestMode = Boolean(process.env.NODE_ENV === 'test' || (globalThis as any).prismaGlobal);
+    const isTestMode = process.env.NODE_ENV === 'test';
     const validation = await this.validator.validate({
       filePath: payload.segmentPath,
       recordingsRoot: this.recordingsRoot,
@@ -176,7 +214,10 @@ export class RecordingCatalog {
       if (validation.status === 'VALIDATING') {
         return null as any;
       }
-      throw new Error(`Segment validation failed: ${validation.reason} (${validation.error || ''})`);
+      if (validation.reason === 'FILE_NOT_FOUND' || validation.reason === 'OUTSIDE_ROOT') {
+        throw new Error(`Segment validation failed: ${validation.reason} (${validation.error || ''})`);
+      }
+      return this.quarantineSegment(payload, cameraId, mediaMtxPath, fileName, validation);
     }
 
     let sizeBytes = validation.sizeBytes ?? payload.size ?? 1024 * 1024;
